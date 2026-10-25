@@ -21,7 +21,7 @@ export function createWater(scene: Scene, span: number, reflections: boolean, re
     mat.bumpHeight = 0.35;
     mat.waveLength = 0.12;
     mat.waveSpeed = 30;
-    mat.waterColor = new Color3(0.1, 0.32, 0.42);
+    mat.waterColor = DAY_WATER.clone();
     mat.colorBlendFactor = 0.35;
     for (const m of reflected) mat.addToRenderList(m);
     water.material = mat;
@@ -34,6 +34,25 @@ export function createWater(scene: Scene, span: number, reflections: boolean, re
     water.material = mat;
   }
   return water;
+}
+
+const DAY_WATER = new Color3(0.1, 0.32, 0.42);
+/** أزرق كحلي ليلًا، أوضح من السماء المظلمة التي يعكسها البحر / Night navy, clearer than the dark sky it reflects */
+const NIGHT_WATER = new Color3(0.06, 0.16, 0.34);
+
+/**
+ * لون البحر حسب الوقت: ليلًا يقل انعكاس السماء المظلمة ويغلب لون البحر الكحلي
+ * Sea colour by time: at night the dark-sky reflection fades and the navy sea colour dominates
+ */
+export function applyWaterNight(water: Mesh, night: number): void {
+  const mat = water.material;
+  if (mat instanceof WaterMaterial) {
+    mat.waterColor = Color3.Lerp(DAY_WATER, NIGHT_WATER, night);
+    mat.colorBlendFactor = 0.35 + 0.5 * night;
+  } else if (mat instanceof StandardMaterial) {
+    mat.diffuseColor = Color3.Lerp(new Color3(0.13, 0.38, 0.47), NIGHT_WATER, night);
+    mat.emissiveColor = NIGHT_WATER.scale(0.35 * night);
+  }
 }
 
 /**

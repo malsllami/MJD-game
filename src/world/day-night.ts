@@ -1,8 +1,9 @@
 // مسؤولية الملف: دورة الليل والنهار — حركة الشمس، تدرج الشروق والغروب، ألوان السماء والضباب، وتشغيل الإنارة تلقائيًا ليلًا
 // File responsibility: day-night cycle — sun path, gradual sunrise and sunset, sky and fog colours, and lights that switch on at night
 
-import { Color3, Vector3, type Scene, type StandardMaterial } from '@babylonjs/core';
+import { Color3, Vector3, type Mesh, type Scene, type StandardMaterial } from '@babylonjs/core';
 import { HORIZON, type Environment } from './environment';
+import { applyWaterNight } from './water';
 
 const NIGHT_SKY = new Color3(0.07, 0.1, 0.17);
 const DUSK_SKY = new Color3(0.86, 0.56, 0.4);
@@ -12,6 +13,9 @@ const DAY_AMBIENT = new Color3(0.86, 0.9, 1);
 /** ضوء القمر: أزرق خافت يكشف شكل الأرض ليلًا / Moonlight: a faint blue that keeps the land readable at night */
 const NIGHT_AMBIENT = new Color3(0.42, 0.52, 0.8);
 const DUSK_AMBIENT = new Color3(1, 0.72, 0.52);
+/** لون الضوء المرتد من الأرض نهارًا وليلًا / Ground-bounce light by day and by night */
+const DAY_GROUND = new Color3(0.32, 0.3, 0.26);
+const NIGHT_GROUND = new Color3(0.1, 0.12, 0.2);
 
 const smoothstep = (a: number, b: number, x: number): number => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -50,6 +54,7 @@ export class DayNight {
     private readonly env: Environment,
     private readonly dayLengthMinutes: number,
     private readonly worldSpan: number,
+    private readonly water: Mesh | null,
   ) {
     scene.onBeforeRenderObservable.add(() => this.update(new Date()));
   }
@@ -82,8 +87,17 @@ export class DayNight {
     sun.intensity = 0.95 * sunUp;
     sun.diffuse = Color3.Lerp(LOW_SUN, NOON_SUN, smoothstep(0.05, 0.45, elevation));
     sun.setEnabled(sunUp > 0.001);
-    ambient.intensity = 0.3 + 0.14 * daylight;
+
+    // القمر: ضوء اتجاهي مائل يقابل الشمس، فتضيء وجوه الجبال المقابلة له وتظلم الأخرى؛ والإضاءة المحيطة تبقى خافتة
+    // Moon: a low directional light opposite the sun, lighting the slopes that face it; ambient stays dim for a night mood
+    const night = 1 - smoothstep(-0.08, 0.1, elevation);
+    const { moon } = this.env;
+    moon.direction = new Vector3(Math.cos(angle) * 0.9, -Math.max(0.45, -elevation), 0.55).normalize();
+    moon.intensity = 0.62 * night;
+    moon.setEnabled(night > 0.001);
+    ambient.intensity = 0.2 + 0.24 * daylight;
     ambient.diffuse = Color3.Lerp(Color3.Lerp(NIGHT_AMBIENT, DAY_AMBIENT, daylight), DUSK_AMBIENT, dusk * 0.5);
+    ambient.groundColor = Color3.Lerp(NIGHT_GROUND, DAY_GROUND, daylight);
 
     // السماء والضباب: نهار ← لون الغروب قرب الأفق ← ليل / Sky and fog: day → dusk tint near the horizon → night
     sky.sunPosition = position.scale(100);
@@ -92,9 +106,11 @@ export class DayNight {
     const scene = sun.getScene();
     scene.fogColor = horizon;
     scene.clearColor = horizon.toColor4(1);
+    // ضباب أخف ليلًا حتى لا تذوب اليابسة البعيدة في البحر / Lighter fog at night so distant land does not melt into the sea
+    scene.fogDensity = this.env.fogDensity * (1 - 0.45 * night);
+    if (this.water) applyWaterNight(this.water, night);
 
     // الإنارة تعمل تلقائيًا مع حلول الظلام وتنطفئ مع الشروق / Lights switch on with dusk and off at sunrise
-    const night = 1 - smoothstep(-0.08, 0.1, elevation);
     this.lights.apply(night);
     if (glow) glow.intensity = 0.9 * night;
   }

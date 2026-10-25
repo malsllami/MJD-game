@@ -12,7 +12,11 @@ export interface Environment {
   skybox: Mesh;
   sky: SkyMaterial;
   sun: DirectionalLight;
+  /** ضوء القمر: اتجاهي حتى تبقى المنحدرات والقمم مقروءة ليلًا / Moonlight: directional so slopes and ridges stay readable at night */
+  moon: DirectionalLight;
   ambient: HemisphericLight;
+  /** كثافة الضباب الأساسية في النهار / Base daytime fog density */
+  fogDensity: number;
   shadows: ShadowGenerator | null;
   /** توهج الأضواء ليلًا (غير متاح في الجودة المنخفضة) / Night light glow (absent on low quality) */
   glow: GlowLayer | null;
@@ -38,6 +42,11 @@ export function createEnvironment(scene: Scene, worldSpan: number, preset: Quali
   sun.intensity = 0.95;
   sun.diffuse = new Color3(1, 0.95, 0.85);
   sun.position = sunDirection.scale(-worldSpan);
+
+  const moon = new DirectionalLight('moon', new Vector3(0.5, -0.8, -0.3).normalize(), scene);
+  moon.diffuse = new Color3(0.62, 0.72, 1);
+  moon.specular = new Color3(0.35, 0.42, 0.6);
+  moon.intensity = 0;
 
   let shadows: ShadowGenerator | null = null;
   if (preset.shadowMapSize > 0) {
@@ -66,5 +75,5 @@ export function createEnvironment(scene: Scene, worldSpan: number, preset: Quali
     glow.intensity = 0;
   }
 
-  return { skybox, sky, sun, ambient, shadows, glow };
+  return { skybox, sky, sun, moon, ambient, fogDensity: preset.fogDensity, shadows, glow };
 }

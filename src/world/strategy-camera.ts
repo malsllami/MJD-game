@@ -46,7 +46,8 @@ export class StrategyCamera {
     cam.angularSensibilityX = 1600;
     cam.angularSensibilityY = 1600;
     cam.minZ = 0.5;
-    cam.maxZ = Math.max(bounds.halfX, bounds.halfZ) * 12;
+    // مدى الرؤية أبعد من حافة البحر حتى لا يُقطع البحر البعيد / View distance beyond the sea's edge so the far sea is never clipped
+    cam.maxZ = Math.max(bounds.halfX, bounds.halfZ) * 24;
     cam.inputs.removeByType('ArcRotateCameraKeyboardMoveInput');
     cam.attachControl(canvas, true);
     this.camera = cam;

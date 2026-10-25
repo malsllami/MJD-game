@@ -6,6 +6,11 @@ import { createNoise } from '../core/noise';
 import type { TerrainType, World } from '../core/types';
 import { worldHalfExtents } from '../core/world-gen';
 
+/** نقاط الحلقة حول كل نقطة لحساب الانحناء / Ring offsets used to measure curvature */
+const RING = [[2, 0], [-2, 0], [0, 2], [0, -2], [2, 2], [-2, -2], [2, -2], [-2, 2]];
+/** شدة تظليل الانحناء لكل وحدة ارتفاع / Curvature shading per world unit of height */
+const RELIEF_STRENGTH = 0.14;
+
 /**
  * ينشئ مجسم التضاريس بألوان رؤوس ممزوجة بين المربعات المتجاورة
  * Creates the terrain mesh with vertex colours blended across neighbouring tiles
@@ -50,6 +55,14 @@ export function createTerrainMesh(scene: Scene, world: World, terrain: TerrainTy
   const colors = new Float32Array(vertsX * vertsZ * 4);
   const tmp = new Color3();
 
+  /** ارتفاع النقطة ناقص متوسط ما حولها على بعد نقطتين: موجب للحواف وسالب للأودية / Height minus its ring average: + ridges, − valleys */
+  const curvature = (ix: number, iz: number): number => {
+    const h = (x: number, z: number) => heights[Math.min(vertsZ - 1, Math.max(0, z)) * vertsX + Math.min(vertsX - 1, Math.max(0, x))];
+    let sum = 0;
+    for (const [dx, dz] of RING) sum += h(ix + dx, iz + dz);
+    return h(ix, iz) - sum / RING.length;
+  };
+
   const fallback = Color3.Gray();
   const tileColor = (tx: number, tz: number): Color3 => {
     const x = Math.min(tilesX - 1, Math.max(0, tx));
@@ -76,7 +89,13 @@ export function createTerrainMesh(scene: Scene, world: World, terrain: TerrainTy
       const slope = 1 - normals[v * 3 + 1];
       const rockiness = Math.min(1, Math.max(0, (slope - 0.18) * 3)) * (heights[v] > 0.5 ? 1 : 0);
       const c = Color3.Lerp(tmp, rock, rockiness);
-      const shade = 0.92 + variation(ix * 0.15, iz * 0.15) * 0.16;
+      // ملمس بطبقتين: تفاوت واسع وحبيبات دقيقة تظهر الكثبان وتعرجات السهول
+      // Two-layer texture: broad variation plus fine grain that reveals dunes and plain undulations
+      const grain = 0.9 + variation(ix * 0.15, iz * 0.15) * 0.14 + variation(ix * 0.7 + 90, iz * 0.7) * 0.08;
+      // الحواف والقمم أفتح والأودية أغمق، فيبقى شكل التضاريس مقروءًا حتى في الإضاءة الخافتة
+      // Ridges and peaks lighter, valleys darker, so the landform stays readable even in dim light
+      const relief = heights[v] > 0 ? Math.min(0.22, Math.max(-0.28, curvature(ix, iz) * RELIEF_STRENGTH)) : 0;
+      const shade = grain * (1 + relief);
       colors[v * 4] = c.r * shade;
       colors[v * 4 + 1] = c.g * shade;
       colors[v * 4 + 2] = c.b * shade;

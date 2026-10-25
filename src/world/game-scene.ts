@@ -61,8 +61,8 @@ export function createGameScene(canvas: HTMLCanvasElement, world: World, defs: G
   const span = Math.max(halfX, halfZ) * 2;
   const env = createEnvironment(scene, span, preset);
   const terrain = createTerrainMesh(scene, world, defs.terrain);
-  createWater(scene, span, preset.waterReflections, [terrain, env.skybox]);
-  const dayNight = new DayNight(scene, env, defs.world.dayLengthMinutes, span);
+  const water = createWater(scene, span, preset.waterReflections, [terrain, env.skybox]);
+  const dayNight = new DayNight(scene, env, defs.world.dayLengthMinutes, span, water);
 
   const heightAt = (x: number, z: number): number => sampleHeight(world, x, z);
   const tileAnchor = (t: { x: number; z: number }): Vector3 => {
