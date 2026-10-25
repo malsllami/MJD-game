@@ -60,7 +60,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const borders = new TileSetOutline(game.scene, world, new Color3(0.9, 0.8, 0.5), 0.35);
   const allowed = new TileSetOutline(game.scene, world, new Color3(0.45, 0.95, 0.6), 0.45);
   const preview = new TileSetOutline(game.scene, world, new Color3(1, 0.85, 0.35), 0.55);
-  const roads = new RoadNetwork(game.scene, world, game.library, byId, game.dayNight.lights);
+  const roads = new RoadNetwork(game.scene, world, byId, game.dayNight.lights);
   const traffic = new Traffic(game.scene, world, game.library);
   const models = new BuildingModels(
     game.scene, world, game.library, byId, game.shadows,

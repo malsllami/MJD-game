@@ -88,14 +88,5 @@ export const MATERIAL_COLORS: Record<string, [number, number, number]> = {
   grass: [0.44, 0.68, 0.26],
 };
 
-/** قطع الطرق وأعمدة الإنارة والسيارات / Road pieces, street lights and cars */
-export const ROAD_MODELS = {
-  straight: 'roads/road-straight.glb',
-  bend: 'roads/road-bend.glb',
-  tee: 'roads/road-intersection.glb',
-  cross: 'roads/road-crossroad.glb',
-  end: 'roads/road-end-round.glb',
-  square: 'roads/road-square.glb',
-  light: 'roads/light-square.glb',
-};
+/** نماذج السيارات / Car models */
 export const CAR_MODELS = ['sedan', 'suv', 'taxi', 'police', 'ambulance', 'delivery', 'truck', 'van', 'hatchback-sports', 'garbage-truck'].map((n) => `cars/${n}.glb`);

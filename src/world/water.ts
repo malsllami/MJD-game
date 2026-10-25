@@ -16,11 +16,13 @@ export function createWater(scene: Scene, span: number, reflections: boolean, re
   if (reflections) {
     const mat = new WaterMaterial('water-mat', scene, new Vector2(512, 512));
     mat.bumpTexture = createWaveNormalMap(scene);
-    mat.windForce = -6;
-    mat.waveHeight = 0.12;
-    mat.bumpHeight = 0.35;
+    // بحر ثابت: بلا أمواج تتحرك ولا ارتفاع يغمر السواحل المنخفضة، مع ملمس سطح خفيف ثابت
+    // A still sea: no moving waves and no swell flooding low shores, with a faint static surface texture
+    mat.windForce = 0;
+    mat.waveHeight = 0;
+    mat.bumpHeight = 0.18;
     mat.waveLength = 0.12;
-    mat.waveSpeed = 30;
+    mat.waveSpeed = 0;
     mat.waterColor = DAY_WATER.clone();
     mat.colorBlendFactor = 0.35;
     for (const m of reflected) mat.addToRenderList(m);

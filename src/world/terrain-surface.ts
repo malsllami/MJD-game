@@ -5,7 +5,7 @@ import { Mesh, VertexBuffer, VertexData } from '@babylonjs/core';
 import type { World } from '../core/types';
 
 /** أدنى ارتفاع للأرض المسوّاة حتى لا تنزل تحت سطح البحر / Lowest levelled height, kept above the sea */
-const MIN_LEVEL = 0.2;
+const MIN_LEVEL = 0.6;
 
 export class TerrainSurface {
   private readonly original: Float32Array;
