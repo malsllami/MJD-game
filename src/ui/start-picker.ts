@@ -21,6 +21,7 @@ export function chooseStartSite(root: HTMLElement, defs: GameDefinitions, world:
   const names = new Map(defs.buildings.map((b) => [b.id, b.name]));
   const first = defs.stages[0];
 
+  const depositNames = new Map(defs.deposits.map((d) => [d.id, d.name]));
   const panel = document.createElement('section');
   panel.className = 'start-picker glass';
   panel.setAttribute('aria-label', 'اختيار موقع الانطلاق');
@@ -33,12 +34,15 @@ export function chooseStartSite(root: HTMLElement, defs: GameDefinitions, world:
       const warn = s.unbuildable.length
         ? `<p class="warn">لا تتوفر أرض مناسبة لـ: ${esc(s.unbuildable.map((id) => names.get(id) ?? id).join('، '))}</p>`
         : '<p class="fit">تتوفر أرض لكل مباني المرحلة الأولى</p>';
-      return `<button type="button" class="site" data-site="${i}" aria-pressed="false"><b>الموقع ${formatNumber(i + 1)}</b><div class="land">${land}</div>${warn}</button>`;
+      const found = s.nearbyDeposits.map((id) => depositNames.get(id) ?? id);
+      const deposits = `<p class="deposits">${found.length ? `موارد قريبة: ${esc(found.join('، '))}` : 'لا موارد ظاهرة قربه؛ ستحتاج إلى البحث والتوسع'}</p>`;
+      return `<button type="button" class="site" data-site="${i}" aria-pressed="false"><b>الموقع ${formatNumber(i + 1)}</b><div class="land">${land}</div>${deposits}${warn}</button>`;
     })
     .join('');
+  const side = first.territoryRadius * 2 + 1;
   panel.innerHTML = `
     <header><h2>اختر موقع انطلاق ${esc(defs.world.nationName)}</h2>
-      <p>تبدأ ${esc(first.name)} صغيرة بحدود ${formatNumber(first.territoryRadius)} مربعات حول الموقع، ثم تتوسع مع كل مرحلة.</p></header>
+      <p>تبدأ ${esc(first.name)} بأرض مسطحة مساحتها ${formatNumber(side)} × ${formatNumber(side)} مربعًا، والجبال والمعادن والغابات حولها تصل إليها بالتوسع.</p></header>
     <div class="sites">${cards}</div>
     <button type="button" class="start-btn" data-start disabled>ابدأ هنا</button>`;
   root.append(panel);

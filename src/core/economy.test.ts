@@ -1,17 +1,18 @@
-// اختبارات منطق الاقتصاد: الوضع، الإنتاج والاستهلاك، السكان، المراحل، الغياب، والضم
-// Economy tests: placement, production and consumption, population, stages, absence and annexation
+// اختبارات منطق الاقتصاد: الوضع، الإنتاج والاستهلاك، السكان، المراحل، الغياب، الطرق على الحواف، المكامن والضم
+// Economy tests: placement, production and consumption, population, stages, absence, edge roads, deposits and annexation
 import { describe, expect, it } from 'vitest';
 import { seedDefinitions } from '../test/gas-harness';
 import {
-  advance, annexTile, applyStageProgress, buildingStatus, checkAnnex, checkMove, checkPlacement, createInitialState, demolishBuilding,
-  housingCapacity, moveBuilding, netRates, placeBuilding, placeRoadPath, resumeAfterAbsence, tileKey, tilePath,
+  advance, annexTile, applyStageProgress, buildingStatus, checkAnnex, checkMove, checkPlacement, checkRoadEdge, connectedRoads, cornerPath,
+  createInitialState, demolishBuilding, demolishRoads, depositAt, hasRoadAccess, housingCapacity, moveBuilding, netRates, pathEdges,
+  placeBuilding, placeRoadPath, resumeAfterAbsence, surveyCost, surveyTile, tileKey,
 } from './economy';
 import { suggestStartSites } from './start-sites';
 import type { BuildingDef, GameState, Tile } from './types';
 import { generateWorld } from './world-gen';
 
 const defs = seedDefinitions();
-const world = generateWorld(defs.world, defs.terrain);
+const world = generateWorld(defs.world, defs.terrain, defs.deposits);
 const site = suggestStartSites(world, defs)[0];
 const T0 = 1_000_000;
 const MIN = 60_000;
@@ -20,10 +21,11 @@ const tileOf = (key: string): Tile => {
   const [x, z] = key.split(',').map(Number);
   return world.tiles[z * defs.world.tilesX + x];
 };
+const rich = (s: GameState): GameState => ({ ...s, resources: Object.fromEntries(defs.resources.map((r) => [r.id, 100_000])) });
 
 /**
- * أول مربع فارغ في الدولة يصلح للمبنى؛ ما يتطلب طريقًا يوضع بجوار مركز القرية
- * First free nation tile that fits the building; road-dependent ones go next to the village centre
+ * أول مربع فارغ في الدولة يصلح للمبنى؛ ما يتطلب طريقًا يوضع بجوار مبنى الحكم
+ * First free nation tile that fits the building; road-dependent ones go next to the government building
  */
 function spotFor(state: GameState, b: BuildingDef): Tile {
   const key = state.territory.find((k) => {
@@ -38,19 +40,24 @@ function spotFor(state: GameState, b: BuildingDef): Tile {
 /** وضع مبنى مع موارد كافية، وإنهاء إنشائه فورًا / Place a building with ample resources and finish it at once */
 function built(state: GameState, id: string, at = T0): GameState {
   const b = building(id);
-  const rich = { ...state, resources: Object.fromEntries(Object.keys(state.resources).map((k) => [k, Math.max(state.resources[k], 100_000)])) };
-  const placed = placeBuilding(rich, b, spotFor(rich, b), at, `${id}-${state.buildings.length}`);
+  const placed = placeBuilding(rich(state), b, spotFor(state, b), at, `${id}-${state.buildings.length}`);
   placed.buildings[placed.buildings.length - 1].completesAt = at;
   return { ...placed, resources: state.resources };
 }
 
 describe('البداية / start', () => {
   const s = createInitialState(defs, world, site, T0);
-  it('تبدأ قرية بلا سكان وبحدود المرحلة الأولى / starts as a village with no people and first-stage borders', () => {
+  it('تبدأ قرية بلا سكان ولا طرق وبحدود المرحلة الأولى / starts as a village with no people, no roads and first-stage borders', () => {
     expect(s.stage).toBe(defs.stages[0].id);
     expect(s.population).toBe(0);
+    expect(s.roads).toEqual([]);
     expect(s.territory).toContain(tileKey(site.x, site.z));
+    expect(s.territory.length).toBeGreaterThan((defs.stages[0].territoryRadius * 2 + 1) ** 2 / 2);
     expect(s.resources.gold).toBe(defs.resources.find((r) => r.id === 'gold')!.startAmount);
+  });
+
+  it('أرض البداية سهل وساحل صالحان للبناء / the start land is buildable plain and coast', () => {
+    expect(s.territory.map(tileOf).every((t) => defs.world.capitalTerrain.includes(t.terrainId))).toBe(true);
   });
 });
 
@@ -60,7 +67,7 @@ describe('وضع المباني / placement', () => {
   it('المبنى المفتوح بأرض مناسبة وموارد كافية يُقبل ويخصم التكلفة / an open, affordable building on fitting land is accepted and paid', () => {
     const farm = building('farm');
     const tile = spotFor(s, farm);
-    expect(checkPlacement(defs, s, farm, tile, T0)).toEqual({ ok: true });
+    expect(checkPlacement(defs, world, s, farm, tile, T0)).toEqual({ ok: true });
     const next = placeBuilding(s, farm, tile, T0, 'u1');
     expect(next.resources.wood).toBe(s.resources.wood - farm.cost.wood);
     expect(next.buildings[0].completesAt).toBe(T0 + farm.buildSeconds * 1000);
@@ -68,25 +75,24 @@ describe('وضع المباني / placement', () => {
 
   it('مبنى مرحلة لاحقة مقفل حتى بلوغها / a later-stage building is locked until that stage', () => {
     const hospital = building('hospital');
-    const result = checkPlacement(defs, s, hospital, spotFor(s, hospital), T0);
+    const result = checkPlacement(defs, world, s, hospital, spotFor(s, hospital), T0);
     expect(result.ok).toBe(false);
     expect(!result.ok && result.reason).toContain('بلدة');
   });
 
-  it('يرفض مربع القرية والأرض غير المناسبة وخارج الحدود / refuses the village tile, unfit land and outside borders', () => {
+  it('يرفض مربع مبنى الحكم وخارج الحدود ووضع الطريق كمبنى / refuses the government tile, outside borders and a road as a building', () => {
     const farm = building('farm');
-    expect(checkPlacement(defs, s, farm, world.tiles[site.z * defs.world.tilesX + site.x], T0).ok).toBe(false);
-    const unfit = s.territory.map(tileOf).find((t) => !farm.allowedTerrain.includes(t.terrainId) && !(t.x === site.x && t.z === site.z));
-    if (unfit) expect(checkPlacement(defs, s, farm, unfit, T0).ok).toBe(false);
+    expect(checkPlacement(defs, world, s, farm, tileOf(tileKey(site.x, site.z)), T0).ok).toBe(false);
     const outside = world.tiles.find((t) => !s.territory.includes(tileKey(t.x, t.z)) && farm.allowedTerrain.includes(t.terrainId))!;
-    expect(checkPlacement(defs, s, farm, outside, T0).ok).toBe(false);
+    expect(checkPlacement(defs, world, s, farm, outside, T0).ok).toBe(false);
+    expect(checkPlacement(defs, world, s, building('road'), spotFor(s, farm), T0).ok).toBe(false);
   });
 
   it('يحترم حد البناء المتزامن / respects the concurrent-build limit', () => {
-    let state: GameState = { ...s, resources: { ...s.resources, wood: 100_000 } };
+    let state = rich(s);
     const farm = building('farm');
     for (let i = 0; i < defs.world.maxConcurrentBuilds; i++) state = placeBuilding(state, farm, spotFor(state, farm), T0, `f${i}`);
-    expect(checkPlacement(defs, state, farm, spotFor(state, farm), T0).ok).toBe(false);
+    expect(checkPlacement(defs, world, state, farm, spotFor(state, farm), T0).ok).toBe(false);
   });
 });
 
@@ -95,7 +101,7 @@ describe('الزمن / time', () => {
 
   it('لا إنتاج قبل اكتمال الإنشاء، ثم إنتاج بالدقيقة بعده / no output while constructing, per-minute output after', () => {
     const farm = building('farm');
-    const placed = placeBuilding({ ...s, resources: { ...s.resources } }, farm, spotFor(s, farm), T0, 'f');
+    const placed = placeBuilding(s, farm, spotFor(s, farm), T0, 'f');
     const food = placed.resources.food;
     expect(advance(placed, defs, world, T0 + farm.buildSeconds * 1000).resources.food).toBeCloseTo(food);
     const later = advance(placed, defs, world, T0 + farm.buildSeconds * 1000 + 2 * MIN);
@@ -112,15 +118,13 @@ describe('الزمن / time', () => {
 
   it('نفاد الماء يوقف المنازل فيغادر السكان / running out of water stops houses and people leave', () => {
     const state = { ...built(s, 'houses'), population: 12, resources: { ...s.resources, water: 0 } };
-    const placed = state.buildings[0];
-    expect(buildingStatus(placed, state, defs, T0).kind).toBe('stopped');
+    expect(buildingStatus(state.buildings[0], state, defs, T0).kind).toBe('stopped');
     expect(advance(state, defs, world, T0 + 10 * MIN).population).toBe(0);
   });
 
   it('صافي الإنتاج = الإنتاج ناقص الاستهلاك / net rate is production minus consumption', () => {
     const state = built(built(s, 'water_desal'), 'houses');
-    const rates = netRates(state, defs, T0);
-    expect(rates.water).toBe(building('water_desal').production.water - building('houses').consumption.water);
+    expect(netRates(state, defs, T0).water).toBe(building('water_desal').production.water - building('houses').consumption.water);
   });
 
   it('بلوغ سكان البلدة يرقّي المرحلة ويوسع الحدود / reaching town population upgrades the stage and widens borders', () => {
@@ -141,47 +145,82 @@ describe('الزمن / time', () => {
   });
 });
 
-describe('الطرق والهدم والنقل / roads, demolition and moving', () => {
-  const s = { ...createInitialState(defs, world, site, T0), resources: Object.fromEntries(defs.resources.map((r) => [r.id, 100_000])) };
+describe('الطرق على حدود المربعات / roads on tile edges', () => {
+  const s = rich(createInitialState(defs, world, site, T0));
   const houses = building('houses');
   const road = building('road');
-  const pathTo = (t: Tile) => tilePath(site, t).slice(1, -1).map((p) => world.tiles[p.z * defs.world.tilesX + p.x]);
-  /** مربع للمنازل بعيد عن المركز، وكل مسار الطريق إليه داخل الدولة ويقبل الطريق / A far houses tile whose whole road path is allowed */
+  /** طريق من زاوية مبنى الحكم إلى الزاوية العليا لمربع / A road from the government corner to a tile's top corner */
+  const edgesTo = (t: Tile) => pathEdges(cornerPath(site, t));
   const far = s.territory.map(tileOf).find((t) =>
-    houses.allowedTerrain.includes(t.terrainId) && Math.abs(t.x - site.x) + Math.abs(t.z - site.z) >= 3 &&
-    pathTo(t).every((p) => road.allowedTerrain.includes(p.terrainId) && s.territory.includes(tileKey(p.x, p.z))))!;
+    houses.allowedTerrain.includes(t.terrainId) && Math.abs(t.x - site.x) + Math.abs(t.z - site.z) >= 4 &&
+    edgesTo(t).every((e) => checkRoadEdge(defs, world, s, road, e).ok))!;
+  let n = 0;
+  const uid = () => `r${n++}`;
 
   it('يوجد موقع اختبار مناسب / a suitable test spot exists', () => {
     expect(far).toBeDefined();
   });
 
   it('المنازل بعيدًا عن الطرق مرفوضة / houses away from any road are refused', () => {
-    const result = checkPlacement(defs, s, houses, far, T0);
+    const result = checkPlacement(defs, world, s, houses, far, T0);
     expect(!result.ok && result.reason).toContain('طريق');
   });
 
-  it('رسم طريق من القرية يسمح بالبناء بجواره / a road drawn from the village allows building beside it', () => {
-    // المسار يبدأ من مركز القرية كما يفعل اللاعب / The path starts on the village centre, as players do
-    const path = [world.tiles[site.z * defs.world.tilesX + site.x], ...pathTo(far)];
-    let n = 0;
-    const drawn = placeRoadPath(s, defs, road, path, T0, () => `r${n++}`);
+  it('الطريق يُرسم على الحواف ولا يشغل المربع / the road runs on edges and leaves the tile free', () => {
+    const edges = edgesTo(far);
+    const drawn = placeRoadPath(s, defs, world, road, edges, T0, uid);
     expect(drawn.stoppedBy).toBeNull();
-    expect(drawn.placed).toBe(path.length - 1);
-    expect(checkPlacement(defs, drawn.state, houses, far, T0)).toEqual({ ok: true });
-    // المبنى لا يعمل حتى يكتمل الطريق / The building only runs once the road is finished
-    const withHouse = placeBuilding(drawn.state, houses, far, T0, 'h');
-    withHouse.buildings[withHouse.buildings.length - 1].completesAt = T0;
-    expect(buildingStatus(withHouse.buildings.at(-1)!, withHouse, defs, T0).kind).toBe('disconnected');
-    expect(buildingStatus(withHouse.buildings.at(-1)!, withHouse, defs, T0 + road.buildSeconds * 1000).kind).toBe('operating');
+    expect(drawn.placed).toBe(edges.length);
+    expect(drawn.state.buildings).toHaveLength(0);
+    expect(drawn.state.resources.stone).toBe(s.resources.stone - (road.cost.stone ?? 0) * edges.length);
+    // إعادة رسم نفس الحواف لا تكرر الطريق / Redrawing the same edges does not duplicate the road
+    expect(placeRoadPath(drawn.state, defs, world, road, edges, T0, uid).placed).toBe(0);
+  });
+
+  it('الطريق المتصل بمبنى الحكم يسمح بالبناء بجواره ويعمل بعد اكتماله / a connected road allows building beside it, operating once finished', () => {
+    const drawn = placeRoadPath(s, defs, world, road, edgesTo(far), T0, uid).state;
+    expect(connectedRoads(drawn, T0, true).size).toBe(edgesTo(far).length);
+    expect(checkPlacement(defs, world, drawn, houses, far, T0)).toEqual({ ok: true });
+    const withHouse = placeBuilding(drawn, houses, far, T0, 'h');
+    withHouse.buildings[0].completesAt = T0;
+    expect(buildingStatus(withHouse.buildings[0], withHouse, defs, T0).kind).toBe('disconnected');
+    expect(buildingStatus(withHouse.buildings[0], withHouse, defs, T0 + road.buildSeconds * 1000).kind).toBe('operating');
+  });
+
+  it('الطريق المنفصل عن مبنى الحكم لا يكفي / a road cut off from the government building is not enough', () => {
+    const tail = edgesTo(far).slice(-2);
+    const drawn = placeRoadPath(s, defs, world, road, tail, T0, uid).state;
+    expect(connectedRoads(drawn, T0 + MIN * 60, true).size).toBe(0);
+    expect(hasRoadAccess(drawn, far.x, far.z, connectedRoads(drawn, T0, true))).toBe(false);
+  });
+
+  it('الطريق خارج الحدود مرفوض / a road outside the borders is refused', () => {
+    const outside = world.tiles.find((t) => !s.territory.includes(tileKey(t.x, t.z)) && Math.abs(t.x - site.x) > 30)!;
+    expect(checkRoadEdge(defs, world, s, road, `h:${outside.x},${outside.z + 1}`).ok).toBe(false);
   });
 
   it('الطرق لا تُحسب من حد البناء المتزامن / roads do not count toward the concurrent limit', () => {
     let state = s;
     for (let i = 0; i < defs.world.maxConcurrentBuilds; i++) state = placeBuilding(state, building('farm'), spotFor(state, building('farm')), T0, `f${i}`);
-    expect(checkPlacement(defs, state, road, spotFor(state, road), T0)).toEqual({ ok: true });
+    expect(placeRoadPath(state, defs, world, road, edgesTo(far), T0, uid).stoppedBy).toBeNull();
   });
 
+  it('الجرّافة تزيل الطرق وتسترد النسبة المحددة / the bulldozer removes roads and refunds the set share', () => {
+    const edges = edgesTo(far);
+    const drawn = placeRoadPath(s, defs, world, road, edges, T0, uid).state;
+    const { state, removed } = demolishRoads(drawn, defs, edges.slice(0, 2));
+    expect(removed).toBe(2);
+    expect(state.roads).toHaveLength(edges.length - 2);
+    const refund = Math.floor(((road.cost.stone ?? 0) * defs.world.demolishRefundPercent) / 100);
+    expect(state.resources.stone).toBe(drawn.resources.stone + refund * 2);
+  });
+});
+
+describe('الهدم والنقل / demolition and moving', () => {
+  const s = rich(createInitialState(defs, world, site, T0));
+
   it('الهدم يسترد النسبة المحددة / demolition refunds the set share', () => {
+    const houses = building('houses');
     const placed = placeBuilding(s, houses, spotFor(s, houses), T0, 'h1');
     const after = demolishBuilding(placed, defs, 'h1');
     expect(after.buildings).toHaveLength(0);
@@ -192,22 +231,86 @@ describe('الطرق والهدم والنقل / roads, demolition and moving', 
     const farm = building('farm');
     const placed = placeBuilding(s, farm, spotFor(s, farm), T0, 'f1');
     const target = spotFor(placed, farm);
-    expect(checkMove(defs, placed, 'f1', target, T0)).toEqual({ ok: true });
+    expect(checkMove(defs, world, placed, 'f1', target, T0)).toEqual({ ok: true });
     const moved = moveBuilding(placed, defs, 'f1', target);
     expect(moved.buildings[0]).toMatchObject({ x: target.x, z: target.z, completesAt: placed.buildings[0].completesAt });
     expect(moved.resources.wood).toBe(placed.resources.wood - Math.floor((farm.cost.wood * defs.world.moveCostPercent) / 100));
   });
 });
 
-describe('الضم / annexation', () => {
+describe('المكامن / deposits', () => {
   const s = createInitialState(defs, world, site, T0);
+  const r = defs.world.discoveryRadius;
+  const distance = (k: string, territory: Set<string>) => {
+    const [x, z] = k.split(',').map(Number);
+    for (let d = 0; d <= r; d++) for (let dz = -d; dz <= d; dz++) for (let dx = -d; dx <= d; dx++) if (territory.has(tileKey(x + dx, z + dz))) return d;
+    return Infinity;
+  };
+
+  it('العالم يوزع كل أنواع المكامن، ولكل مورد معدني سلسلة جبلية / the world spreads every deposit type, each ore on a range', () => {
+    const types = new Set(world.deposits.map((d) => d.typeId));
+    for (const t of defs.deposits) expect(types.has(t.id)).toBe(true);
+    const mountain = new Set(['mountain', 'peak', 'plateau']);
+    for (const d of world.deposits.filter((x) => defs.deposits.find((t) => t.id === x.typeId)!.place === 'mountain')) {
+      expect(d.tiles.some((k) => mountain.has(tileOf(k).terrainId))).toBe(true);
+    }
+  });
+
+  it('تُكتشف المكامن القريبة من الحدود فقط / only deposits near the borders are discovered', () => {
+    const territory = new Set(s.territory);
+    for (const d of world.deposits) {
+      const near = d.tiles.some((k) => distance(k, territory) <= r);
+      expect(s.discovered.includes(d.id)).toBe(near);
+    }
+    expect(s.discovered.length).toBeLessThan(world.deposits.length);
+  });
+
+  it('المبنى الذي يتطلب مكمنًا مرفوض بلا مكمن / a deposit building is refused away from a deposit', () => {
+    const sawmill = defs.buildings.find((b) => b.requiresDeposit && b.stage === defs.stages[0].id)!;
+    const plain = s.territory.map(tileOf).find((t) => sawmill.allowedTerrain.includes(t.terrainId) && !depositAt(world, s, t.x, t.z, sawmill.requiresDeposit!))!;
+    const result = checkPlacement(defs, world, rich(s), sawmill, plain, T0);
+    expect(!result.ok && result.reason).toContain('مكتشف');
+  });
+
+  it('المبنى يُقبل على مكمن مكتشف داخل الدولة / the building is accepted on a discovered deposit inside the nation', () => {
+    const combo = world.deposits.flatMap((d) => d.tiles.map((k) => ({ d, t: tileOf(k) }))).flatMap(({ d, t }) => {
+      const b = defs.buildings.find((x) => x.requiresDeposit === d.resourceId && x.allowedTerrain.includes(t.terrainId) && !x.requiresTech && x.stage === defs.stages[0].id);
+      return b ? [{ d, t, b }] : [];
+    })[0];
+    expect(combo).toBeDefined();
+    const { d, t, b } = combo;
+    // نضع مبنى الحكم بجوار المكمن لتوفير الطريق / The government sits beside the deposit to provide road access
+    const state = rich({ ...s, settlement: { x: t.x + 1, z: t.z }, territory: [tileKey(t.x, t.z), tileKey(t.x + 1, t.z)], discovered: [d.id] });
+    expect(checkPlacement(defs, world, state, b, t, T0)).toEqual({ ok: true });
+    expect(checkPlacement(defs, world, { ...state, discovered: [] }, b, t, T0).ok).toBe(false);
+  });
+
+  it('المسح يكشف المكامن حول المربع ويدفع التكلفة / a survey reveals deposits around the tile and pays', () => {
+    const hidden = world.deposits.find((d) => !s.discovered.includes(d.id))!;
+    const target = tileOf(hidden.tiles[0]);
+    const result = surveyTile(rich(s), defs, world, target);
+    expect('found' in result).toBe(true);
+    if (!('found' in result)) return;
+    expect(result.found.map((d) => d.id)).toContain(hidden.id);
+    const [id, cost] = Object.entries(surveyCost(defs))[0];
+    expect(result.state.resources[id]).toBe(100_000 - cost);
+  });
+
+  it('المسح يُرفض عند نقص الموارد / a survey is refused without resources', () => {
+    const poor = { ...s, resources: Object.fromEntries(Object.keys(s.resources).map((k) => [k, 0])) };
+    expect('reason' in surveyTile(poor, defs, world, tileOf(tileKey(site.x, site.z)))).toBe(true);
+  });
+});
+
+describe('الضم / annexation', () => {
+  const s = rich(createInitialState(defs, world, site, T0));
   const border = world.tiles.find((t) => {
     const land = !defs.terrain.find((x) => x.id === t.terrainId)!.isWater;
     const outside = !s.territory.includes(tileKey(t.x, t.z));
     return land && outside && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => s.territory.includes(tileKey(t.x + dx, t.z + dz)));
   })!;
 
-  it('يضم مربعًا مجاورًا ويدفع التكلفة / annexes a neighbouring tile and pays', () => {
+  it('يضم كتلة مجاورة ويدفع التكلفة / annexes a neighbouring block and pays', () => {
     expect(checkAnnex(defs, world, s, border)).toEqual({ ok: true });
     const next = annexTile(s, defs, world, border);
     expect(next.territory).toContain(tileKey(border.x, border.z));
@@ -215,7 +318,7 @@ describe('الضم / annexation', () => {
   });
 
   it('يرفض مربعًا بعيدًا عن الحدود / refuses a tile away from the borders', () => {
-    const far = world.tiles.find((t) => Math.hypot(t.x - site.x, t.z - site.z) > 20 && !defs.terrain.find((x) => x.id === t.terrainId)!.isWater)!;
+    const far = world.tiles.find((t) => Math.hypot(t.x - site.x, t.z - site.z) > 40 && !defs.terrain.find((x) => x.id === t.terrainId)!.isWater)!;
     expect(checkAnnex(defs, world, s, far).ok).toBe(false);
   });
 });

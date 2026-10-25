@@ -37,6 +37,44 @@ export interface WorldSettings {
   annexCost: number;
   /** طول ضلع قطعة الأرض التي تُضم دفعة واحدة / Side length of the land parcel annexed at once */
   annexBlockSize: number;
+  /** توليد العالم: المنطقة المسطحة حول مواقع العاصمة، والسلاسل الجبلية، والبحيرات / World shape: flat capital zones, ranges, lakes */
+  flatZoneRadius: number;
+  massifCount: number;
+  massifRadius: number;
+  lakeCount: number;
+  lakeRadius: number;
+  /** الاكتشاف والمسح / Discovery and survey */
+  discoveryRadius: number;
+  surveyRadius: number;
+  surveyResource: string;
+  surveyCost: number;
+  governmentName: string;
+}
+
+/** مكان المكمن في العالم / Where a deposit forms */
+export type DepositPlace = 'mountain' | 'forest' | 'desert';
+
+/** نوع مكمن: معدن في سلسلة جبلية، أو غابة، أو حقل نفط / Deposit type: ore in a range, a forest, or an oil field */
+export interface DepositType {
+  id: string;
+  name: string;
+  resourceId: string;
+  place: DepositPlace;
+  count: number;
+  icon: string;
+  color: string;
+}
+
+/** مكمن موضوع في العالم بمربعاته / A deposit placed in the world, with its tiles */
+export interface Deposit {
+  id: string;
+  typeId: string;
+  resourceId: string;
+  /** مركز المكمن / Deposit centre */
+  x: number;
+  z: number;
+  /** مربعات المكمن بصيغة "x,z" / Deposit tiles as "x,z" keys */
+  tiles: string[];
 }
 
 /** نوع تضاريس وشروط تصنيف المربع إليه / Terrain type and the rule that assigns tiles to it */
@@ -99,6 +137,8 @@ export interface BuildingDef {
   model: string;
   /** لا يُبنى ولا يعمل إلا بجوار طريق متصل بالقرية / Builds and runs only next to a road connected to the village */
   requiresRoad: boolean;
+  /** معرف المورد الذي يجب أن يُبنى المبنى على مكمنه، أو null / Resource whose deposit the building must sit on, or null */
+  requiresDeposit: string | null;
 }
 
 /** وزارة في لوحة الحكم / Government ministry */
@@ -131,6 +171,7 @@ export interface GameDefinitions {
   buildings: BuildingDef[];
   /** مرتبة تصاعديًا / Sorted ascending */
   stages: Stage[];
+  deposits: DepositType[];
   ministries: Ministry[];
   contextMenus: ContextMenuDef[];
 }
@@ -151,6 +192,9 @@ export interface World {
   vertsZ: number;
   heights: Float32Array;
   tiles: Tile[];
+  /** مراكز المناطق المسطحة المقترحة للعاصمة / Centres of the flat zones offered as capital sites */
+  basins: { x: number; z: number }[];
+  deposits: Deposit[];
 }
 
 /** مبنى موضوع على مربع / A building placed on a tile */
@@ -160,6 +204,18 @@ export interface PlacedBuilding {
   x: number;
   z: number;
   /** وقت بدء الإنشاء ووقت اكتماله (ميلي ثانية) / Construction start and completion times (ms) */
+  startedAt: number;
+  completesAt: number;
+}
+
+/**
+ * طريق على حافة بين مربعين: "h:x,z" من الزاوية (x,z) إلى (x+1,z)، و"v:x,z" من (x,z) إلى (x,z+1)
+ * A road on the edge between two tiles: "h:x,z" runs from corner (x,z) to (x+1,z); "v:x,z" from (x,z) to (x,z+1)
+ */
+export interface PlacedRoad {
+  uid: string;
+  buildingId: string;
+  edge: string;
   startedAt: number;
   completesAt: number;
 }
@@ -174,8 +230,12 @@ export interface GameState {
   /** أعلى مرحلة بلغتها الدولة (لا تتراجع) / Highest stage reached (never goes back) */
   stage: string;
   buildings: PlacedBuilding[];
+  /** الطرق على حدود المربعات / Roads on tile edges */
+  roads: PlacedRoad[];
   /** مربعات الدولة بصيغة "x,z" / Nation tiles as "x,z" keys */
   territory: string[];
+  /** معرفات المكامن المكتشفة / Discovered deposit ids */
+  discovered: string[];
   /** آخر وقت حُسب عنده الإنتاج / Last time production was applied */
   lastTick: number;
 }

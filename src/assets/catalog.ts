@@ -55,21 +55,23 @@ export const STYLE_MODELS: Record<string, StyleVariants> = {
 };
 
 /**
- * مركز القرية حسب المرحلة: يزداد عدد المباني وارتفاعها مع كل مرحلة
- * Settlement centre by stage: more and taller buildings each stage
+ * مبنى الحكم حسب المرحلة: مبنى رسمي في ساحة تحيط بها الأشجار، يكبر ويرتفع مع كل مرحلة
+ * The government building by stage: an official building in a tree-lined square, larger and taller each stage
  */
 export function settlementParts(level: number): ModelPart[] {
-  const houses = HOUSES.slice(0, 8);
-  if (level <= 1) {
-    return [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]].map(([x, z], i) => ({ path: houses[i], x, z, size: 0.42, yaw: (i % 2) * Math.PI }));
+  const square: ModelPart[] = [[-0.38, -0.38], [0.38, -0.38], [-0.38, 0.38], [0.38, 0.38]]
+    .map(([x, z]) => ({ path: 'nature/tree_oak.glb', x, z, size: 0.18 }));
+  if (level <= 1) return [{ path: 'commercial/building-e.glb', size: 0.62 }, ...square];
+  if (level === 2) {
+    return [{ path: 'commercial/building-skyscraper-a.glb', size: 0.5 }, { path: SHOPS[2], x: -0.36, size: 0.26, yaw: Math.PI / 2 }, { path: SHOPS[3], x: 0.36, size: 0.26, yaw: -Math.PI / 2 }, ...square];
   }
-  const pool = level === 2 ? [...SHOPS.slice(0, 4), ...houses] : [...TOWERS.slice(0, 3), ...SHOPS.slice(4, 10)];
-  return [-0.3, 0, 0.3].flatMap((x, i) => [-0.3, 0, 0.3].map((z, j) => ({ path: pool[(i * 3 + j) % pool.length], x, z, size: 0.3 })));
+  return [{ path: 'commercial/building-skyscraper-c.glb', size: 0.55 }, { path: TOWERS[1], x: -0.36, z: 0.2, size: 0.24 }, { path: TOWERS[4], x: 0.36, z: -0.2, size: 0.24 }, ...square];
 }
 
 /** نماذج الطبيعة حسب نوع الأرض: [المسار، الحجم كنسبة من المربع، الكثافة لكل مربع] / Nature by terrain */
 export const NATURE_BY_TERRAIN: Record<string, [string, number, number][]> = {
-  plain: [['nature/tree_default.glb', 0.32, 0.9], ['nature/tree_oak.glb', 0.36, 0.6], ['nature/tree_detailed.glb', 0.32, 0.5], ['nature/plant_bush.glb', 0.14, 1.2], ['nature/grass_large.glb', 0.1, 2], ['nature/flower_yellowA.glb', 0.06, 0.6]],
+  // العالم 160 × 160 مربعًا، فالنباتات الصغيرة أقل كثافة لتبقى خفيفة على الجوال / A 160 × 160 world, so small plants stay sparse for mobile
+  plain: [['nature/tree_default.glb', 0.32, 0.9], ['nature/tree_oak.glb', 0.36, 0.6], ['nature/tree_detailed.glb', 0.32, 0.5], ['nature/plant_bush.glb', 0.14, 0.5], ['nature/grass_large.glb', 0.1, 0.7], ['nature/flower_yellowA.glb', 0.06, 0.25]],
   coast: [['nature/tree_palm.glb', 0.34, 0.5], ['nature/tree_palmTall.glb', 0.36, 0.3], ['nature/rock_smallA.glb', 0.1, 0.4], ['nature/grass.glb', 0.08, 0.8]],
   desert: [['nature/rock_smallB.glb', 0.12, 0.6], ['nature/stone_largeA.glb', 0.18, 0.15], ['nature/plant_bushSmall.glb', 0.1, 0.3]],
   plateau: [['nature/tree_pineDefaultA.glb', 0.32, 0.8], ['nature/tree_fat.glb', 0.32, 0.4], ['nature/rock_largeB.glb', 0.2, 0.25], ['nature/plant_bushLarge.glb', 0.16, 0.5]],

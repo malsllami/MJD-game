@@ -98,9 +98,12 @@ describe('Apps Script: إضافة تطور القرية على قاعدة بيا
     return { gas, ss };
   }
 
-  it('الناتج يطابق قاعدة بيانات جديدة، مع بقاء التعديل اليدوي / result matches a fresh database and keeps the manual edit', () => {
+  it('سلسلة الإضافات كاملة تطابق قاعدة بيانات جديدة، مع بقاء التعديل اليدوي / the full chain matches a fresh database and keeps the manual edit', () => {
     const { gas } = migrated();
     gas.addVillageProgression();
+    gas.addResourceBuildings();
+    gas.addWorldAndDeposits();
+    gas.applyCapitalScale();
     const defs = definitionsFrom(gas);
     expect(defs.buildings.find((b) => b.id === 'farm')!.name).toBe('مزرعة القمح');
     const normalise = (d: typeof defs) => ({ ...d, buildings: d.buildings.map((b) => ({ ...b, name: b.id === 'farm' ? '' : b.name })) });
@@ -163,6 +166,64 @@ describe('Apps Script: إضافة مباني الموارد على قاعدة ب
     gas.setupDatabase();
     gas.setStartAmountsForTesting();
     expect(definitionsFrom(gas).resources.every((r) => r.startAmount === gas.TEST_START_AMOUNT)).toBe(true);
+  });
+});
+
+describe('Apps Script: إضافة العالم والمكامن ومقياس العاصمة / world and deposits addition, capital scale', () => {
+  const fresh = seedDefinitions();
+
+  /** قاعدة بيانات قبل إضافة العالم والمكامن وبالمقياس القديم / The DB before the world addition, at the old scale */
+  function beforeWorld() {
+    const { gas, ss } = loadGas();
+    gas.setupDatabase();
+    const newResources = ['copper', 'silver'];
+    const newBuildings = ['copper_prospector', 'silver_prospector'];
+    const keep = (sheetName: string, column: string, drop: string[]) => {
+      const sheet = ss.sheets.get(sheetName)!;
+      const c = sheet.values[0].indexOf(column);
+      sheet.values = sheet.values.filter((row, i) => i === 0 || !drop.includes(row[c] as string));
+    };
+    keep('الموارد', 'المعرف', newResources);
+    keep('المباني', 'المعرف', newBuildings);
+    keep('تكاليف المباني', 'معرف المبنى', newBuildings);
+    keep('إنتاج المباني', 'معرف المبنى', newBuildings);
+    ss.sheets.delete('أنواع المكامن');
+    const buildings = ss.sheets.get('المباني')!;
+    const depCol = buildings.values[0].indexOf('يتطلب مكمن');
+    buildings.values = buildings.values.map((row) => row.filter((_, i) => i !== depCol));
+    const world = ss.sheets.get('إعدادات العالم')!;
+    const newKeys = ['نصف قطر المنطقة المسطحة', 'عدد السلاسل الجبلية', 'نصف قطر السلسلة الجبلية', 'عدد البحيرات', 'نصف قطر البحيرة', 'نطاق الاكتشاف', 'نطاق مسح الموارد', 'مورد المسح', 'تكلفة مسح الموارد', 'اسم مبنى الحكم'];
+    world.values = world.values.filter((row) => !newKeys.includes(row[0] as string));
+    // المقياس القديم / The old scale
+    world.values.forEach((row) => { if (row[0] === 'عدد المربعات أفقيا' || row[0] === 'عدد المربعات عموديا') row[1] = 64; });
+    const stages = ss.sheets.get('مراحل التطور')!;
+    const rc = stages.values[0].indexOf('نصف قطر الحدود');
+    stages.values.slice(1).forEach((row) => { row[rc] = 3; });
+    return { gas: loadGas(ss).gas, ss };
+  }
+
+  it('الإضافة ثم المقياس تطابقان قاعدة بيانات جديدة / the addition then the scale match a fresh database', () => {
+    const { gas } = beforeWorld();
+    gas.addWorldAndDeposits();
+    gas.applyCapitalScale();
+    expect(definitionsFrom(gas)).toEqual(fresh);
+  });
+
+  it('الإضافة وحدها لا تغيّر حجم الخريطة ولا حدود المراحل / the addition alone keeps map size and stage borders', () => {
+    const { gas } = beforeWorld();
+    gas.addWorldAndDeposits();
+    const defs = definitionsFrom(gas);
+    expect(defs.world.tilesX).toBe(64);
+    expect(defs.stages.every((s) => s.territoryRadius === 3)).toBe(true);
+    expect(defs.deposits.length).toBe(fresh.deposits.length);
+  });
+
+  it('تشغيل الإضافة مرتين لا يكرر أي صف / running the addition twice adds no duplicate rows', () => {
+    const { gas, ss } = beforeWorld();
+    gas.addWorldAndDeposits();
+    const sizes = [...ss.sheets.values()].map((s) => s.values.length);
+    gas.addWorldAndDeposits();
+    expect([...ss.sheets.values()].map((s) => s.values.length)).toEqual(sizes);
   });
 });
 

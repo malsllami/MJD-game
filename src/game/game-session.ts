@@ -2,10 +2,10 @@
 // File responsibility: play session — holds nation state, applies actions to it and saves it; no rendering or UI
 
 import {
-  advance, annexTile, checkAnnex, checkMove, checkPlacement, createInitialState, demolishBuilding, moveBuilding, placeBuilding,
-  placeRoadPath, resumeAfterAbsence, type Check, type Resume, type RoadPathResult,
+  advance, annexTile, checkAnnex, checkMove, checkPlacement, createInitialState, demolishBuilding, demolishRoads, moveBuilding,
+  placeBuilding, placeRoadPath, resumeAfterAbsence, surveyTile, type Check, type Resume, type RoadPathResult,
 } from '../core/economy';
-import type { BuildingDef, GameDefinitions, GameState, Tile, World } from '../core/types';
+import type { BuildingDef, Deposit, GameDefinitions, GameState, Tile, World } from '../core/types';
 import type { SaveService } from '../services/save-service';
 
 /** كيف بدأت الجلسة / How the session started */
@@ -45,7 +45,7 @@ export class GameSession {
   /** محاولة وضع مبنى / Try to place a building */
   place(building: BuildingDef, tile: Tile, now: number): Check {
     this.tick(now);
-    const check = checkPlacement(this.defs, this.current, building, tile, now);
+    const check = checkPlacement(this.defs, this.world, this.current, building, tile, now);
     if (check.ok) {
       this.current = placeBuilding(this.current, building, tile, now, crypto.randomUUID());
       this.persist();
@@ -53,13 +53,32 @@ export class GameSession {
     return check;
   }
 
-  /** رسم طريق على مسار / Lay a road along a path */
-  placeRoad(road: BuildingDef, path: Tile[], now: number): RoadPathResult {
+  /** رسم طريق على حواف بين المربعات / Lay a road along edges between tiles */
+  placeRoad(road: BuildingDef, edges: string[], now: number): RoadPathResult {
     this.tick(now);
-    const result = placeRoadPath(this.current, this.defs, road, path, now, () => crypto.randomUUID());
+    const result = placeRoadPath(this.current, this.defs, this.world, road, edges, now, () => crypto.randomUUID());
     this.current = result.state;
     if (result.placed) this.persist();
     return result;
+  }
+
+  /** هدم الطرق على حواف / Remove the roads on edges */
+  demolishRoads(edges: string[], now: number): number {
+    this.tick(now);
+    const { state, removed } = demolishRoads(this.current, this.defs, edges);
+    this.current = state;
+    if (removed) this.persist();
+    return removed;
+  }
+
+  /** مسح الموارد حول مربع؛ يعيد المكامن الجديدة أو سبب الرفض / Survey around a tile; returns new deposits or the refusal */
+  survey(tile: Tile, now: number): { found: Deposit[] } | { reason: string } {
+    this.tick(now);
+    const result = surveyTile(this.current, this.defs, this.world, tile);
+    if ('reason' in result) return result;
+    this.current = result.state;
+    this.persist();
+    return { found: result.found };
   }
 
   /** هدم مبنى / Demolish a building */
@@ -72,7 +91,7 @@ export class GameSession {
   /** محاولة نقل مبنى / Try to move a building */
   move(uid: string, tile: Tile, now: number): Check {
     this.tick(now);
-    const check = checkMove(this.defs, this.current, uid, tile, now);
+    const check = checkMove(this.defs, this.world, this.current, uid, tile, now);
     if (check.ok) {
       this.current = moveBuilding(this.current, this.defs, uid, tile);
       this.persist();

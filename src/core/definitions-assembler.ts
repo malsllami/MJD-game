@@ -1,7 +1,7 @@
 // مسؤولية الملف: تجميع جداول قاعدة البيانات الخام في تعريفات لعبة كاملة ومرتبة
 // File responsibility: assembles raw database tables into complete, ordered game definitions
 
-import type { EntityType, GameDefinitions, Stage, WorldSettings } from './types';
+import type { DepositType, EntityType, GameDefinitions, Stage, WorldSettings } from './types';
 
 /** صف خام بترتيب اختياري / Raw row with optional ordering */
 interface Ordered {
@@ -19,7 +19,7 @@ export interface RawTables {
   buildingCategories: (GameDefinitions['buildingCategories'][number] & Ordered)[];
   buildings: ({
     id: string; name: string; category: string; allowedTerrain: string[]; buildSeconds: number;
-    requiresTech: string; stage: string; housing: number | null; model: string; requiresRoad: boolean;
+    requiresTech: string; stage: string; housing: number | null; model: string; requiresRoad: boolean; requiresDeposit?: string;
   } & Ordered)[];
   buildingCosts: { buildingId: string; resourceId: string; amount: number | null }[];
   buildingProduction: PerMinuteRow[];
@@ -27,8 +27,11 @@ export interface RawTables {
   stages: (Omit<Stage, 'order'> & { order: number | null })[];
   ministries: (GameDefinitions['ministries'][number] & Ordered)[];
   contextCommands: { entityType: EntityType; id: string; name: string; icon: string; order: number | null }[];
+  /** اختياري: لا يرسله خادم أقدم من إضافة العالم والمكامن / Optional: absent from servers older than the world addition */
+  depositTypes?: (DepositType & { count: number | null })[];
 }
 
+/** الجداول التي لا تعمل اللعبة بدونها / Tables the game cannot run without */
 export const RAW_TABLE_IDS: (keyof RawTables)[] = [
   'world', 'terrain', 'resources', 'buildingCategories', 'buildings', 'buildingCosts',
   'buildingProduction', 'buildingConsumption', 'stages', 'ministries', 'contextCommands',
@@ -47,6 +50,18 @@ const REQUIRED_WORLD: (keyof WorldSettings)[] = [
  */
 const BACKWARD_COMPATIBLE: Partial<WorldSettings> = {
   annexBlockSize: 1,
+  // بلا مناطق مسطحة ولا سلاسل ولا بحيرات مضافة، وكل المكامن ظاهرة، والمسح مجاني
+  // No added flat zones, ranges or lakes; every deposit visible; surveying is free
+  flatZoneRadius: 0,
+  massifCount: 0,
+  massifRadius: 0,
+  lakeCount: 0,
+  lakeRadius: 0,
+  discoveryRadius: 9999,
+  surveyRadius: 0,
+  surveyResource: '',
+  surveyCost: 0,
+  governmentName: '',
 };
 
 /** جمع صفوف (مبنى، مورد، كمية) في قاموس لكل مبنى / Sum (building, resource, amount) rows per building */
@@ -104,8 +119,10 @@ export function assembleDefinitions(raw: RawTables, version: string): GameDefini
       housing: b.housing ?? 0,
       model: b.model,
       requiresRoad: b.requiresRoad === true,
+      requiresDeposit: b.requiresDeposit || null,
     })),
     stages,
+    deposits: (raw.depositTypes ?? []).map(({ id, name, resourceId, place, count, icon, color }) => ({ id, name, resourceId, place, count: count ?? 0, icon, color })),
     ministries: [...raw.ministries].sort(byOrder).map(({ id, name, description }) => ({ id, name, description })),
     contextMenus: [...menus].map(([entityType, list]) => ({
       entityType,

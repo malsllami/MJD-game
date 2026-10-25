@@ -57,6 +57,8 @@ export function createHud(root: HTMLElement, defs: GameDefinitions, actions: Hud
         <button type="button" class="icon-btn" data-action="rot-r" aria-label="تدوير لليمين">${icon('rotr')}</button>
         <button type="button" class="icon-btn" data-action="zoom-in" aria-label="تقريب">${icon('plus')}</button>
         <button type="button" class="icon-btn" data-action="zoom-out" aria-label="إبعاد">${icon('minus')}</button>
+        <button type="button" class="icon-btn" data-action="toggle-grid" aria-label="إظهار شبكة المربعات أو إخفاؤها" title="الشبكة">${icon('grid')}</button>
+        <button type="button" class="icon-btn" data-action="bulldoze" aria-label="هدم الطرق" title="هدم الطرق">${icon('demolish')}</button>
       </div>
       <div class="mini glass"><canvas data-minimap aria-label="الخريطة المصغرة"></canvas></div>
     </div>

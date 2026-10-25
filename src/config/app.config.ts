@@ -29,7 +29,7 @@ export const APP_CONFIG = {
     /** تقريب حتى مستوى الشارع / Zoom down to street level */
     minRadius: 6,
     maxRadiusFactor: 1.15,
-    startRadius: 130,
+    startRadius: 60,
     startBeta: 0.9,
     minBeta: 0.32,
     maxBeta: 1.35,

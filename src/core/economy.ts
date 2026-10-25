@@ -1,12 +1,14 @@
-// مسؤولية الملف: منطق الاقتصاد النقي — الحدود، المراحل، السكان، وضع المباني، الإنتاج والاستهلاك عبر الزمن، الغياب، والضم
-// File responsibility: pure economy logic — territory, stages, population, placement, production and consumption over time, absence, annexation
+// مسؤولية الملف: منطق الاقتصاد النقي — الحدود، المراحل، السكان، الطرق على حدود المربعات، وضع المباني، المكامن والاكتشاف،
+// الإنتاج والاستهلاك عبر الزمن، الغياب، والضم
+// File responsibility: pure economy logic — territory, stages, population, roads on tile edges, placement, deposits and discovery,
+// production and consumption over time, absence, and annexation
 //
 // كل دالة تعيد حالة جديدة دون تعديل القديمة، والوقت يُمرَّر صراحة، فتبقى قابلة للاختبار.
 // Every function returns a new state without mutating the old one, and time is passed explicitly.
 
-import type { BuildingDef, GameDefinitions, GameState, PlacedBuilding, Stage, Tile, World } from './types';
+import type { BuildingDef, Deposit, GameDefinitions, GameState, PlacedBuilding, Stage, Tile, World } from './types';
 
-/** مفتاح مربع / Tile key */
+/** مفتاح مربع أو زاوية / Tile or corner key */
 export const tileKey = (x: number, z: number): string => `${x},${z}`;
 
 /** نتيجة التحقق: مسموح، أو ممنوع مع السبب / Check result: allowed, or refused with the reason */
@@ -63,30 +65,33 @@ export function annexBlock(defs: GameDefinitions, world: World, tile: Tile): Til
   const out: Tile[] = [];
   for (let z = z0; z < z0 + size; z++) {
     for (let x = x0; x < x0 + size; x++) {
-      const t = world.tiles[z * world.settings.tilesX + x];
-      if (t && x < world.settings.tilesX && !water.has(t.terrainId)) out.push(t);
+      const t = x < world.settings.tilesX ? world.tiles[z * world.settings.tilesX + x] : undefined;
+      if (t && !water.has(t.terrainId)) out.push(t);
     }
   }
   return out;
 }
 
 /**
- * حالة البداية في الموقع الذي اختاره اللاعب: الموارد الابتدائية، المرحلة الأولى، وحدودها
- * Start state at the chosen site: starting resources, the first stage and its territory
+ * حالة البداية في الموقع الذي اختاره اللاعب: الموارد الابتدائية، المرحلة الأولى، حدودها، والمكامن الظاهرة منها
+ * Start state at the chosen site: starting resources, the first stage, its territory and the deposits visible from it
  */
 export function createInitialState(defs: GameDefinitions, world: World, site: { x: number; z: number }, now: number): GameState {
   const resources: Record<string, number> = {};
   for (const r of defs.resources) resources[r.id] = r.startAmount;
   const first = defs.stages[0];
-  return {
+  const state: GameState = {
     settlement: { x: site.x, z: site.z },
     resources,
     population: 0,
     stage: first.id,
     buildings: [],
+    roads: [],
     territory: landAround(defs, world, site.x, site.z, first.territoryRadius),
+    discovered: [],
     lastTick: now,
   };
+  return discoverNearTerritory(state, defs, world);
 }
 
 /**
@@ -104,12 +109,224 @@ export function applyStageProgress(state: GameState, defs: GameDefinitions, worl
   const reached = stageById(defs, stage);
   const territory = new Set(state.territory);
   for (const k of landAround(defs, world, state.settlement.x, state.settlement.z, reached.territoryRadius)) territory.add(k);
-  return { ...state, stage, territory: [...territory] };
+  return discoverNearTerritory({ ...state, stage, territory: [...territory] }, defs, world);
+}
+
+// ===== المكامن والاكتشاف / Deposits and discovery =====
+
+/** المكامن التي تقع على بعد discoveryRadius من الحدود تصبح مكتشفة / Deposits within discoveryRadius of the borders become discovered */
+export function discoverNearTerritory(state: GameState, defs: GameDefinitions, world: World): GameState {
+  return discoverWhere(state, world, (x, z) => nearTerritory(state, x, z, defs.world.discoveryRadius));
+}
+
+function nearTerritory(state: GameState, x: number, z: number, radius: number): boolean {
+  const owned = new Set(state.territory);
+  for (let dz = -radius; dz <= radius; dz++) for (let dx = -radius; dx <= radius; dx++) if (owned.has(tileKey(x + dx, z + dz))) return true;
+  return false;
+}
+
+function discoverWhere(state: GameState, world: World, near: (x: number, z: number) => boolean): GameState {
+  const known = new Set(state.discovered);
+  const found = world.deposits.filter((d) => !known.has(d.id) && d.tiles.some((k) => {
+    const [x, z] = k.split(',').map(Number);
+    return near(x, z);
+  }));
+  return found.length ? { ...state, discovered: [...state.discovered, ...found.map((d) => d.id)] } : state;
+}
+
+/** المكمن المكتشف في المربع لمورد معيّن / The discovered deposit on a tile for a resource */
+export function depositAt(world: World, state: GameState, x: number, z: number, resourceId?: string): Deposit | undefined {
+  const key = tileKey(x, z);
+  return world.deposits.find((d) => state.discovered.includes(d.id) && (!resourceId || d.resourceId === resourceId) && d.tiles.includes(key));
+}
+
+/** تكلفة مسح الموارد / Survey cost */
+export function surveyCost(defs: GameDefinitions): Record<string, number> {
+  return defs.world.surveyResource && defs.world.surveyCost ? { [defs.world.surveyResource]: defs.world.surveyCost } : {};
+}
+
+/**
+ * مسح الموارد حول مربع: يكشف المكامن ضمن surveyRadius ويدفع التكلفة؛ يعيد المكامن الجديدة
+ * Survey around a tile: reveals deposits within surveyRadius and pays; returns the newly found deposits
+ */
+export function surveyTile(state: GameState, defs: GameDefinitions, world: World, tile: Tile): { state: GameState; found: Deposit[] } | { reason: string } {
+  const shortage = missingResources(defs, state, surveyCost(defs));
+  if (shortage) return { reason: `الموارد غير كافية للمسح؛ ينقص ${shortage}` };
+  const r = defs.world.surveyRadius;
+  const before = new Set(state.discovered);
+  const next = discoverWhere({ ...state, resources: pay(state.resources, surveyCost(defs)) }, world, (x, z) => Math.hypot(x - tile.x, z - tile.z) <= r);
+  return { state: next, found: world.deposits.filter((d) => next.discovered.includes(d.id) && !before.has(d.id)) };
+}
+
+// ===== الطرق على حدود المربعات / Roads on tile edges =====
+
+/** أضلاع المربع الأربعة / The four edges of a tile */
+export function tileEdges(x: number, z: number): string[] {
+  return [`h:${x},${z}`, `h:${x},${z + 1}`, `v:${x},${z}`, `v:${x + 1},${z}`];
+}
+
+/** زاويتا الحافة / The two corners of an edge */
+export function edgeCorners(edge: string): [[number, number], [number, number]] {
+  const [kind, rest] = edge.split(':');
+  const [x, z] = rest.split(',').map(Number);
+  return kind === 'h' ? [[x, z], [x + 1, z]] : [[x, z], [x, z + 1]];
+}
+
+/** المربعان على جانبي الحافة / The two tiles on either side of an edge */
+export function edgeTiles(edge: string): [[number, number], [number, number]] {
+  const [kind, rest] = edge.split(':');
+  const [x, z] = rest.split(',').map(Number);
+  return kind === 'h' ? [[x, z - 1], [x, z]] : [[x - 1, z], [x, z]];
+}
+
+/** الحافة بين زاويتين متجاورتين / The edge between two adjacent corners */
+export function edgeBetween(a: { x: number; z: number }, b: { x: number; z: number }): string {
+  if (a.z === b.z) return `h:${Math.min(a.x, b.x)},${a.z}`;
+  return `v:${a.x},${Math.min(a.z, b.z)}`;
+}
+
+/** مسار زوايا متصل بين نقطتين (أفقي ثم عمودي) / Connected corner path between two points (horizontal then vertical) */
+export function cornerPath(from: { x: number; z: number }, to: { x: number; z: number }): { x: number; z: number }[] {
+  const out: { x: number; z: number }[] = [];
+  let { x, z } = from;
+  out.push({ x, z });
+  while (x !== to.x) {
+    x += Math.sign(to.x - x);
+    out.push({ x, z });
+  }
+  while (z !== to.z) {
+    z += Math.sign(to.z - z);
+    out.push({ x, z });
+  }
+  return out;
+}
+
+/** حواف مسار زوايا / Edges of a corner path */
+export function pathEdges(corners: { x: number; z: number }[]): string[] {
+  const out: string[] = [];
+  for (let i = 1; i < corners.length; i++) out.push(edgeBetween(corners[i - 1], corners[i]));
+  return out;
+}
+
+/** زوايا مربع مبنى الحكم: منها تبدأ شبكة الطرق / Corners of the government tile: the road network starts here */
+function hubCorners(state: GameState): string[] {
+  const { x, z } = state.settlement;
+  return [tileKey(x, z), tileKey(x + 1, z), tileKey(x, z + 1), tileKey(x + 1, z + 1)];
+}
+
+/**
+ * حواف الطرق المتصلة بمبنى الحكم (بحث عبر الزوايا)؛ includePlanned تشمل الطرق تحت الإنشاء
+ * Road edges connected to the government building (a search across corners); includePlanned counts roads under construction
+ */
+export function connectedRoads(state: GameState, at: number, includePlanned = false): Set<string> {
+  const byCorner = new Map<string, string[]>();
+  for (const r of state.roads) {
+    if (!includePlanned && r.completesAt > at) continue;
+    for (const [x, z] of edgeCorners(r.edge)) {
+      const k = tileKey(x, z);
+      byCorner.set(k, [...(byCorner.get(k) ?? []), r.edge]);
+    }
+  }
+  const connected = new Set<string>();
+  const seen = new Set<string>(hubCorners(state));
+  const queue = [...seen];
+  while (queue.length) {
+    const corner = queue.pop()!;
+    for (const edge of byCorner.get(corner) ?? []) {
+      if (connected.has(edge)) continue;
+      connected.add(edge);
+      for (const [x, z] of edgeCorners(edge)) {
+        const k = tileKey(x, z);
+        if (!seen.has(k)) {
+          seen.add(k);
+          queue.push(k);
+        }
+      }
+    }
+  }
+  return connected;
+}
+
+/**
+ * هل يطل المربع على طريق متصل، أو يجاور مبنى الحكم مباشرة؟
+ * Does the tile face a connected road, or sit right beside the government building?
+ */
+export function hasRoadAccess(state: GameState, x: number, z: number, connected: Set<string>): boolean {
+  if (tileEdges(x, z).some((e) => connected.has(e))) return true;
+  return NEIGHBOURS.some(([dx, dz]) => isSettlementTile(state, x + dx, z + dz));
+}
+
+/** الطريق على حافة / The road on an edge */
+export function roadAt(state: GameState, edge: string) {
+  return state.roads.find((r) => r.edge === edge);
+}
+
+/**
+ * هل يمكن رسم الطريق على هذه الحافة؟ تحتاج يابسة في الدولة على أحد جانبيها تسمح بالطريق
+ * Can the road go on this edge? It needs nation land on one side that allows the road
+ */
+export function checkRoadEdge(defs: GameDefinitions, world: World, state: GameState, road: BuildingDef, edge: string): Check {
+  const required = stageById(defs, road.stage);
+  if (required.order > stageById(defs, state.stage).order) return { ok: false, reason: `${road.name} يُفتح في مرحلة ${required.name}` };
+  const owned = new Set(state.territory);
+  const sides = edgeTiles(edge)
+    .map(([x, z]) => (x >= 0 && z >= 0 && x < world.settings.tilesX && z < world.settings.tilesZ ? world.tiles[z * world.settings.tilesX + x] : null))
+    .filter((t): t is Tile => !!t);
+  if (!sides.some((t) => owned.has(tileKey(t.x, t.z)))) return { ok: false, reason: 'الطريق خارج حدود الدولة' };
+  if (!sides.some((t) => owned.has(tileKey(t.x, t.z)) && road.allowedTerrain.includes(t.terrainId))) {
+    return { ok: false, reason: `لا يُرسم ${road.name} هنا؛ الأرض لا تسمح بذلك` };
+  }
+  const shortage = missingResources(defs, state, road.cost);
+  if (shortage) return { ok: false, reason: `الموارد غير كافية؛ ينقص ${shortage}` };
+  return { ok: true };
+}
+
+/** نتيجة رسم مسار طريق / Outcome of drawing a road path */
+export interface RoadPathResult {
+  state: GameState;
+  placed: number;
+  /** سبب توقف الرسم قبل نهاية المسار / Why drawing stopped before the path's end */
+  stoppedBy: string | null;
+}
+
+/**
+ * رسم طريق على حواف: يتخطى الحواف التي فيها طريق، ويتوقف عند أول حافة لا يُسمح فيها
+ * Lay a road along edges: skips edges that already hold a road, stops at the first refused edge
+ */
+export function placeRoadPath(state: GameState, defs: GameDefinitions, world: World, road: BuildingDef, edges: string[], now: number, uid: () => string): RoadPathResult {
+  let current = state;
+  let placed = 0;
+  for (const edge of edges) {
+    if (roadAt(current, edge)) continue;
+    const check = checkRoadEdge(defs, world, current, road, edge);
+    if (!check.ok) return { state: current, placed, stoppedBy: check.reason };
+    current = {
+      ...current,
+      resources: pay(current.resources, road.cost),
+      roads: [...current.roads, { uid: uid(), buildingId: road.id, edge, startedAt: now, completesAt: now + road.buildSeconds * 1000 }],
+    };
+    placed++;
+  }
+  return { state: current, placed, stoppedBy: null };
+}
+
+/** إزالة طرق حواف واسترداد نسبة من تكلفتها / Remove edge roads and refund part of their cost */
+export function demolishRoads(state: GameState, defs: GameDefinitions, edges: string[]): { state: GameState; removed: number } {
+  const drop = new Set(edges);
+  const resources = { ...state.resources };
+  let removed = 0;
+  for (const r of state.roads) {
+    if (!drop.has(r.edge)) continue;
+    const def = defs.buildings.find((b) => b.id === r.buildingId);
+    for (const [id, n] of Object.entries(costShare(def?.cost ?? {}, defs.world.demolishRefundPercent))) resources[id] = (resources[id] ?? 0) + n;
+    removed++;
+  }
+  return { state: { ...state, resources, roads: state.roads.filter((r) => !drop.has(r.edge)) }, removed };
 }
 
 // ===== المباني / Buildings =====
 
-export function isUnderConstruction(b: PlacedBuilding, now: number): boolean {
+export function isUnderConstruction(b: { completesAt: number }, now: number): boolean {
   return now < b.completesAt;
 }
 
@@ -126,44 +343,11 @@ function missingInputs(def: BuildingDef, resources: Record<string, number>): str
   return Object.keys(def.consumption).filter((id) => (resources[id] ?? 0) <= 0);
 }
 
-// ===== الطرق / Roads =====
-
-/**
- * مربعات الطرق المتصلة بمركز القرية (بحث عبر الطرق المتجاورة)؛ includePlanned تشمل الطرق تحت الإنشاء
- * Road tiles connected to the village centre (search across adjacent roads); includePlanned counts roads under construction
- */
-export function connectedRoads(state: GameState, defs: GameDefinitions, at: number, includePlanned = false): Set<string> {
-  const byId = new Map(defs.buildings.map((b) => [b.id, b]));
-  const roads = new Set(
-    state.buildings
-      .filter((b) => isRoad(byId.get(b.buildingId)) && (includePlanned || b.completesAt <= at))
-      .map((b) => tileKey(b.x, b.z)),
-  );
-  const connected = new Set<string>();
-  const queue = [tileKey(state.settlement.x, state.settlement.z)];
-  while (queue.length) {
-    const [x, z] = queue.pop()!.split(',').map(Number);
-    for (const [dx, dz] of NEIGHBOURS) {
-      const k = tileKey(x + dx, z + dz);
-      if (roads.has(k) && !connected.has(k)) {
-        connected.add(k);
-        queue.push(k);
-      }
-    }
-  }
-  return connected;
-}
-
-/** هل يجاور المربع طريقًا متصلًا أو مركز القرية؟ / Does the tile touch a connected road or the village centre? */
-export function hasRoadAccess(state: GameState, x: number, z: number, connected: Set<string>): boolean {
-  return NEIGHBOURS.some(([dx, dz]) => connected.has(tileKey(x + dx, z + dz)) || isSettlementTile(state, x + dx, z + dz));
-}
-
 /** حالة المبنى الآن / Building status now */
 export function buildingStatus(placed: PlacedBuilding, state: GameState, defs: GameDefinitions, now: number): BuildingStatus {
   if (isUnderConstruction(placed, now)) return { kind: 'constructing' };
   const def = defs.buildings.find((b) => b.id === placed.buildingId);
-  if (def?.requiresRoad && !hasRoadAccess(state, placed.x, placed.z, connectedRoads(state, defs, now))) return { kind: 'disconnected' };
+  if (def?.requiresRoad && !hasRoadAccess(state, placed.x, placed.z, connectedRoads(state, now))) return { kind: 'disconnected' };
   const missing = def ? missingInputs(def, state.resources) : [];
   return missing.length ? { kind: 'stopped', missing } : { kind: 'operating' };
 }
@@ -179,13 +363,14 @@ interface PlacementOptions {
  * هل يمكن وضع هذا المبنى على هذا المربع الآن؟ يعيد أول سبب يمنع ذلك
  * Can this building go on this tile now? Returns the first blocking reason
  */
-export function checkPlacement(defs: GameDefinitions, state: GameState, building: BuildingDef, tile: Tile, now: number, opts: PlacementOptions = {}): Check {
+export function checkPlacement(defs: GameDefinitions, world: World, state: GameState, building: BuildingDef, tile: Tile, now: number, opts: PlacementOptions = {}): Check {
+  if (isRoad(building)) return { ok: false, reason: 'الطرق تُرسم على حدود المربعات بالسحب' };
   const required = stageById(defs, building.stage);
   if (!opts.alreadyBuilt && required.order > stageById(defs, state.stage).order) {
     return { ok: false, reason: `${building.name} يُفتح في مرحلة ${required.name} عند ${required.population} نسمة` };
   }
   if (!opts.alreadyBuilt && building.requiresTech) return { ok: false, reason: `${building.name} يتطلب بحثًا لم يُنجز بعد` };
-  if (isSettlementTile(state, tile.x, tile.z)) return { ok: false, reason: 'هذا المربع يشغله مركز القرية' };
+  if (isSettlementTile(state, tile.x, tile.z)) return { ok: false, reason: 'هذا المربع يشغله مبنى الحكم' };
   if (!state.territory.includes(tileKey(tile.x, tile.z))) return { ok: false, reason: 'المربع خارج حدود الدولة؛ ضمّه للدولة أولًا' };
   const occupant = buildingAt(state, tile.x, tile.z);
   if (occupant && occupant.uid !== opts.ignoreUid) return { ok: false, reason: 'يوجد مبنى في هذا المربع' };
@@ -193,14 +378,16 @@ export function checkPlacement(defs: GameDefinitions, state: GameState, building
     const names = building.allowedTerrain.map((id) => defs.terrain.find((t) => t.id === id)?.name ?? id).join('، ');
     return { ok: false, reason: `${building.name} يُبنى على: ${names}` };
   }
-  if (building.requiresRoad) {
-    // الطرق المخططة تكفي للبناء، والتشغيل يحتاج اكتمالها / Planned roads allow building; operating needs them finished
-    const roads = connectedRoads(opts.ignoreUid ? { ...state, buildings: state.buildings.filter((b) => b.uid !== opts.ignoreUid) } : state, defs, now, true);
-    if (!hasRoadAccess(state, tile.x, tile.z, roads)) return { ok: false, reason: `${building.name} يحتاج طريقًا متصلًا بالقرية بجواره` };
+  if (building.requiresDeposit && !depositAt(world, state, tile.x, tile.z, building.requiresDeposit)) {
+    const type = defs.deposits.find((d) => d.resourceId === building.requiresDeposit);
+    return { ok: false, reason: `${building.name} يُبنى على ${type?.name ?? 'مكمن'} مكتشف داخل الدولة` };
   }
-  if (!opts.alreadyBuilt && !isRoad(building)) {
-    const byId = new Map(defs.buildings.map((b) => [b.id, b]));
-    const active = state.buildings.filter((b) => isUnderConstruction(b, now) && !isRoad(byId.get(b.buildingId))).length;
+  if (building.requiresRoad && !hasRoadAccess(state, tile.x, tile.z, connectedRoads(state, now, true))) {
+    // الطرق المخططة تكفي للبناء، والتشغيل يحتاج اكتمالها / Planned roads allow building; operating needs them finished
+    return { ok: false, reason: `${building.name} يحتاج طريقًا متصلًا بمبنى الحكم على أحد جوانبه` };
+  }
+  if (!opts.alreadyBuilt) {
+    const active = state.buildings.filter((b) => isUnderConstruction(b, now)).length;
     if (active >= defs.world.maxConcurrentBuilds) {
       return { ok: false, reason: `وصلت للحد الأقصى من البناء المتزامن (${defs.world.maxConcurrentBuilds})؛ انتظر اكتمال مبنى` };
     }
@@ -210,48 +397,16 @@ export function checkPlacement(defs: GameDefinitions, state: GameState, building
   return { ok: true };
 }
 
-/** نتيجة رسم مسار طريق / Outcome of drawing a road path */
-export interface RoadPathResult {
-  state: GameState;
-  placed: number;
-  /** سبب توقف الرسم قبل نهاية المسار / Why drawing stopped before the path's end */
-  stoppedBy: string | null;
-}
-
 /**
- * رسم طريق على مسار مربعات: يتخطى مركز القرية والمربعات التي فيها طريق، ويتوقف عند أول مربع لا يُسمح فيه
- * Lay a road along a tile path: skips the village centre and existing roads, stops at the first refused tile
+ * وضع المبنى: خصم التكلفة وبدء الإنشاء (بعد نجاح checkPlacement، وعلى حالة محسوبة حتى now)
+ * Place the building: pay and start construction (after checkPlacement, on a state advanced to now)
  */
-export function placeRoadPath(state: GameState, defs: GameDefinitions, road: BuildingDef, path: Tile[], now: number, uid: () => string): RoadPathResult {
-  let current = state;
-  let placed = 0;
-  for (const tile of path) {
-    // مركز القرية نقطة اتصال، فالبدء منه أو المرور به لا يوقف الرسم / The village centre is a hub; starting or passing there is fine
-    if (isSettlementTile(current, tile.x, tile.z)) continue;
-    const existing = buildingAt(current, tile.x, tile.z);
-    if (existing && isRoad(defs.buildings.find((b) => b.id === existing.buildingId))) continue;
-    const check = checkPlacement(defs, current, road, tile, now);
-    if (!check.ok) return { state: current, placed, stoppedBy: check.reason };
-    current = placeBuilding(current, road, tile, now, uid());
-    placed++;
-  }
-  return { state: current, placed, stoppedBy: null };
-}
-
-/** مسار مربعات متصل بين نقطتين (أفقي ثم عمودي) / Connected tile path between two points (horizontal then vertical) */
-export function tilePath(from: { x: number; z: number }, to: { x: number; z: number }): { x: number; z: number }[] {
-  const out: { x: number; z: number }[] = [];
-  let { x, z } = from;
-  out.push({ x, z });
-  while (x !== to.x) {
-    x += Math.sign(to.x - x);
-    out.push({ x, z });
-  }
-  while (z !== to.z) {
-    z += Math.sign(to.z - z);
-    out.push({ x, z });
-  }
-  return out;
+export function placeBuilding(state: GameState, building: BuildingDef, tile: Tile, now: number, uid: string): GameState {
+  return {
+    ...state,
+    resources: pay(state.resources, building.cost),
+    buildings: [...state.buildings, { uid, buildingId: building.id, x: tile.x, z: tile.z, startedAt: now, completesAt: now + building.buildSeconds * 1000 }],
+  };
 }
 
 // ===== الهدم والنقل / Demolition and moving =====
@@ -277,12 +432,12 @@ export function demolishBuilding(state: GameState, defs: GameDefinitions, uid: s
 }
 
 /** هل يمكن نقل المبنى إلى هذا المربع؟ / Can the building move to this tile? */
-export function checkMove(defs: GameDefinitions, state: GameState, uid: string, tile: Tile, now: number): Check {
+export function checkMove(defs: GameDefinitions, world: World, state: GameState, uid: string, tile: Tile, now: number): Check {
   const placed = state.buildings.find((b) => b.uid === uid);
   const def = placed && defs.buildings.find((b) => b.id === placed.buildingId);
   if (!placed || !def) return { ok: false, reason: 'المبنى غير موجود' };
   if (placed.x === tile.x && placed.z === tile.z) return { ok: false, reason: 'اختر مربعًا آخر غير موقع المبنى الحالي' };
-  return checkPlacement(defs, state, def, tile, now, { ignoreUid: uid, alreadyBuilt: true, cost: costShare(def.cost, defs.world.moveCostPercent) });
+  return checkPlacement(defs, world, state, def, tile, now, { ignoreUid: uid, alreadyBuilt: true, cost: costShare(def.cost, defs.world.moveCostPercent) });
 }
 
 /** نقل المبنى ودفع تكلفة النقل؛ يبقى تقدم إنشائه كما هو (بعد نجاح checkMove) / Move and pay; construction progress is kept */
@@ -296,24 +451,12 @@ export function moveBuilding(state: GameState, defs: GameDefinitions, uid: strin
   };
 }
 
-/**
- * وضع المبنى: خصم التكلفة وبدء الإنشاء (بعد نجاح checkPlacement، وعلى حالة محسوبة حتى now)
- * Place the building: pay and start construction (after checkPlacement, on a state advanced to now)
- */
-export function placeBuilding(state: GameState, building: BuildingDef, tile: Tile, now: number, uid: string): GameState {
-  return {
-    ...state,
-    resources: pay(state.resources, building.cost),
-    buildings: [...state.buildings, { uid, buildingId: building.id, x: tile.x, z: tile.z, startedAt: now, completesAt: now + building.buildSeconds * 1000 }],
-  };
-}
-
 // ===== الزمن: الإنتاج والاستهلاك والسكان / Time: production, consumption and population =====
 
 /**
- * تقدّم الزمن حتى now على دفعات لا تتجاوز دقيقة: في كل دفعة يعمل المبنى فقط إن توفرت مدخلاته،
+ * تقدّم الزمن حتى now على دفعات لا تتجاوز دقيقة: في كل دفعة يعمل المبنى فقط إن توفرت مدخلاته ووصله طريق،
  * ويتجه السكان نحو سعة المساكن العاملة، ثم تُفحص ترقية المرحلة
- * Advance time to now in steps of at most a minute: each step a building runs only if its inputs are in stock,
+ * Advance time to now in steps of at most a minute: a building runs only with its inputs in stock and a road when needed;
  * population moves toward the capacity of operating housing, then stage progress is checked
  */
 export function advance(state: GameState, defs: GameDefinitions, world: World, now: number): GameState {
@@ -325,7 +468,7 @@ export function advance(state: GameState, defs: GameDefinitions, world: World, n
   for (let from = state.lastTick; from < now; from += STEP_MS) {
     const to = Math.min(now, from + STEP_MS);
     const stock = { ...resources };
-    const roads = connectedRoads(state, defs, to);
+    const roads = connectedRoads(state, to);
     let capacity = 0;
     for (const placed of state.buildings) {
       const def = byId.get(placed.buildingId);
@@ -387,7 +530,6 @@ export function resumeAfterAbsence(state: GameState, defs: GameDefinitions, worl
     const diff = amount - (state.resources[id] ?? 0);
     if (diff >= 1) gained[id] = diff;
   }
-  // المباني التي اكتملت بعد نهاية الوقت المحسوب تكتمل الآن / Buildings due after the credited window complete now
   return { state: { ...credited, lastTick: now }, awayMs, creditedMs, gained };
 }
 
@@ -415,10 +557,11 @@ export function checkAnnex(defs: GameDefinitions, world: World, state: GameState
   return { ok: true };
 }
 
-/** ضم القطعة كاملة ودفع تكلفتها (بعد نجاح checkAnnex) / Annex the whole parcel and pay (after checkAnnex succeeds) */
+/** ضم القطعة كاملة ودفع تكلفتها، ثم اكتشاف ما قرب الحدود الجديدة (بعد نجاح checkAnnex) / Annex the parcel, pay, then discover near the new borders */
 export function annexTile(state: GameState, defs: GameDefinitions, world: World, tile: Tile): GameState {
   const added = newBlockTiles(defs, world, state, tile).map((t) => tileKey(t.x, t.z));
-  return { ...state, resources: pay(state.resources, annexCost(defs)), territory: [...state.territory, ...added] };
+  const next = { ...state, resources: pay(state.resources, annexCost(defs)), territory: [...state.territory, ...added] };
+  return discoverNearTerritory(next, defs, world);
 }
 
 export function annexCost(defs: GameDefinitions): Record<string, number> {

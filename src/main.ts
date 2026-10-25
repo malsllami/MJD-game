@@ -27,7 +27,7 @@ async function bootstrap(): Promise<void> {
 
   const source = createDefinitionsSource(APP_CONFIG.definitionsSource, APP_CONFIG.apiUrl, APP_CONFIG.apiTimeoutMs);
   const defs = await source.load();
-  const world = generateWorld(defs.world, defs.terrain);
+  const world = generateWorld(defs.world, defs.terrain, defs.deposits);
   const { preset } = resolveQuality(defs.world.defaultQuality);
   const game = createGameScene(canvas, world, defs, preset);
 

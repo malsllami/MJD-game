@@ -33,11 +33,17 @@ export class Nature {
     const jitter = createNoise(seed + 202, 1);
     const byPath = new Map<string, { size: number; placements: Kind['placements'] }>();
 
+    // مكامن الخشب غابات كثيفة، وأرض العاصمة المسطحة مفتوحة للبناء / Wood deposits are dense forests; the flat capital land stays open
+    const forestTiles = new Set(this.world.deposits.filter((d) => d.resourceId === 'wood').flatMap((d) => d.tiles));
+    const flat = this.world.settings.flatZoneRadius;
+    const inBasin = (x: number, z: number) => this.world.basins.some((b) => Math.max(Math.abs(x - b.x), Math.abs(z - b.z)) <= flat);
     for (const tile of this.world.tiles) {
       const options = NATURE_BY_TERRAIN[tile.terrainId];
       if (!options) continue;
       // الغابات بقع متفرقة تتخللها مروج مفتوحة / Forests are scattered patches between open meadows
-      const patch = Math.max(0.1, forest(tile.x * 0.11, tile.z * 0.11) * 2.6 - 0.75);
+      let patch = Math.max(0.1, forest(tile.x * 0.11, tile.z * 0.11) * 2.6 - 0.75);
+      if (forestTiles.has(tileKey(tile.x, tile.z))) patch = 3.2;
+      else if (inBasin(tile.x, tile.z)) patch *= 0.25;
       const c = tileCenter(this.world, tile.x, tile.z);
       options.forEach(([path, size, perTile], k) => {
         const isTree = path.includes('tree');

@@ -22,10 +22,16 @@ export interface ScreenPoint {
   visible: boolean;
 }
 
-/** مستقبل أحداث السحب على المربعات / Receiver of tile-drag events */
+/** موضع السحب: المربع تحت المؤشر وأقرب زاوية شبكة إليه / Drag position: the tile under the pointer and the nearest grid corner */
+export interface DragPoint {
+  tile: Tile;
+  corner: { x: number; z: number };
+}
+
+/** مستقبل أحداث السحب / Receiver of drag events */
 export interface TileDragHandler {
-  start(tile: Tile): void;
-  move(tile: Tile): void;
+  start(at: DragPoint): void;
+  move(at: DragPoint): void;
   end(): void;
 }
 
@@ -90,15 +96,29 @@ export function createGameScene(canvas: HTMLCanvasElement, world: World, defs: G
   const camera = new StrategyCamera(scene, canvas, { halfX, halfZ }, { x: 0, z: 0 });
   const highlighter = new TileHighlight(scene, world);
 
-  /** المربع تحت المؤشر / Tile under the pointer */
-  const pickTile = (onlyGround: boolean): Tile | null => {
-    const pick = scene.pick(scene.pointerX, scene.pointerY, (m) => m === terrain || (!onlyGround && tileOfMesh.has(m)));
+  /** المربع تحت المؤشر؛ النقر على مبنى يحدد مربعه / Tile under the pointer; clicking a building selects its tile */
+  const pickTile = (): Tile | null => {
+    const pick = scene.pick(scene.pointerX, scene.pointerY, (m) => m === terrain || tileOfMesh.has(m));
     if (!pick?.hit || !pick.pickedMesh) return null;
-    return (!onlyGround && tileOfMesh.get(pick.pickedMesh)) || (pick.pickedPoint ? tileAtPoint(world, pick.pickedPoint.x, pick.pickedPoint.z) : null);
+    return tileOfMesh.get(pick.pickedMesh) || (pick.pickedPoint ? tileAtPoint(world, pick.pickedPoint.x, pick.pickedPoint.z) : null);
+  };
+
+  /** المربع وأقرب زاوية شبكة تحت المؤشر / Tile and nearest grid corner under the pointer */
+  const pickDrag = (): DragPoint | null => {
+    const pick = scene.pick(scene.pointerX, scene.pointerY, (m) => m === terrain);
+    if (!pick?.hit || !pick.pickedPoint) return null;
+    const tile = tileAtPoint(world, pick.pickedPoint.x, pick.pickedPoint.z);
+    if (!tile) return null;
+    const { tileSize, tilesX, tilesZ } = world.settings;
+    const corner = {
+      x: Math.min(tilesX, Math.max(0, Math.round((pick.pickedPoint.x + halfX) / tileSize))),
+      z: Math.min(tilesZ, Math.max(0, Math.round((pick.pickedPoint.z + halfZ) / tileSize))),
+    };
+    return { tile, corner };
   };
 
   // تمييز النقر عن السحب: النقر فقط يحدد المربع، والسحب يرسم في وضع السحب
-  // Tell clicks from drags: a click selects; in drag mode a drag traces tiles
+  // Tell clicks from drags: a click selects; in drag mode a drag traces the grid
   const clickHandlers: ((tile: Tile) => void)[] = [];
   let drag: TileDragHandler | null = null;
   let dragging = false;
@@ -108,17 +128,17 @@ export function createGameScene(canvas: HTMLCanvasElement, world: World, defs: G
     const e = info.event as PointerEvent;
     if (info.type === PointerEventTypes.POINTERDOWN && e.button === 0) {
       down = { x: e.clientX, y: e.clientY };
-      const tile = drag && pickTile(true);
-      if (drag && tile) {
+      const at = drag && pickDrag();
+      if (drag && at) {
         dragging = true;
-        lastDragKey = `${tile.x},${tile.z}`;
-        drag.start(tile);
+        lastDragKey = `${at.corner.x},${at.corner.z}`;
+        drag.start(at);
       }
     } else if (info.type === PointerEventTypes.POINTERMOVE && dragging && drag) {
-      const tile = pickTile(true);
-      if (tile && `${tile.x},${tile.z}` !== lastDragKey) {
-        lastDragKey = `${tile.x},${tile.z}`;
-        drag.move(tile);
+      const at = pickDrag();
+      if (at && `${at.corner.x},${at.corner.z}` !== lastDragKey) {
+        lastDragKey = `${at.corner.x},${at.corner.z}`;
+        drag.move(at);
       }
     } else if (info.type === PointerEventTypes.POINTERUP && down) {
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
@@ -129,7 +149,7 @@ export function createGameScene(canvas: HTMLCanvasElement, world: World, defs: G
         return;
       }
       if (moved > APP_CONFIG.selection.clickTolerancePx) return;
-      const tile = pickTile(false);
+      const tile = pickTile();
       if (tile) for (const h of clickHandlers) h(tile);
     }
   });

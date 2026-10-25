@@ -44,6 +44,17 @@ const WORLD_SETTINGS = [
   { key: 'تكلفة ضم المربع', field: 'annexCost', type: 'number', description: 'كمية مورد الضم لكل قطعة أرض جديدة' },
   // إضافة مباني الموارد (addResourceBuildings) / Resource buildings addition
   { key: 'حجم قطعة الضم', field: 'annexBlockSize', type: 'number', description: 'طول ضلع قطعة الأرض التي تُضم دفعة واحدة بعدد المربعات' },
+  // إضافة العالم والمكامن (addWorldAndDeposits) / World and deposits addition
+  { key: 'نصف قطر المنطقة المسطحة', field: 'flatZoneRadius', type: 'number', description: 'نصف ضلع المنطقة المسطحة حول كل موقع عاصمة مقترح بعدد المربعات' },
+  { key: 'عدد السلاسل الجبلية', field: 'massifCount', type: 'number', description: 'عدد السلاسل الجبلية في العالم؛ كل سلسلة فيها معدن واحد' },
+  { key: 'نصف قطر السلسلة الجبلية', field: 'massifRadius', type: 'number', description: 'حجم السلسلة الجبلية بعدد المربعات' },
+  { key: 'عدد البحيرات', field: 'lakeCount', type: 'number', description: 'عدد البحيرات الداخلية في العالم' },
+  { key: 'نصف قطر البحيرة', field: 'lakeRadius', type: 'number', description: 'حجم البحيرة بعدد المربعات' },
+  { key: 'نطاق الاكتشاف', field: 'discoveryRadius', type: 'number', description: 'المكامن التي تقع على هذا البعد من حدود الدولة تظهر تلقائيًا' },
+  { key: 'نطاق مسح الموارد', field: 'surveyRadius', type: 'number', description: 'نصف قطر المنطقة التي يكشفها أمر مسح الموارد' },
+  { key: 'مورد المسح', field: 'surveyResource', type: 'string', description: 'معرف المورد الذي يُدفع لمسح الموارد' },
+  { key: 'تكلفة مسح الموارد', field: 'surveyCost', type: 'number', description: 'كمية مورد المسح لكل عملية' },
+  { key: 'اسم مبنى الحكم', field: 'governmentName', type: 'string', description: 'اسم أول مبنى في القرية' },
 ];
 
 /**
@@ -112,6 +123,21 @@ const TABLES = [
       { name: 'السكان المضافون', field: 'housing', type: 'number' },
       { name: 'النموذج', field: 'model', type: 'string' },
       { name: 'يتطلب طريق', field: 'requiresRoad', type: 'boolean' },
+      // إضافة العالم والمكامن / World and deposits addition
+      { name: 'يتطلب مكمن', field: 'requiresDeposit', type: 'string' },
+    ],
+  },
+  {
+    id: 'depositTypes', name: 'أنواع المكامن',
+    columns: [
+      { name: 'المعرف', field: 'id', type: 'string' },
+      { name: 'الاسم', field: 'name', type: 'string' },
+      { name: 'معرف المورد', field: 'resourceId', type: 'string' },
+      { name: 'المكان', field: 'place', type: 'string' },
+      { name: 'العدد في العالم', field: 'count', type: 'number' },
+      { name: 'الأيقونة', field: 'icon', type: 'string' },
+      { name: 'اللون', field: 'color', type: 'string' },
+      DISABLED_COLUMN,
     ],
   },
   {

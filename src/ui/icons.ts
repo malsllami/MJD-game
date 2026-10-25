@@ -9,6 +9,9 @@ export const ICON_SPRITE = `
   <symbol id="i-stone" viewBox="0 0 16 16"><path fill="currentColor" d="M3 12l1-6 5-3 5 4-1 6z"/></symbol>
   <symbol id="i-iron" viewBox="0 0 16 16"><path fill="currentColor" d="M3 11h10l-2-5H5z"/></symbol>
   <symbol id="i-oil" viewBox="0 0 16 16"><path fill="currentColor" d="M8 1c3 5 5 7 5 9a5 5 0 0 1-10 0c0-2 2-4 5-9z"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.5" d="M1 1h14v14H1zM1 6h14M1 10.5h14M6 1v14M10.5 1v14"/></symbol>
+  <symbol id="i-copper" viewBox="0 0 16 16"><path fill="currentColor" d="M2 11l3-6h6l3 6z"/><path fill="rgba(0,0,0,.25)" d="M5 9h6v1H5z"/></symbol>
+  <symbol id="i-silver" viewBox="0 0 16 16"><path fill="currentColor" d="M8 1l6 5-6 9-6-9z"/></symbol>
   <symbol id="i-move" viewBox="0 0 16 16"><path fill="currentColor" d="M8 0l3 3H9v4h4V5l3 3-3 3V9H9v4h2l-3 3-3-3h2V9H3v2L0 8l3-3v2h4V3H5z"/></symbol>
   <symbol id="i-demolish" viewBox="0 0 16 16"><path fill="currentColor" d="M5 1h6v2h4v2H1V3h4zm-2 5h10l-1 9H4z"/></symbol>
   <symbol id="i-water" viewBox="0 0 16 16"><path fill="currentColor" d="M8 1c2 4 5 6 5 9a5 5 0 0 1-10 0c0-3 3-5 5-9zM5.5 10a2.5 2.5 0 0 0 2.5 2.5v-1A1.5 1.5 0 0 1 6.5 10z"/></symbol>

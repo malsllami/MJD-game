@@ -140,6 +140,8 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
 .pin::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--gold-soft); box-shadow: 0 0 0 3px rgba(233, 211, 155, 0.25); }
 .pin-build { color: #f0c477; font-size: 11px; }
 .pin-build::before { background: #f0c477; }
+.pin-deposit { color: #e8efe9; font-size: 12px; background: rgba(20, 34, 30, 0.88); border: 1px solid rgba(233, 211, 155, 0.35); }
+.pin-deposit::before { background: #8fe0b0; box-shadow: 0 0 0 3px rgba(143, 224, 176, 0.25); }
 .pin-warn { color: #f5a397; font-size: 11px; background: rgba(60, 18, 14, 0.85); }
 .pin-warn::before { background: #f5a397; box-shadow: 0 0 0 3px rgba(245, 163, 151, 0.25); }
 
@@ -175,6 +177,7 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
 .site p { margin: 0; }
 .site .warn { color: #f0c477; }
 .site .fit { color: #8fe0b0; }
+.site .deposits { color: var(--gold-soft); }
 .start-btn { border: 0; border-radius: 12px; padding: 12px; font-size: 15px; font-weight: 700; background: var(--gold); color: var(--gold-ink); }
 .start-btn:disabled { opacity: 0.5; cursor: default; }
 
