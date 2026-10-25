@@ -53,7 +53,7 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
 .res .ico { color: var(--c); }
 .res b { font-size: 13px; }
 .res small { color: var(--ink-soft); }
-.res i { font-style: normal; font-size: 11px; color: #8fe0b0; }
+.res i { font-style: normal; font-size: 11px; }
 .clock { padding: 3px 10px; border-radius: 999px; background: var(--chip); font-size: 12px; font-weight: 700; white-space: nowrap; }
 .civic { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .stage-chip { padding: 3px 10px; border-radius: 999px; background: var(--green); color: #fff; font-size: 12px; }

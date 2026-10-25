@@ -108,15 +108,16 @@ export function createHud(root: HTMLElement, defs: GameDefinitions, actions: Hud
 }
 
 /**
- * تحديث شريط الموارد: المخزون مقرّبًا للأسفل، والإنتاج في الدقيقة إن وُجد
- * Refresh the resource bar: stock floored, plus output per minute when non-zero
+ * تحديث شريط الموارد: المخزون مقرّبًا للأسفل، وصافي الإنتاج في الدقيقة بإشارته إن وُجد
+ * Refresh the resource bar: stock floored, plus signed net output per minute when non-zero
  */
 export function renderResources(root: HTMLElement, defs: GameDefinitions, state: GameState, rates: Record<string, number>): void {
   const el = root.querySelector<HTMLElement>('[data-resources]');
   if (!el) return;
   const html = defs.resources
     .map((r) => {
-      const rate = rates[r.id] ? `<i>+${formatNumber(rates[r.id])}</i>` : '';
+      const n = rates[r.id] ?? 0;
+      const rate = n ? `<i class="${n > 0 ? 'pos' : 'neg'}">${n > 0 ? '+' : '−'}${formatNumber(Math.abs(n))}</i>` : '';
       return `<span title="${esc(r.name)}" style="--c:${esc(r.color)}">${icon(r.icon)}<b>${formatNumber(Math.floor(state.resources[r.id] ?? 0))}</b><small>${esc(r.name)}</small>${rate}</span>`;
     })
     .join('');
