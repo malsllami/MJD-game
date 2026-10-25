@@ -41,7 +41,9 @@ const WORLD_SETTINGS = [
   { key: 'مدة اليوم بالدقائق', field: 'dayLengthMinutes', type: 'number', description: 'مدة يوم كامل في اللعبة بالدقائق الحقيقية؛ صفر يعني اتباع ساعة الجهاز' },
   { key: 'أقصى ساعات الغياب', field: 'offlineCapHours', type: 'number', description: 'أقصى عدد ساعات يُحسب فيها الإنتاج أثناء غياب اللاعب' },
   { key: 'مورد الضم', field: 'annexResource', type: 'string', description: 'معرف المورد الذي يُدفع لضم مربع للدولة' },
-  { key: 'تكلفة ضم المربع', field: 'annexCost', type: 'number', description: 'كمية مورد الضم لكل مربع جديد' },
+  { key: 'تكلفة ضم المربع', field: 'annexCost', type: 'number', description: 'كمية مورد الضم لكل قطعة أرض جديدة' },
+  // إضافة مباني الموارد (addResourceBuildings) / Resource buildings addition
+  { key: 'حجم قطعة الضم', field: 'annexBlockSize', type: 'number', description: 'طول ضلع قطعة الأرض التي تُضم دفعة واحدة بعدد المربعات' },
 ];
 
 /**

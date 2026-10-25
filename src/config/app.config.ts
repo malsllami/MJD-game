@@ -11,6 +11,8 @@ export interface QualityPreset {
   waterReflections: boolean;
   /** توهج الأضواء ليلًا / Night light glow */
   glow: boolean;
+  /** كثافة الأشجار والصخور (1 = كاملة) / Tree and rock density (1 = full) */
+  natureDensity: number;
   fogDensity: number;
 }
 
@@ -24,12 +26,13 @@ export const APP_CONFIG = {
   /** نفس شرط التحول لتخطيط الجوال في main.css / Same mobile-layout condition as main.css */
   mobileLayoutQuery: '(max-width: 899px), (pointer: coarse) and (orientation: portrait)',
   camera: {
-    minRadius: 22,
+    /** تقريب حتى مستوى الشارع / Zoom down to street level */
+    minRadius: 6,
     maxRadiusFactor: 1.15,
     startRadius: 130,
     startBeta: 0.9,
     minBeta: 0.32,
-    maxBeta: 1.2,
+    maxBeta: 1.35,
     keyPanSpeed: 0.9,
     rotateStep: Math.PI / 8,
     zoomStep: 0.18,
@@ -42,8 +45,8 @@ export const APP_CONFIG = {
     radiusMobile: 84,
   },
   quality: {
-    low: { maxDevicePixelRatio: 1, shadowMapSize: 0, waterReflections: false, glow: false, fogDensity: 0.0045 },
-    medium: { maxDevicePixelRatio: 1.5, shadowMapSize: 1024, waterReflections: true, glow: true, fogDensity: 0.004 },
-    high: { maxDevicePixelRatio: 2, shadowMapSize: 2048, waterReflections: true, glow: true, fogDensity: 0.0035 },
+    low: { maxDevicePixelRatio: 1, shadowMapSize: 0, waterReflections: false, glow: false, natureDensity: 0.4, fogDensity: 0.0045 },
+    medium: { maxDevicePixelRatio: 1.5, shadowMapSize: 1024, waterReflections: true, glow: true, natureDensity: 0.7, fogDensity: 0.004 },
+    high: { maxDevicePixelRatio: 2, shadowMapSize: 2048, waterReflections: true, glow: true, natureDensity: 1, fogDensity: 0.0035 },
   } satisfies Record<QualityLevel, QualityPreset>,
 };

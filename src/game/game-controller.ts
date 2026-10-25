@@ -1,16 +1,16 @@
 // مسؤولية الملف: ربط الجلسة بالعالم والواجهة — الأوضاع (بناء، رسم طريق، نقل)، التحديد والأوامر، الحلقة الزمنية، والحفظ الدوري
 // File responsibility: wires the session to the world and HUD — modes (build, road drawing, move), selection and commands, time loop, autosave
 
-import { Color3, type Mesh, type MultiMaterial, type StandardMaterial } from '@babylonjs/core';
+import { Color3, type AbstractMesh, type TransformNode } from '@babylonjs/core';
 import { APP_CONFIG } from '../config/app.config';
 import {
-  buildingAt, buildingStatus, checkMove, costShare, housingCapacity, isRoad, isSettlementTile, isUnderConstruction,
-  netRates, nextStage, stageById, tileKey, tilePath,
+  buildingAt, buildingStatus, checkMove, checkPlacement, costShare, housingCapacity, isRoad, isSettlementTile, isUnderConstruction,
+  netRates, nextStage, placeRoadPath, stageById, tileKey, tilePath,
 } from '../core/economy';
 import type { BuildingDef, ContextCommand, EntityType, GameDefinitions, Tile, World } from '../core/types';
-import { sampleHeight } from '../core/world-gen';
 import { BottomSheet } from '../ui/bottom-sheet';
 import { BuildBar } from '../ui/build-bar';
+import { ConfirmBar } from '../ui/confirm-bar';
 import { createHud, renderCivic, renderClock, renderResources, showBuildView } from '../ui/hud';
 import { MinistriesPanel } from '../ui/ministries-panel';
 import { Minimap } from '../ui/minimap';
@@ -18,8 +18,9 @@ import { RadialMenu, type RadialContent } from '../ui/radial-menu';
 import { Toast } from '../ui/toast';
 import { WorldLabels } from '../ui/world-labels';
 import { formatDuration, formatNumber } from '../utils/format';
-import { BuildingModels } from '../world/building-models';
+import { BuildingModels, partsFor } from '../world/building-models';
 import type { GameScene } from '../world/game-scene';
+import { GhostPreview } from '../world/ghost-preview';
 import { RoadNetwork } from '../world/road-network';
 import { createSettlementModel } from '../world/settlements';
 import { TileSetOutline } from '../world/tile-set-outline';
@@ -59,14 +60,17 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const borders = new TileSetOutline(game.scene, world, new Color3(0.9, 0.8, 0.5), 0.35);
   const allowed = new TileSetOutline(game.scene, world, new Color3(0.45, 0.95, 0.6), 0.45);
   const preview = new TileSetOutline(game.scene, world, new Color3(1, 0.85, 0.35), 0.55);
-  const roads = new RoadNetwork(game.scene, world, byId, game.dayNight.lights);
-  const traffic = new Traffic(game.scene, world);
+  const roads = new RoadNetwork(game.scene, world, game.library, byId, game.dayNight.lights);
+  const traffic = new Traffic(game.scene, world, game.library);
   const models = new BuildingModels(
-    game.scene, world, byId, game.shadows,
+    game.scene, world, game.library, byId, game.shadows,
     (mesh, placed) => game.registerPickable(mesh, tileAt(placed.x, placed.z)),
     (mesh) => game.unregisterPickable(mesh),
     game.dayNight.lights,
   );
+  const nature = game.nature;
+  const ghost = new GhostPreview(game.scene, world, game.library);
+  const confirm = new ConfirmBar(hud.confirm, (p) => game.project(p));
   const buildBar = new BuildBar(hud.buildBar, defs, (b) => pickBuilding(b));
 
   let mode: Mode = { kind: 'idle' };
@@ -81,24 +85,27 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
 
   // ===== مركز القرية: يكبر مع كل مرحلة / Settlement centre: grows each stage =====
   const settlementTile = tileAt(session.state.settlement.x, session.state.settlement.z);
-  let settlementMesh: Mesh | null = null;
+  let settlement: { root: TransformNode; meshes: AbstractMesh[] } | null = null;
   let settlementStage = '';
   function syncSettlement(): void {
     const { stage } = session.state;
     if (stage === settlementStage) return;
-    const level = stageById(defs, stage).order;
-    if (settlementMesh) {
-      game.unregisterPickable(settlementMesh);
-      for (const m of (settlementMesh.material as MultiMaterial | null)?.subMaterials ?? []) if (m) game.dayNight.lights.remove(m as StandardMaterial);
-      settlementMesh.dispose(false, true);
-    }
-    settlementMesh = createSettlementModel(
-      game.scene, game.tileAnchor(settlementTile), world.settings.tileSize, world.settings.seed,
-      (x, z) => Math.max(0, sampleHeight(world, x, z)), game.shadows, level, game.dayNight.lights,
-    );
-    game.registerPickable(settlementMesh, settlementTile);
-    if (settlementStage) toast.show(`أصبحت ${defs.world.capitalName} ${stageById(defs, stage).name}! فُتحت مبانٍ جديدة وتوسعت الحدود`, 6000);
+    const announce = !!settlementStage;
     settlementStage = stage;
+    void createSettlementModel(
+      game.library, game.scene, game.tileAnchor(settlementTile), world.settings.tileSize, stageById(defs, stage).order, game.shadows, game.dayNight.lights,
+    ).then((next) => {
+      if (settlement) {
+        for (const m of settlement.meshes) game.unregisterPickable(m);
+        settlement.root.dispose();
+      }
+      settlement = next;
+      for (const m of next.meshes) {
+        m.isPickable = true;
+        game.registerPickable(m, settlementTile);
+      }
+    });
+    if (announce) toast.show(`أصبحت ${defs.world.capitalName} ${stageById(defs, stage).name}! فُتحت مبانٍ جديدة وتوسعت الحدود`, 6000);
   }
 
   // ===== الأوضاع / Modes =====
@@ -107,6 +114,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     mode = next;
     buildBar.setArmed(next.kind === 'place' || next.kind === 'road' ? next.building.id : null);
     preview.clear();
+    clearPreview();
     game.setTileDrag(next.kind === 'road' ? roadDrawing(next.building) : null);
     refreshAllowed();
   }
@@ -137,13 +145,29 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
       toast.show(`اسحب على الخريطة لرسم ${b.name} من القرية أو من طريق قائم. اضغط البطاقة مرة أخرى أو Esc للإنهاء`, 5000);
       return;
     }
-    if (selected && !isSettlementTile(session.state, selected.x, selected.z) && !buildingAt(session.state, selected.x, selected.z) &&
-        session.state.territory.includes(tileKey(selected.x, selected.z))) {
-      tryBuild(b, selected);
-      return;
-    }
+    const target = selected;
     setMode({ kind: 'place', building: b });
-    toast.show(`اختر مربعًا من المربعات الخضراء لبناء ${b.name}`);
+    if (target && !isSettlementTile(session.state, target.x, target.z) && !buildingAt(session.state, target.x, target.z) &&
+        session.state.territory.includes(tileKey(target.x, target.z))) {
+      closeSelection();
+      return previewBuild(b, target);
+    }
+    toast.show(`اختر مربعًا من المربعات الخضراء لمعاينة ${b.name}، ثم أكّد بعلامة ✓`);
+  }
+
+  const costText = (cost: Record<string, number>) => Object.entries(cost).map(([id, n]) => `${formatNumber(n)} ${resourceName(id)}`).join('، ');
+
+  /** معاينة المبنى على المربع مع شريط تأكيد / Preview the building on the tile with a confirmation bar */
+  function previewBuild(b: BuildingDef, tile: Tile): void {
+    const check = checkPlacement(defs, session.state, b, tile, Date.now());
+    ghost.show(partsFor(b.model, `preview-${b.id}`), tile, check.ok);
+    const detail = check.ok ? `${formatDuration(b.buildSeconds)} · ${costText(b.cost)}` : check.reason;
+    confirm.show(labelAbove(tile.x, tile.z, 0.6), b.name, detail, check.ok, () => tryBuild(b, tile), clearPreview);
+  }
+
+  function clearPreview(): void {
+    ghost.hide();
+    confirm.hide();
   }
 
   function tryBuild(b: BuildingDef, tile: Tile): void {
@@ -161,6 +185,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     const show = () => preview.show(path.map((p) => tileKey(p.x, p.z)));
     return {
       start(tile: Tile) {
+        confirm.hide();
         path = [{ x: tile.x, z: tile.z }];
         show();
       },
@@ -174,14 +199,29 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
         }
         show();
       },
+      // عند الإفلات تبقى المعاينة وينتظر التأكيد / On release the preview stays and waits for confirmation
       end() {
         const tiles = path.map((p) => tileAt(p.x, p.z));
-        path = [];
-        preview.clear();
-        const result = session.placeRoad(road, tiles, Date.now());
-        if (result.placed) toast.show(`بدأ بناء ${formatNumber(result.placed)} مربع ${road.name}${result.stoppedBy ? `، وتوقف الرسم: ${result.stoppedBy}` : ''}`);
-        else if (result.stoppedBy) toast.show(result.stoppedBy);
-        refresh(true);
+        const last = path[path.length - 1];
+        if (!last) return;
+        const dry = placeRoadPath(session.state, defs, road, tiles, Date.now(), () => 'preview');
+        const total = Object.fromEntries(Object.entries(road.cost).map(([id, n]) => [id, n * dry.placed]));
+        const detail = dry.placed
+          ? `${formatNumber(dry.placed)} مربع · ${costText(total)}${dry.stoppedBy ? ` · يتوقف: ${dry.stoppedBy}` : ''}`
+          : (dry.stoppedBy ?? 'لا مربعات جديدة في هذا المسار');
+        confirm.show(labelAbove(last.x, last.z, 0.4), road.name, detail, dry.placed > 0, () => {
+          const result = session.placeRoad(road, tiles, Date.now());
+          if (result.placed) toast.show(`بدأ بناء ${formatNumber(result.placed)} مربع ${road.name}`);
+          else if (result.stoppedBy) toast.show(result.stoppedBy);
+          path = [];
+          preview.clear();
+          confirm.hide();
+          refresh(true);
+        }, () => {
+          path = [];
+          preview.clear();
+          confirm.hide();
+        });
       },
     };
   }
@@ -189,20 +229,30 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   // ===== التحديد والأوامر / Selection and commands =====
 
   game.onTileClick((tile) => {
-    if (mode.kind === 'place') return tryBuild(mode.building, tile);
-    if (mode.kind === 'move') {
-      const result = session.move(mode.uid, tile, Date.now());
+    if (mode.kind === 'place') return previewBuild(mode.building, tile);
+    if (mode.kind === 'move') return previewMove(mode.uid, tile);
+    selected = tile;
+    game.highlight(tile);
+    radial.open(game.tileAnchor(tile), describe(tile), (cmd) => runCommand(cmd, tile));
+  });
+
+  /** معاينة نقل المبنى إلى مربع جديد مع تكلفة النقل / Preview moving a building to a new tile with its cost */
+  function previewMove(uid: string, tile: Tile): void {
+    const placed = session.state.buildings.find((b) => b.uid === uid);
+    const def = placed && byId.get(placed.buildingId);
+    if (!placed || !def) return setMode({ kind: 'idle' });
+    const check = checkMove(defs, session.state, uid, tile, Date.now());
+    ghost.show(partsFor(def.model, uid), tile, check.ok);
+    const detail = check.ok ? `تكلفة النقل ${costText(costShare(def.cost, defs.world.moveCostPercent)) || 'مجانًا'}` : check.reason;
+    confirm.show(labelAbove(tile.x, tile.z, 0.6), `نقل ${def.name}`, detail, check.ok, () => {
+      const result = session.move(uid, tile, Date.now());
       toast.show(result.ok ? 'نُقل المبنى إلى موقعه الجديد' : result.reason);
       if (result.ok) {
         setMode({ kind: 'idle' });
         refresh(true);
       }
-      return;
-    }
-    selected = tile;
-    game.highlight(tile);
-    radial.open(game.tileAnchor(tile), describe(tile), (cmd) => runCommand(cmd, tile));
-  });
+    }, clearPreview);
+  }
 
   function closeSelection(): void {
     selected = null;
@@ -212,7 +262,10 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
 
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (mode.kind !== 'idle') setMode({ kind: 'idle' });
+    if (confirm.visible) {
+      clearPreview();
+      preview.clear();
+    } else if (mode.kind !== 'idle') setMode({ kind: 'idle' });
     else closeSelection();
   });
 
@@ -304,7 +357,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
       }
       case 'annex': {
         const result = session.annex(tile, now);
-        toast.show(result.ok ? `انضم المربع إلى الدولة مقابل ${formatNumber(defs.world.annexCost)} ${resourceName(defs.world.annexResource)}` : result.reason);
+        toast.show(result.ok ? `انضمت قطعة أرض جديدة إلى الدولة مقابل ${formatNumber(defs.world.annexCost)} ${resourceName(defs.world.annexResource)}` : result.reason);
         if (result.ok) {
           refresh(true);
           radial.open(game.tileAnchor(tile), describe(tile), (c) => runCommand(c, tile));
@@ -334,6 +387,10 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     const now = Date.now();
     session.tick(now);
     const state = session.state;
+    // الأرض تُسوّى تحت كل منشأة، والطبيعة تُزال منها، قبل رسم المجسمات / Level the ground and clear nature under structures before drawing
+    const built = [tileKey(state.settlement.x, state.settlement.z), ...state.buildings.map((b) => tileKey(b.x, b.z))];
+    game.surface.level(built);
+    nature.hide(new Set(built));
     syncSettlement();
     models.sync(state, now);
     roads.sync(state);
@@ -378,7 +435,21 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   window.addEventListener('pagehide', saveNow);
   document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && saveNow());
 
+  // دولة جديدة: ضغطتان للتأكيد، ثم يُمسح الحفظ وتبدأ اللعبة من اختيار الموقع / New nation: two taps, then the save is wiped
+  let pendingReset = 0;
+  root.addEventListener('click', (e) => {
+    if (!(e.target as HTMLElement).closest('[data-action="new-nation"]')) return;
+    const now = Date.now();
+    if (now > pendingReset) {
+      pendingReset = now + CONFIRM_MS;
+      return toast.show(`اضغط «دولة جديدة» مرة أخرى خلال ${formatNumber(CONFIRM_MS / 1000)} ثوانٍ لحذف دولتك الحالية والبدء من جديد`);
+    }
+    session.abandon();
+    location.reload();
+  });
+
   game.scene.onAfterRenderObservable.add(() => {
+    confirm.update();
     radial.update();
     labels.update();
     const cam = game.camera.camera;

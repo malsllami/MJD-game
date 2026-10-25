@@ -15,6 +15,7 @@ export interface HudElements {
   sheetHandle: HTMLElement;
   minimap: HTMLCanvasElement;
   radial: HTMLElement;
+  confirm: HTMLElement;
   labels: HTMLElement;
   toast: HTMLElement;
 }
@@ -36,6 +37,7 @@ export function createHud(root: HTMLElement, defs: GameDefinitions, actions: Hud
       <div class="res" data-resources></div>
       <div class="clock" data-clock title="الوقت في الدولة"></div>
       <div class="dates" data-dates></div>
+      <button type="button" class="text-btn" data-action="new-nation" title="حذف الدولة الحالية والبدء من اختيار الموقع">دولة جديدة</button>
       <button type="button" class="icon-btn panel-toggle" data-action="toggle-panel" aria-label="طي لوحة الوزارات أو إظهارها">${icon('panel')}</button>
     </header>
 
@@ -61,6 +63,7 @@ export function createHud(root: HTMLElement, defs: GameDefinitions, actions: Hud
 
     <div class="labels" data-labels></div>
     <div class="radial" data-radial hidden></div>
+    <div class="confirm-bar" data-confirmbar hidden></div>
     <div class="toast" data-toast hidden></div>`;
 
   const q = <T extends HTMLElement>(sel: string): T => root.querySelector<T>(sel)!;
@@ -98,6 +101,7 @@ export function createHud(root: HTMLElement, defs: GameDefinitions, actions: Hud
     sheetHandle: q('[data-sheet-handle]'),
     minimap: q<HTMLCanvasElement>('[data-minimap]'),
     radial: q('[data-radial]'),
+    confirm: q('[data-confirmbar]'),
     labels: q('[data-labels]'),
     toast: q('[data-toast]'),
   };

@@ -208,14 +208,14 @@ describe('الضم / annexation', () => {
   })!;
 
   it('يضم مربعًا مجاورًا ويدفع التكلفة / annexes a neighbouring tile and pays', () => {
-    expect(checkAnnex(defs, s, border)).toEqual({ ok: true });
-    const next = annexTile(s, defs, border);
+    expect(checkAnnex(defs, world, s, border)).toEqual({ ok: true });
+    const next = annexTile(s, defs, world, border);
     expect(next.territory).toContain(tileKey(border.x, border.z));
     expect(next.resources[defs.world.annexResource]).toBe(s.resources[defs.world.annexResource] - defs.world.annexCost);
   });
 
   it('يرفض مربعًا بعيدًا عن الحدود / refuses a tile away from the borders', () => {
     const far = world.tiles.find((t) => Math.hypot(t.x - site.x, t.z - site.z) > 20 && !defs.terrain.find((x) => x.id === t.terrainId)!.isWater)!;
-    expect(checkAnnex(defs, s, far).ok).toBe(false);
+    expect(checkAnnex(defs, world, s, far).ok).toBe(false);
   });
 });

@@ -83,15 +83,23 @@ export class GameSession {
   /** محاولة ضم مربع للدولة / Try to annex a tile */
   annex(tile: Tile, now: number): Check {
     this.tick(now);
-    const check = checkAnnex(this.defs, this.current, tile);
+    const check = checkAnnex(this.defs, this.world, this.current, tile);
     if (check.ok) {
-      this.current = annexTile(this.current, this.defs, tile);
+      this.current = annexTile(this.current, this.defs, this.world, tile);
       this.persist();
     }
     return check;
   }
 
   persist(): void {
-    this.saves.save(this.current);
+    if (!this.abandoned) this.saves.save(this.current);
   }
+
+  /** ترك الدولة الحالية: يُمسح الحفظ ويتوقف الحفظ التلقائي / Abandon the nation: wipe the save and stop autosaving */
+  abandon(): void {
+    this.abandoned = true;
+    this.saves.clear();
+  }
+
+  private abandoned = false;
 }

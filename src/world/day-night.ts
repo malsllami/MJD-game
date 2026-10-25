@@ -1,7 +1,7 @@
 // مسؤولية الملف: دورة الليل والنهار — حركة الشمس، تدرج الشروق والغروب، ألوان السماء والضباب، وتشغيل الإنارة تلقائيًا ليلًا
 // File responsibility: day-night cycle — sun path, gradual sunrise and sunset, sky and fog colours, and lights that switch on at night
 
-import { Color3, Vector3, type Mesh, type Scene, type StandardMaterial } from '@babylonjs/core';
+import { Color3, Vector3, type Mesh, type Scene } from '@babylonjs/core';
 import { HORIZON, type Environment } from './environment';
 import { applyWaterNight } from './water';
 
@@ -22,17 +22,25 @@ const smoothstep = (a: number, b: number, x: number): number => {
   return t * t * (3 - 2 * t);
 };
 
+/** لون إضاءة النوافذ ليلًا / Night window light colour */
+export const WINDOW_LIGHT = new Color3(0.42, 0.3, 0.14);
+
+/** أي مادة لها لون إشعاع (العادية ومواد نماذج glTF) / Any material with an emissive colour (standard and glTF PBR) */
+export interface Glowing {
+  emissiveColor: Color3;
+}
+
 /** أضواء تعمل ليلًا: مواد تتوهج بقدر الظلام / Night lights: materials that glow as it gets dark */
 export class NightLights {
-  private readonly lights: { material: StandardMaterial; color: Color3 }[] = [];
+  private readonly lights: { material: Glowing; color: Color3 }[] = [];
   private level = 0;
 
-  add(material: StandardMaterial, color: Color3): void {
+  add(material: Glowing, color: Color3): void {
     this.lights.push({ material, color });
     material.emissiveColor = color.scale(this.level);
   }
 
-  remove(material: StandardMaterial): void {
+  remove(material: Glowing): void {
     const i = this.lights.findIndex((l) => l.material === material);
     if (i >= 0) this.lights.splice(i, 1);
   }

@@ -116,6 +116,56 @@ describe('Apps Script: إضافة تطور القرية على قاعدة بيا
   });
 });
 
+describe('Apps Script: إضافة مباني الموارد على قاعدة بيانات قائمة / resource buildings addition on an existing database', () => {
+  const fresh = seedDefinitions();
+
+  /** قاعدة بيانات بعد إضافة تطور القرية وقبل مباني الموارد (حالة ملف المدير الآن) / The DB after the village addition, before resources */
+  function beforeResources() {
+    const { gas, ss } = loadGas();
+    gas.setupDatabase();
+    const ids: string[] = gas.SEED_RESOURCE_PRODUCTION.map((p: string[]) => p[0]);
+    const drop = (sheetName: string, column: string) => {
+      const sheet = ss.sheets.get(sheetName)!;
+      const c = sheet.values[0].indexOf(column);
+      sheet.values = sheet.values.filter((row, i) => i === 0 || !ids.includes(row[c] as string));
+    };
+    drop('المباني', 'المعرف');
+    drop('تكاليف المباني', 'معرف المبنى');
+    drop('إنتاج المباني', 'معرف المبنى');
+    drop('استهلاك المباني', 'معرف المبنى');
+    const world = ss.sheets.get('إعدادات العالم')!;
+    world.values = world.values.filter((row) => row[0] !== 'حجم قطعة الضم');
+    return { gas: loadGas(ss).gas, ss };
+  }
+
+  it('الناتج يطابق قاعدة بيانات جديدة / result matches a fresh database', () => {
+    const { gas, ss } = beforeResources();
+    expect(ss.sheets.get('المباني')!.values.some((row) => row.includes('sawmill'))).toBe(false);
+    gas.addResourceBuildings();
+    expect(definitionsFrom(gas)).toEqual(fresh);
+  });
+
+  it('قبل الإضافة تعمل اللعبة بالسلوك السابق (ضم مربع واحد) / before the addition the game keeps the previous behaviour', () => {
+    const { gas } = beforeResources();
+    expect(definitionsFrom(gas).world.annexBlockSize).toBe(1);
+  });
+
+  it('تشغيلها مرتين لا يكرر أي صف / running twice adds no duplicate rows', () => {
+    const { gas, ss } = beforeResources();
+    gas.addResourceBuildings();
+    const sizes = [...ss.sheets.values()].map((s) => s.values.length);
+    gas.addResourceBuildings();
+    expect([...ss.sheets.values()].map((s) => s.values.length)).toEqual(sizes);
+  });
+
+  it('أداة التجربة ترفع الكمية الابتدائية لكل الموارد / the testing tool raises every start amount', () => {
+    const { gas } = loadGas();
+    gas.setupDatabase();
+    gas.setStartAmountsForTesting();
+    expect(definitionsFrom(gas).resources.every((r) => r.startAmount === gas.TEST_START_AMOUNT)).toBe(true);
+  });
+});
+
 describe('Apps Script: الكاش والمزامنة / cache and sync', () => {
   const { gas } = loadGas();
   gas.setupDatabase();

@@ -35,6 +35,8 @@ export interface WorldSettings {
   offlineCapHours: number;
   annexResource: string;
   annexCost: number;
+  /** طول ضلع قطعة الأرض التي تُضم دفعة واحدة / Side length of the land parcel annexed at once */
+  annexBlockSize: number;
 }
 
 /** نوع تضاريس وشروط تصنيف المربع إليه / Terrain type and the rule that assigns tiles to it */

@@ -41,6 +41,14 @@ const REQUIRED_WORLD: (keyof WorldSettings)[] = [
   'dayLengthMinutes', 'offlineCapHours', 'annexResource', 'annexCost',
 ];
 
+/**
+ * إعدادات أُضيفت لاحقًا: إن لم تصل من خادم أقدم تُستخدم قيمة السلوك السابق حتى لا تتوقف اللعبة
+ * Settings added later: if an older server omits them, the previous behaviour applies so the game keeps running
+ */
+const BACKWARD_COMPATIBLE: Partial<WorldSettings> = {
+  annexBlockSize: 1,
+};
+
 /** جمع صفوف (مبنى، مورد، كمية) في قاموس لكل مبنى / Sum (building, resource, amount) rows per building */
 function perBuilding<T extends { buildingId: string; resourceId: string }>(rows: T[], amount: (r: T) => number | null) {
   const out = new Map<string, Record<string, number>>();
@@ -75,7 +83,7 @@ export function assembleDefinitions(raw: RawTables, version: string): GameDefini
 
   return {
     version,
-    world: raw.world as WorldSettings,
+    world: { ...BACKWARD_COMPATIBLE, ...raw.world } as WorldSettings,
     terrain: raw.terrain.map(({ id, name, color, priority, minElevation, maxElevation, minMoisture, maxMoisture, isWater, requiresWaterNeighbor }) => ({
       id, name, color, priority, minElevation, maxElevation, minMoisture, maxMoisture, isWater, requiresWaterNeighbor,
     })),

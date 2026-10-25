@@ -5,7 +5,10 @@ import { Engine, Matrix, PointerEventTypes, Scene, Vector3, type AbstractMesh, t
 import { APP_CONFIG, type QualityPreset } from '../config/app.config';
 import type { GameDefinitions, Tile, World } from '../core/types';
 import { sampleHeight, tileAtPoint, tileCenter, worldHalfExtents } from '../core/world-gen';
+import { ModelLibrary } from '../assets/model-library';
 import { DayNight } from './day-night';
+import { Nature } from './nature';
+import { TerrainSurface } from './terrain-surface';
 import { createEnvironment } from './environment';
 import { StrategyCamera } from './strategy-camera';
 import { createTerrainMesh } from './terrain-mesh';
@@ -32,6 +35,12 @@ export interface GameScene {
   readonly camera: StrategyCamera;
   readonly shadows: ShadowGenerator | null;
   readonly dayNight: DayNight;
+  /** تسوية الأرض تحت المنشآت / Ground levelling under structures */
+  readonly surface: TerrainSurface;
+  /** محمّل النماذج ثلاثية الأبعاد / 3D model loader */
+  readonly library: ModelLibrary;
+  /** الأشجار والصخور / Trees and rocks */
+  readonly nature: Nature;
   /** ربط مجسم بمربعه حتى يحدد النقر عليه ذلك المربع / Bind a mesh to its tile so clicking it selects that tile */
   registerPickable(mesh: AbstractMesh, tile: Tile): void;
   unregisterPickable(mesh: AbstractMesh): void;
@@ -63,6 +72,11 @@ export function createGameScene(canvas: HTMLCanvasElement, world: World, defs: G
   const terrain = createTerrainMesh(scene, world, defs.terrain);
   const water = createWater(scene, span, preset.waterReflections, [terrain, env.skybox]);
   const dayNight = new DayNight(scene, env, defs.world.dayLengthMinutes, span, water);
+  const surface = new TerrainSurface(terrain, world);
+  const library = new ModelLibrary(scene);
+  // الطبيعة جزء من العالم نفسه، فتظهر من شاشة اختيار الموقع / Nature belongs to the world, so it shows from the start-site screen
+  const nature = new Nature(library, world, preset.natureDensity);
+  void nature.build(env.shadows);
 
   const heightAt = (x: number, z: number): number => sampleHeight(world, x, z);
   const tileAnchor = (t: { x: number; z: number }): Vector3 => {
@@ -129,6 +143,9 @@ export function createGameScene(canvas: HTMLCanvasElement, world: World, defs: G
     camera,
     shadows: env.shadows,
     dayNight,
+    surface,
+    library,
+    nature,
     registerPickable: (mesh, tile) => tileOfMesh.set(mesh, tile),
     unregisterPickable: (mesh) => tileOfMesh.delete(mesh),
     onTileClick: (handler) => clickHandlers.push(handler),

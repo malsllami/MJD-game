@@ -143,6 +143,22 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
 .pin-warn { color: #f5a397; font-size: 11px; background: rgba(60, 18, 14, 0.85); }
 .pin-warn::before { background: #f5a397; box-shadow: 0 0 0 3px rgba(245, 163, 151, 0.25); }
 
+/* ===== شريط تأكيد البناء / Build confirmation bar ===== */
+.confirm-bar {
+  position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px;
+  border-radius: 16px; background: rgba(14, 26, 30, 0.92); border: 1px solid var(--line); white-space: nowrap;
+}
+.confirm-text { display: grid; font-size: 12px; line-height: 1.4; }
+.confirm-text b { font-size: 14px; color: var(--gold-soft); }
+.confirm-text small { color: var(--ink-soft); }
+.confirm-text small.bad { color: #f5a397; white-space: normal; max-width: 220px; }
+.confirm-btn { width: 44px; height: 44px; border-radius: 50%; border: 0; font-size: 20px; font-weight: 700; display: grid; place-items: center; }
+.confirm-btn.yes { background: #3fae6b; color: #fff; }
+.confirm-btn.yes:disabled { background: #3c4a46; color: #8a9a93; cursor: not-allowed; }
+.confirm-btn.no { background: #c4483c; color: #fff; }
+.text-btn { border: 1px solid var(--line); background: var(--chip); border-radius: 10px; padding: 6px 10px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.text-btn:hover { background: rgba(255, 255, 255, 0.12); }
+
 /* ===== اختيار موقع الانطلاق / Start-site picker ===== */
 .start-picker {
   position: absolute; top: calc(var(--gap) + var(--safe-t)); right: calc(var(--gap) + var(--safe-r)); bottom: calc(var(--gap) + var(--safe-b));

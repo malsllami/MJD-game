@@ -27,6 +27,7 @@ const SEED_WORLD = {
   offlineCapHours: 8,
   annexResource: 'gold',
   annexCost: 150,
+  annexBlockSize: 3,
 };
 
 /**
@@ -64,7 +65,24 @@ const SEED_BUILDINGS = [
   ['military_base', 'قاعدة عسكرية', 'military', 'plain, desert, plateau', 240, '', 'city', 0, 'civic', true],
   ['development_center', 'مركز تطوير القرية', 'government', 'plain, coast, plateau', 90, '', 'village', 0, 'civic', true],
   ['military_command', 'مركز القيادة العسكرية', 'military', 'plain, desert, plateau', 180, '', 'town', 0, 'civic', true],
+  // إضافة مباني الموارد / Resource buildings addition
+  ['sawmill', 'منجرة', 'economy', 'plain, plateau', 40, '', 'village', 0, 'sawmill', false],
+  ['blacksmith', 'الحدادون', 'industry', 'plain, plateau, mountain', 60, '', 'village', 0, 'smithy', true],
+  ['oil_prospector', 'منقبو النفط', 'economy', 'desert', 90, '', 'village', 0, 'oil-rig', false],
+  ['gold_prospector', 'منقبو الذهب', 'economy', 'mountain, plateau', 80, '', 'village', 0, 'quarry', false],
+  ['stone_prospector', 'منقبو الحجارة', 'economy', 'mountain, plateau, desert', 50, '', 'village', 0, 'quarry', false],
 ];
+
+/** صفوف إضافة مباني الموارد: [المبنى، المورد، الكمية] / Rows of the resource buildings addition */
+const SEED_RESOURCE_COSTS = [
+  ['sawmill', 'gold', 150], ['sawmill', 'stone', 50], ['blacksmith', 'wood', 150], ['blacksmith', 'stone', 100],
+  ['oil_prospector', 'wood', 200], ['oil_prospector', 'iron', 50], ['gold_prospector', 'wood', 150], ['gold_prospector', 'iron', 30],
+  ['stone_prospector', 'wood', 100],
+];
+const SEED_RESOURCE_PRODUCTION = [
+  ['sawmill', 'wood', 35], ['blacksmith', 'iron', 15], ['oil_prospector', 'oil', 10], ['gold_prospector', 'gold', 20], ['stone_prospector', 'stone', 30],
+];
+const SEED_RESOURCE_CONSUMPTION = [['blacksmith', 'wood', 4]];
 
 /** أوامر أي مبنى عام / Commands for a generic building */
 const SEED_BUILDING_COMMANDS = cmds_('building', [
@@ -114,17 +132,17 @@ const SEED_ROWS = {
     ['military_base', 'stone', 1500], ['military_base', 'iron', 600], ['military_base', 'gold', 800],
     ['development_center', 'stone', 200], ['development_center', 'wood', 150], ['development_center', 'gold', 200],
     ['military_command', 'stone', 600], ['military_command', 'iron', 200], ['military_command', 'gold', 400],
-  ]),
+  ].concat(SEED_RESOURCE_COSTS)),
   buildingProduction: amounts_('الكمية في الدقيقة', [
     ['farm', 'food', 30], ['lumber_camp', 'wood', 24], ['mine', 'stone', 18], ['mine', 'iron', 8], ['oil_field', 'oil', 6],
     ['port', 'gold', 30], ['port', 'food', 10], ['water_desal', 'water', 25], ['power_plant', 'power', 25],
     ['livestock', 'food', 25], ['market', 'gold', 30], ['finance_center', 'gold', 60], ['factory', 'gold', 70],
-  ]),
+  ].concat(SEED_RESOURCE_PRODUCTION)),
   buildingConsumption: amounts_('الكمية في الدقيقة', [
     ['houses', 'food', 2], ['houses', 'water', 1], ['apartments', 'water', 3], ['apartments', 'power', 3], ['apartments', 'food', 4],
     ['livestock', 'water', 2], ['market', 'food', 8], ['civil_defense', 'power', 1], ['hospital', 'water', 2], ['hospital', 'power', 3],
     ['park', 'water', 1], ['finance_center', 'power', 3], ['factory', 'power', 6], ['factory', 'iron', 2],
-  ]),
+  ].concat(SEED_RESOURCE_CONSUMPTION)),
   stages: [
     ['village', 'قرية', 0, 3, 'بداية الدولة: المنازل والطرق والماء والكهرباء والزراعة والسوق'],
     ['town', 'بلدة', 150, 5, 'الخدمات العامة والأمن وتطوير الطرق ومركز القرية'],

@@ -109,7 +109,8 @@ export function createTerrainMesh(scene: Scene, world: World, terrain: TerrainTy
   data.indices = indices;
   data.normals = normals;
   data.colors = colors;
-  data.applyToMesh(mesh);
+  // قابل للتحديث حتى تُسوّى الأرض تحت المباني / Updatable so the ground can be levelled under buildings
+  data.applyToMesh(mesh, true);
 
   const material = new StandardMaterial('terrain-mat', scene);
   material.diffuseColor = Color3.White();

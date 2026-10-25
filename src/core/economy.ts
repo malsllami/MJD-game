@@ -43,12 +43,31 @@ export function nextStage(defs: GameDefinitions, id: string): Stage | null {
   return defs.stages[i + 1] ?? null;
 }
 
-/** مربعات اليابسة ضمن دائرة حول نقطة / Land tiles within a circle around a point */
+/** مربعات اليابسة ضمن مربع حول نقطة (الحدود مربعة) / Land tiles within a square around a point (borders are square) */
 export function landAround(defs: GameDefinitions, world: World, cx: number, cz: number, radius: number): string[] {
   const water = waterIds(defs);
   return world.tiles
-    .filter((t) => !water.has(t.terrainId) && (t.x - cx) ** 2 + (t.z - cz) ** 2 <= radius * radius)
+    .filter((t) => !water.has(t.terrainId) && Math.abs(t.x - cx) <= radius && Math.abs(t.z - cz) <= radius)
     .map((t) => tileKey(t.x, t.z));
+}
+
+/**
+ * قطعة الضم التي يقع فيها المربع: قطع ثابتة على شبكة العالم بطول ضلع annexBlockSize
+ * The annex parcel holding a tile: fixed parcels on the world grid of side annexBlockSize
+ */
+export function annexBlock(defs: GameDefinitions, world: World, tile: Tile): Tile[] {
+  const size = Math.max(1, defs.world.annexBlockSize);
+  const water = waterIds(defs);
+  const x0 = Math.floor(tile.x / size) * size;
+  const z0 = Math.floor(tile.z / size) * size;
+  const out: Tile[] = [];
+  for (let z = z0; z < z0 + size; z++) {
+    for (let x = x0; x < x0 + size; x++) {
+      const t = world.tiles[z * world.settings.tilesX + x];
+      if (t && x < world.settings.tilesX && !water.has(t.terrainId)) out.push(t);
+    }
+  }
+  return out;
 }
 
 /**
@@ -374,22 +393,32 @@ export function resumeAfterAbsence(state: GameState, defs: GameDefinitions, worl
 
 // ===== الضم / Annexation =====
 
+/** مربعات القطعة التي لم تُضم بعد / Parcel tiles not yet in the nation */
+function newBlockTiles(defs: GameDefinitions, world: World, state: GameState, tile: Tile): Tile[] {
+  const owned = new Set(state.territory);
+  return annexBlock(defs, world, tile).filter((t) => !owned.has(tileKey(t.x, t.z)));
+}
+
 /**
- * هل يمكن ضم المربع؟ يجب أن يكون يابسة ومجاورًا للحدود، مع توفر التكلفة
- * Can the tile be annexed? It must be land, border the territory, and be affordable
+ * هل يمكن ضم قطعة الأرض التي فيها المربع؟ يجب أن تكون فيها يابسة جديدة تجاور الحدود، مع توفر التكلفة
+ * Can the tile's parcel be annexed? It needs new land touching the borders, and must be affordable
  */
-export function checkAnnex(defs: GameDefinitions, state: GameState, tile: Tile): Check {
-  if (state.territory.includes(tileKey(tile.x, tile.z))) return { ok: false, reason: 'المربع داخل حدود الدولة بالفعل' };
+export function checkAnnex(defs: GameDefinitions, world: World, state: GameState, tile: Tile): Check {
   if (waterIds(defs).has(tile.terrainId)) return { ok: false, reason: 'لا يمكن ضم مربع مائي' };
-  const neighbours = NEIGHBOURS.map(([dx, dz]) => tileKey(tile.x + dx, tile.z + dz));
-  if (!neighbours.some((k) => state.territory.includes(k))) return { ok: false, reason: 'يمكن ضم المربعات المجاورة لحدود الدولة فقط' };
+  const fresh = newBlockTiles(defs, world, state, tile);
+  if (!fresh.length) return { ok: false, reason: 'هذه القطعة داخل حدود الدولة بالفعل' };
+  const owned = new Set(state.territory);
+  const touches = fresh.some((t) => NEIGHBOURS.some(([dx, dz]) => owned.has(tileKey(t.x + dx, t.z + dz))));
+  if (!touches) return { ok: false, reason: 'يمكن ضم القطع المجاورة لحدود الدولة فقط' };
   const shortage = missingResources(defs, state, annexCost(defs));
   if (shortage) return { ok: false, reason: `الموارد غير كافية؛ ينقص ${shortage}` };
   return { ok: true };
 }
 
-export function annexTile(state: GameState, defs: GameDefinitions, tile: Tile): GameState {
-  return { ...state, resources: pay(state.resources, annexCost(defs)), territory: [...state.territory, tileKey(tile.x, tile.z)] };
+/** ضم القطعة كاملة ودفع تكلفتها (بعد نجاح checkAnnex) / Annex the whole parcel and pay (after checkAnnex succeeds) */
+export function annexTile(state: GameState, defs: GameDefinitions, world: World, tile: Tile): GameState {
+  const added = newBlockTiles(defs, world, state, tile).map((t) => tileKey(t.x, t.z));
+  return { ...state, resources: pay(state.resources, annexCost(defs)), territory: [...state.territory, ...added] };
 }
 
 export function annexCost(defs: GameDefinitions): Record<string, number> {

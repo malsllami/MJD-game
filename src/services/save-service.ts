@@ -40,6 +40,15 @@ export class SaveService {
     }
   }
 
+  /** مسح الحفظ / Delete the save */
+  clear(): void {
+    try {
+      localStorage.removeItem(SAVE_KEY);
+    } catch {
+      // التخزين محظور: لا يوجد ما يُمسح / Storage blocked: nothing to delete
+    }
+  }
+
   /** حفظ الحالة؛ يعيد false إن تعذّر التخزين / Save the state; false if storage is unavailable */
   save(state: GameState): boolean {
     const file: SaveFile = { format: 2, worldSignature: this.signature, savedAt: Date.now(), state };
