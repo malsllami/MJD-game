@@ -1,5 +1,5 @@
-// مسؤولية الملف: هيكل واجهة القيادة المعتمدة وشريط الموارد العلوي وأزرار الكاميرا وطي اللوحة
-// File responsibility: approved command HUD skeleton, top resource bar, camera buttons and panel collapse
+// مسؤولية الملف: هيكل واجهة القيادة — شريط الموارد العلوي، أدوات القيادة يسارًا، الخريطة المصغرة، شريط البناء، الوزارات يمينًا، وأزرار الكاميرا
+// File responsibility: command HUD skeleton — top resource bar, command tools on the left, minimap, build bar, ministries on the right, camera buttons
 
 import type { GameDefinitions, GameState } from '../core/types';
 import { APP_CONFIG } from '../config/app.config';
@@ -14,6 +14,8 @@ export interface HudElements {
   sheet: HTMLElement;
   sheetHandle: HTMLElement;
   minimap: HTMLCanvasElement;
+  toolNav: HTMLElement;
+  drawer: HTMLElement;
   radial: HTMLElement;
   confirm: HTMLElement;
   labels: HTMLElement;
@@ -51,16 +53,22 @@ export function createHud(root: HTMLElement, defs: GameDefinitions, actions: Hud
       <section class="buildbar glass" data-buildbar aria-label="أدوات البناء"></section>
     </div>
 
-    <div class="mapbox">
-      <div class="cam glass">
-        <button type="button" class="icon-btn" data-action="rot-l" aria-label="تدوير لليسار">${icon('rotl')}</button>
-        <button type="button" class="icon-btn" data-action="rot-r" aria-label="تدوير لليمين">${icon('rotr')}</button>
-        <button type="button" class="icon-btn" data-action="zoom-in" aria-label="تقريب">${icon('plus')}</button>
-        <button type="button" class="icon-btn" data-action="zoom-out" aria-label="إبعاد">${icon('minus')}</button>
+    <nav class="toolnav glass" data-toolnav aria-label="أدوات القيادة"></nav>
+    <section class="drawer glass" data-drawer hidden></section>
+
+    <div class="zoom glass" aria-label="الكاميرا">
+      <button type="button" class="icon-btn" data-action="zoom-in" aria-label="تقريب" title="تقريب">${icon('plus')}</button>
+      <button type="button" class="icon-btn" data-action="zoom-out" aria-label="إبعاد" title="إبعاد">${icon('minus')}</button>
+      <button type="button" class="icon-btn" data-action="rot-l" aria-label="تدوير لليسار" title="تدوير">${icon('rotl')}</button>
+      <button type="button" class="icon-btn" data-action="rot-r" aria-label="تدوير لليمين" title="تدوير">${icon('rotr')}</button>
+    </div>
+
+    <div class="mapbox glass">
+      <div class="mini"><canvas data-minimap aria-label="الخريطة المصغرة"></canvas></div>
+      <div class="map-tools">
         <button type="button" class="icon-btn" data-action="toggle-grid" aria-label="إظهار شبكة المربعات أو إخفاؤها" title="الشبكة">${icon('grid')}</button>
         <button type="button" class="icon-btn" data-action="bulldoze" aria-label="هدم الطرق" title="هدم الطرق">${icon('demolish')}</button>
       </div>
-      <div class="mini glass"><canvas data-minimap aria-label="الخريطة المصغرة"></canvas></div>
     </div>
 
     <div class="labels" data-labels></div>
@@ -102,6 +110,8 @@ export function createHud(root: HTMLElement, defs: GameDefinitions, actions: Hud
     sheet,
     sheetHandle: q('[data-sheet-handle]'),
     minimap: q<HTMLCanvasElement>('[data-minimap]'),
+    toolNav: q('[data-toolnav]'),
+    drawer: q('[data-drawer]'),
     radial: q('[data-radial]'),
     confirm: q('[data-confirmbar]'),
     labels: q('[data-labels]'),

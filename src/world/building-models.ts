@@ -6,7 +6,7 @@
 import { Color3, MeshBuilder, Scene, StandardMaterial, TransformNode, type AbstractMesh, type Material, type ShadowGenerator } from '@babylonjs/core';
 import { STYLE_MODELS, type ModelPart } from '../assets/catalog';
 import type { ModelLibrary } from '../assets/model-library';
-import { isRoad, isUnderConstruction, tileKey } from '../core/economy';
+import { isRoad, isUnderConstruction } from '../core/economy';
 import type { BuildingDef, GameState, PlacedBuilding, World } from '../core/types';
 import { sampleHeight, tileCenter } from '../core/world-gen';
 import { WINDOW_LIGHT, type Glowing, type NightLights } from './day-night';
@@ -126,12 +126,13 @@ export class BuildingModels {
     }
   }
 
-  /** يتجه المبنى نحو أول طريق يجاوره / The building faces the first road beside it */
+  /** يتجه المبنى نحو أول ضلع من مربعه عليه طريق / The building faces the first side of its tile that holds a road */
   private facing(placed: PlacedBuilding, state: GameState): number {
-    const roads = new Set(state.buildings.filter((b) => isRoad(this.defs.get(b.buildingId))).map((b) => tileKey(b.x, b.z)));
-    const dirs: [number, number, number][] = [[0, 1, 0], [1, 0, Math.PI / 2], [0, -1, Math.PI], [-1, 0, -Math.PI / 2]];
-    const hit = dirs.find(([dx, dz]) => roads.has(tileKey(placed.x + dx, placed.z + dz)));
-    return hit ? hit[2] : (hash(placed.uid) % 4) * (Math.PI / 2);
+    const roads = new Set(state.roads.map((r) => r.edge));
+    const { x, z } = placed;
+    const sides: [string, number][] = [[`h:${x},${z + 1}`, 0], [`v:${x + 1},${z}`, Math.PI / 2], [`h:${x},${z}`, Math.PI], [`v:${x},${z}`, -Math.PI / 2]];
+    const hit = sides.find(([edge]) => roads.has(edge));
+    return hit ? hit[1] : (hash(placed.uid) % 4) * (Math.PI / 2);
   }
 }
 

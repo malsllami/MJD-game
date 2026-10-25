@@ -491,14 +491,23 @@ export function advance(state: GameState, defs: GameDefinitions, world: World, n
  * Net output per minute now (production minus consumption) of operating buildings
  */
 export function netRates(state: GameState, defs: GameDefinitions, now: number): Record<string, number> {
-  const rates: Record<string, number> = {};
+  const { production, consumption } = rateBreakdown(state, defs, now);
+  const rates: Record<string, number> = { ...production };
+  for (const [id, n] of Object.entries(consumption)) rates[id] = (rates[id] ?? 0) - n;
+  return rates;
+}
+
+/** الإنتاج والاستهلاك في الدقيقة الآن، كلٌّ على حدة، للمباني العاملة / Per-minute production and consumption now, separately, of operating buildings */
+export function rateBreakdown(state: GameState, defs: GameDefinitions, now: number): { production: Record<string, number>; consumption: Record<string, number> } {
+  const production: Record<string, number> = {};
+  const consumption: Record<string, number> = {};
   for (const placed of state.buildings) {
     if (buildingStatus(placed, state, defs, now).kind !== 'operating') continue;
     const def = defs.buildings.find((b) => b.id === placed.buildingId)!;
-    for (const [id, n] of Object.entries(def.production)) rates[id] = (rates[id] ?? 0) + n;
-    for (const [id, n] of Object.entries(def.consumption)) rates[id] = (rates[id] ?? 0) - n;
+    for (const [id, n] of Object.entries(def.production)) production[id] = (production[id] ?? 0) + n;
+    for (const [id, n] of Object.entries(def.consumption)) consumption[id] = (consumption[id] ?? 0) + n;
   }
-  return rates;
+  return { production, consumption };
 }
 
 /** سعة المساكن العاملة الآن / Capacity of operating housing now */

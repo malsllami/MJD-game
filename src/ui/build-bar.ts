@@ -1,10 +1,14 @@
-// مسؤولية الملف: شريط البناء — فئات المباني وبطاقاتها، وحالة كل بطاقة (متاح، ينقصه موارد، مقفل بالمرحلة أو البحث)، وطابور الإنشاء
-// File responsibility: build bar — categories and cards, each card's state (available, short, locked by stage or research), and the queue
+// مسؤولية الملف: شريط البناء — تبويب "الكل" وفئات المباني، وبطاقات مصوّرة لكل مبنى بحالتها (متاح، ينقصه موارد، مقفل)، وطابور الإنشاء
+// File responsibility: build bar — an "all" tab and categories, picture cards per building with their state (available, short, locked), and the queue
 
-import { isUnderConstruction, missingResources, stageById } from '../core/economy';
+import { isRoad, isUnderConstruction, missingResources, stageById } from '../core/economy';
 import type { BuildingDef, GameDefinitions, GameState } from '../core/types';
 import { formatDuration, formatNumber } from '../utils/format';
 import { esc } from '../utils/html';
+import { icon } from './icons';
+
+/** تبويب يعرض كل المباني / The tab showing every building */
+const ALL = '*';
 
 export class BuildBar {
   private category: string;
@@ -15,8 +19,10 @@ export class BuildBar {
     private readonly el: HTMLElement,
     private readonly defs: GameDefinitions,
     private readonly onPick: (b: BuildingDef) => void,
+    /** صورة نمط المبنى / Picture of a building style */
+    private readonly thumbnail: (style: string) => Promise<string>,
   ) {
-    this.category = defs.buildingCategories[0]?.id ?? '';
+    this.category = ALL;
     el.addEventListener('click', (e) => {
       const t = e.target as HTMLElement;
       const cat = t.closest<HTMLButtonElement>('[data-cat]');
@@ -56,7 +62,8 @@ export class BuildBar {
       card.classList.toggle('short', !!short);
       const note = card.querySelector<HTMLElement>('[data-lock]')!;
       note.textContent = lockedByStage ? `يُفتح في ${required.name} · ${formatNumber(required.population)} نسمة` : b.requiresTech ? 'يتطلب بحثًا' : '';
-      card.title = locked ? note.textContent : short ? `ينقص: ${short}` : 'متاح للبناء';
+      const status = locked ? note.textContent : short ? `ينقص: ${short}` : 'متاح للبناء';
+      card.title = [b.name, card.dataset.info ?? '', status].join('\n');
     });
     const names = new Map(this.defs.buildings.map((b) => [b.id, b.name]));
     const active = state.buildings.filter((b) => isUnderConstruction(b, now));
@@ -75,28 +82,41 @@ export class BuildBar {
   private render(): void {
     const terrainName = new Map(this.defs.terrain.map((t) => [t.id, t.name]));
     const resourceName = new Map(this.defs.resources.map((r) => [r.id, r.name]));
-    const cats = this.defs.buildingCategories
-      .filter((c) => this.defs.buildings.some((b) => b.category === c.id))
+    const resourceIcon = new Map(this.defs.resources.map((r) => [r.id, r.icon]));
+    const cats = [{ id: ALL, name: 'الكل' }, ...this.defs.buildingCategories.filter((c) => this.defs.buildings.some((b) => b.category === c.id))]
       .map((c) => `<button type="button" role="tab" data-cat="${esc(c.id)}" aria-selected="${c.id === this.category}">${esc(c.name)}</button>`)
       .join('');
     const list = (m: Record<string, number>) => Object.entries(m).map(([id, n]) => `${formatNumber(n)} ${esc(resourceName.get(id) ?? id)}`).join(' · ');
-    const cards = this.defs.buildings
-      .filter((b) => b.category === this.category)
+    // التكلفة رقائق بأيقونات الموارد / Cost as chips with resource icons
+    const cost = (m: Record<string, number>) => Object.entries(m).map(([id, n]) => `<span title="${esc(resourceName.get(id) ?? id)}">${icon(resourceIcon.get(id) ?? id)}${formatNumber(n)}</span>`).join('');
+    const shown = this.defs.buildings.filter((b) => this.category === ALL || b.category === this.category);
+    const cards = shown
       .map((b) => {
         const where = b.allowedTerrain.map((id) => terrainName.get(id) ?? id).join('، ');
-        const output = Object.keys(b.production).length ? `<span class="out">+${list(b.production)} / د</span>` : '';
-        const input = Object.keys(b.consumption).length ? `<span class="in">−${list(b.consumption)} / د</span>` : '';
-        const homes = b.housing ? `<span class="out">يسكنه ${formatNumber(b.housing)}</span>` : '';
-        return `<button type="button" class="card" data-building="${esc(b.id)}" aria-pressed="${this.armed === b.id}">
+        const effects = [
+          b.housing ? `يسكنه ${formatNumber(b.housing)}` : '',
+          Object.keys(b.production).length ? `+${list(b.production)} / د` : '',
+          Object.keys(b.consumption).length ? `−${list(b.consumption)} / د` : '',
+        ].filter(Boolean);
+        // التفاصيل الكاملة في التلميح، وأهم أثر تحت الاسم / Full details in the tooltip, the main effect under the name
+        const info = [`يُبنى على: ${where}`, formatDuration(b.buildSeconds), ...effects].join('\n');
+        const picture = isRoad(b) ? `<span class="thumb road">${icon('road')}</span>` : `<span class="thumb"><img data-thumb="${esc(b.model)}" alt="" hidden></span>`;
+        return `<button type="button" class="card" data-building="${esc(b.id)}" aria-pressed="${this.armed === b.id}" data-info="${esc(info)}">
+          ${picture}
           <b>${esc(b.name)}</b>
-          <span>${esc(where)}</span>
-          <span>${formatDuration(b.buildSeconds)} · ${list(b.cost)}</span>
-          ${homes}${output}${input}
+          <span class="cost">${cost(b.cost)}</span>
+          ${effects.length ? `<small class="fx">${esc(effects[0])}</small>` : ''}
           <em data-lock></em>
         </button>`;
       })
       .join('');
     this.el.innerHTML = `<div class="bar-head"><nav class="cats" role="tablist">${cats}</nav><div class="queue" data-queue></div></div><div class="cards">${cards}</div>`;
+    this.el.querySelectorAll<HTMLImageElement>('img[data-thumb]').forEach((img) => {
+      void this.thumbnail(img.dataset.thumb!).then((src) => {
+        img.src = src;
+        img.hidden = false;
+      }).catch(() => undefined);
+    });
     if (this.last) this.update(this.last.state, this.last.now);
   }
 }

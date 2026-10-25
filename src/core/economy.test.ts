@@ -5,7 +5,7 @@ import { seedDefinitions } from '../test/gas-harness';
 import {
   advance, annexTile, applyStageProgress, buildingStatus, checkAnnex, checkMove, checkPlacement, checkRoadEdge, connectedRoads, cornerPath,
   createInitialState, demolishBuilding, demolishRoads, depositAt, hasRoadAccess, housingCapacity, moveBuilding, netRates, pathEdges,
-  placeBuilding, placeRoadPath, resumeAfterAbsence, surveyCost, surveyTile, tileKey,
+  placeBuilding, placeRoadPath, rateBreakdown, resumeAfterAbsence, surveyCost, surveyTile, tileKey,
 } from './economy';
 import { suggestStartSites } from './start-sites';
 import type { BuildingDef, GameState, Tile } from './types';
@@ -125,6 +125,9 @@ describe('الزمن / time', () => {
   it('صافي الإنتاج = الإنتاج ناقص الاستهلاك / net rate is production minus consumption', () => {
     const state = built(built(s, 'water_desal'), 'houses');
     expect(netRates(state, defs, T0).water).toBe(building('water_desal').production.water - building('houses').consumption.water);
+    const { production, consumption } = rateBreakdown(state, defs, T0);
+    expect(production.water).toBe(building('water_desal').production.water);
+    expect(consumption.water).toBe(building('houses').consumption.water);
   });
 
   it('بلوغ سكان البلدة يرقّي المرحلة ويوسع الحدود / reaching town population upgrades the stage and widens borders', () => {

@@ -18,6 +18,7 @@ import { MinistriesPanel } from '../ui/ministries-panel';
 import { Minimap } from '../ui/minimap';
 import { RadialMenu, type RadialContent } from '../ui/radial-menu';
 import { Toast } from '../ui/toast';
+import { ToolDrawer } from '../ui/tool-drawer';
 import { WorldLabels } from '../ui/world-labels';
 import { formatDuration, formatNumber } from '../utils/format';
 import { BuildingModels, partsFor } from '../world/building-models';
@@ -26,6 +27,7 @@ import { GhostPreview } from '../world/ghost-preview';
 import { GridLines } from '../world/grid-lines';
 import { RoadNetwork } from '../world/road-network';
 import { createSettlementModel } from '../world/settlements';
+import { Thumbnails } from '../world/thumbnails';
 import { TileSetOutline } from '../world/tile-set-outline';
 import { Traffic } from '../world/traffic';
 import type { GameSession } from './game-session';
@@ -78,7 +80,16 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const nature = game.nature;
   const ghost = new GhostPreview(game.scene, world, game.library);
   const confirm = new ConfirmBar(hud.confirm, (p) => game.project(p));
-  const buildBar = new BuildBar(hud.buildBar, defs, (b) => pickBuilding(b));
+  const thumbnails = new Thumbnails(game.scene, game.library, world.settings.tileSize);
+  const buildBar = new BuildBar(hud.buildBar, defs, (b) => pickBuilding(b), (style) => thumbnails.get(style));
+  const tools = new ToolDrawer(
+    hud.toolNav, hud.drawer, () => ({ defs, world, state: session.state, now: Date.now() }),
+    (x, z) => {
+      const p = game.tileAnchor({ x, z });
+      game.camera.focus(p.x, p.z);
+    },
+    (expanded) => root.classList.toggle('map-expanded', expanded),
+  );
 
   let mode: Mode = { kind: 'idle' };
   let selected: Tile | null = null;
@@ -481,6 +492,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
       renderClock(root, game.dayNight.dayFraction);
       buildBar.update(state, now);
       ministries.refresh();
+      tools.refresh();
       const deposits = world.deposits.filter((d) => state.discovered.includes(d.id)).map((d) => ({ x: d.x, z: d.z, emphasis: false }));
       minimap.setOverlay(state.territory, [{ x: settlementTile.x, z: settlementTile.z, emphasis: true }, ...deposits]);
     }

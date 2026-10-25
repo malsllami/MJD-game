@@ -18,6 +18,8 @@
   --display: 'Reem Kufi', 'IBM Plex Sans Arabic', system-ui, sans-serif;
   --body: 'IBM Plex Sans Arabic', system-ui, 'Segoe UI', Tahoma, sans-serif;
   --gap: 10px;
+  --map: 250px;
+  --panel: 340px;
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
@@ -71,7 +73,7 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
 
 .ministries {
   position: absolute; top: calc(72px + var(--safe-t)); right: calc(var(--gap) + var(--safe-r)); bottom: calc(var(--gap) + var(--safe-b));
-  width: 340px; padding: 14px; display: grid; grid-template-rows: auto auto 1fr; gap: 12px; min-height: 0;
+  width: var(--panel); padding: 14px; display: grid; grid-template-rows: auto auto 1fr; gap: 12px; min-height: 0;
 }
 .panel-head { display: grid; gap: 2px; }
 .panel-head h2 { margin: 0; font-family: var(--display); font-size: 18px; color: var(--gold-soft); font-weight: 700; }
@@ -96,19 +98,28 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
 .gt td { padding: 7px 6px; border-bottom: 1px solid var(--line-soft); }
 
 .buildbar {
-  position: absolute; bottom: calc(var(--gap) + var(--safe-b)); right: calc(360px + var(--safe-r)); left: calc(210px + var(--safe-l));
+  position: absolute; bottom: calc(var(--gap) + var(--safe-b)); right: calc(var(--panel) + var(--gap) * 2 + var(--safe-r)); left: calc(250px + var(--gap) * 2 + var(--safe-l));
   padding: 9px 11px; display: grid; gap: 8px;
 }
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 7px; max-height: 128px; overflow: auto; }
+/* بطاقات مصوّرة في صف واحد يُمرَّر أفقيًا / Picture cards in one horizontally scrolling row */
+.cards { display: grid; grid-auto-flow: column; grid-auto-columns: 124px; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
 .card {
-  text-align: right; border-radius: 11px; background: var(--chip); border: 1px solid var(--line-soft); padding: 7px 9px;
-  font-size: 11px; color: var(--ink-soft); display: grid; gap: 2px; align-content: start;
+  text-align: right; border-radius: 12px; background: var(--chip); border: 1px solid var(--line-soft); padding: 6px;
+  font-size: 11px; color: var(--ink-soft); display: grid; gap: 3px; align-content: start;
 }
-.card b { font-size: 13px; color: var(--ink); }
-.card em { font-style: normal; color: #f0c477; }
+.card .thumb {
+  display: grid; place-items: center; height: 70px; border-radius: 9px; overflow: hidden;
+  background: radial-gradient(circle at 50% 70%, rgba(143, 196, 160, 0.28), rgba(255, 255, 255, 0.03) 70%);
+}
+.card .thumb img { width: 100%; height: 100%; object-fit: contain; }
+.card .thumb.road .ico { width: 34px; height: 34px; color: var(--gold-soft); }
+.card b { font-size: 12px; color: var(--ink); padding-inline: 2px; }
+.card .cost { display: flex; flex-wrap: wrap; gap: 2px 8px; padding-inline: 2px; color: var(--ink); font-weight: 700; }
+.card .cost span { display: inline-flex; align-items: center; gap: 3px; }
+.card .cost .ico { width: 12px; height: 12px; color: var(--gold-soft); }
+.card .fx { color: #8fe0b0; padding-inline: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card em { font-style: normal; color: #f0c477; padding-inline: 2px; }
 .card em:empty { display: none; }
-.card .out { color: #8fe0b0; }
-.card .in { color: #f5a397; }
 .card[aria-pressed='true'] { border-color: var(--gold); background: rgba(201, 169, 97, 0.14); }
 .card.lock { opacity: 0.5; }
 .card.short b { color: #f0c477; }
@@ -124,12 +135,58 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
 /* طي اللوحة الجانبية يمنح العالم الشاشة / Collapsing the side panel gives the world the screen */
 .panel-collapsed .ministries { display: none; }
 .panel-collapsed .buildbar { right: calc(var(--gap) + var(--safe-r)); }
+.panel-collapsed .zoom { right: calc(var(--gap) + var(--safe-r)); }
 
-/* ===== الخريطة المصغرة والكاميرا (يسار أسفل) / Minimap and camera (bottom left) ===== */
-.mapbox { position: absolute; left: calc(var(--gap) + var(--safe-l)); bottom: calc(var(--gap) + var(--safe-b)); display: grid; gap: 6px; width: 190px; }
-.cam { display: flex; justify-content: space-between; padding: 4px; }
-.mini { width: 190px; height: 190px; overflow: hidden; padding: 0; }
+/* ===== الخريطة المصغرة (يسار أسفل) / Minimap (bottom left) ===== */
+.mapbox { position: absolute; left: calc(var(--gap) + var(--safe-l)); bottom: calc(var(--gap) + var(--safe-b)); display: grid; gap: 6px; width: var(--map); padding: 6px; z-index: 2; }
+.mini { aspect-ratio: 1; overflow: hidden; border-radius: 10px; }
 .mini canvas { width: 100%; height: 100%; display: block; cursor: crosshair; image-rendering: pixelated; }
+.map-tools { display: flex; gap: 6px; }
+/* أداة "الخريطة" تكبّر الخريطة المصغرة / The "map" tool enlarges the minimap */
+.map-expanded .mapbox { --map: min(calc(100dvh - 150px), calc(100vw - var(--panel) - 160px)); }
+
+/* ===== الكاميرا (يمين، بجوار الوزارات) / Camera (right, beside the ministries) ===== */
+.zoom {
+  position: absolute; top: 50%; transform: translateY(-50%); right: calc(var(--panel) + var(--gap) * 2 + var(--safe-r));
+  display: grid; gap: 6px; padding: 5px;
+}
+
+/* ===== أدوات القيادة (يسار) ولوحتها / Command tools (left) and their drawer ===== */
+.toolnav { position: absolute; top: calc(72px + var(--safe-t)); left: calc(var(--gap) + var(--safe-l)); display: grid; gap: 4px; padding: 5px; width: 84px; }
+.toolnav button {
+  position: relative; display: grid; justify-items: center; gap: 3px; padding: 8px 4px; border: 0; border-radius: 10px;
+  background: transparent; color: #c9d6cf; font-size: 11px; font-weight: 700;
+}
+.toolnav button .ico { width: 18px; height: 18px; }
+.toolnav button:hover { background: var(--chip); }
+.toolnav button[aria-pressed='true'] { background: var(--gold); color: var(--gold-ink); }
+.toolnav [data-badge] {
+  position: absolute; top: 4px; left: 10px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
+  background: #c4483c; color: #fff; font-size: 10px; font-style: normal; line-height: 17px; text-align: center;
+}
+.drawer {
+  position: absolute; top: calc(72px + var(--safe-t)); left: calc(84px + var(--gap) * 2 + var(--safe-l)); width: 320px;
+  max-height: calc(100dvh - 72px - 250px - 70px - var(--safe-t) - var(--safe-b)); display: grid; grid-template-rows: auto 1fr; gap: 10px; padding: 14px; min-height: 0;
+}
+.drawer-head { display: flex; align-items: center; justify-content: space-between; }
+.drawer-head h2 { margin: 0; display: flex; align-items: center; gap: 8px; font-family: var(--display); font-size: 17px; color: var(--gold-soft); }
+.drawer-head h2 .ico { width: 18px; height: 18px; }
+.drawer-body { min-height: 0; overflow: auto; display: grid; align-content: start; gap: 10px; }
+.drawer-body h3 { margin: 4px 0 0; font-size: 13px; color: var(--gold-soft); }
+.stats { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.stats div { padding: 8px 10px; border-radius: 10px; background: var(--chip); }
+.stats dt { font-size: 11px; color: var(--ink-soft); }
+.stats dd { margin: 2px 0 0; font-size: 13px; font-weight: 700; }
+.meter.wide { display: block; height: 5px; border-radius: 5px; background: linear-gradient(to left, var(--gold) var(--p), rgba(255, 255, 255, 0.12) var(--p)); }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { border: 1px solid var(--line); background: var(--chip); border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 700; }
+.tasks, .alerts { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.tasks li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--chip); font-size: 12px; font-weight: 700; }
+.tasks li i { width: 18px; height: 18px; flex: none; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid var(--line); font-style: normal; font-size: 11px; }
+.tasks li.done { color: var(--ink-soft); }
+.tasks li.done i { background: #3fae6b; border-color: #3fae6b; color: #fff; }
+.alerts li > * { width: 100%; display: grid; gap: 2px; text-align: right; padding: 8px 10px; border-radius: 10px; border: 0; background: rgba(196, 72, 60, 0.16); font-size: 12px; font-weight: 700; color: #f5c2b9; }
+.alerts small { color: var(--ink-soft); font-weight: 400; }
 
 /* ===== لافتات العالم / World labels ===== */
 .labels { position: absolute; inset: 0; overflow: hidden; }
@@ -237,14 +294,25 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
   .ministries, .buildbar { position: static; width: auto; background: none; border: 0; backdrop-filter: none; padding: 0; min-height: 0; overflow: auto; }
   .sheet[data-view='ministries'] .buildbar, .sheet[data-view='build'] .ministries { display: none; }
   .buildbar { align-content: start; }
-  .cards { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 132px; max-height: none; overflow-x: auto; padding-bottom: 4px; }
-  .card { min-height: 92px; padding: 10px; }
+  .cards { grid-auto-columns: 128px; }
   .tabs button, .cats button { padding: 8px 12px; }
 
-  .mapbox { top: calc(96px + var(--safe-t)); bottom: auto; width: auto; grid-auto-flow: column; align-items: start; }
-  .mini { width: 104px; height: 104px; }
-  .cam { flex-direction: column; gap: 4px; }
+  :root { --map: 112px; }
+  .mapbox { top: calc(100px + var(--safe-t)); bottom: auto; grid-auto-flow: column; align-items: start; width: auto; }
+  .mini { width: var(--map); }
+  .map-tools { flex-direction: column; }
+  .map-expanded .mapbox { --map: min(calc(100vw - 150px), 46dvh); }
+  .zoom { display: none; }
   .icon-btn { width: 44px; height: 44px; }
+
+  .toolnav { top: calc(100px + var(--safe-t)); left: auto; right: calc(var(--gap) + var(--safe-r)); width: auto; }
+  .toolnav button span { display: none; }
+  .toolnav button { padding: 11px; }
+  .drawer {
+    top: calc(100px + var(--safe-t)); left: calc(var(--gap) + var(--safe-l)); right: calc(66px + var(--safe-r)); width: auto;
+    max-height: calc(100dvh - 110px - var(--sheet-h, 42dvh) - var(--safe-t)); z-index: 3; background: var(--glass-solid);
+  }
+  .card .thumb { height: 54px; }
 
   .toast { top: calc(100px + var(--safe-t)); left: 50%; }
 }
