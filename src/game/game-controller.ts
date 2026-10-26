@@ -29,6 +29,7 @@ import { GhostPreview } from '../world/ghost-preview';
 import { GridLines } from '../world/grid-lines';
 import { RoadNetwork } from '../world/road-network';
 import { WallNetwork } from '../world/wall-network';
+import { Animals } from '../world/animals';
 import { createSettlementModel } from '../world/settlements';
 import { Thumbnails } from '../world/thumbnails';
 import { TileSetOutline } from '../world/tile-set-outline';
@@ -78,6 +79,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const roads = new RoadNetwork(game.scene, world, byId, game.dayNight.lights, game.ground ? new Set(['road']) : new Set());
   const traffic = new Traffic(game.scene, world, game.library);
   const walls = new WallNetwork(game.scene, world, game.library, byId, game.shadows);
+  const animals = new Animals(game.scene, world, game.library, game.shadows);
   const models = new BuildingModels(
     game.scene, world, game.library, byId, game.shadows,
     (mesh, placed) => game.registerPickable(mesh, tileAt(placed.x, placed.z)),
@@ -502,6 +504,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     models.sync(state, now, era());
     roads.sync(state);
     walls.sync(state, now);
+    animals.sync(state, defs, now);
     traffic.sync(roads.edgesByStyle(state).get('paved-road') ?? new Set(), state.population);
     borders.show(state.territory);
     grid.showTiles(state.territory);

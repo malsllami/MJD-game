@@ -23,6 +23,8 @@ export interface Assembly {
 }
 
 const V = (name: string) => `village/${name}.glb`;
+/** سطح ماء يُرسم بالكود بدل نموذج / A water surface drawn in code instead of a model */
+export const WATER_SURFACE = 'procedural:water';
 const F = (name: string) => `forest/${name}.glb`;
 const WALL_HEIGHT = 3;
 const ROOF_OVERHANG = 1.5;
@@ -146,6 +148,14 @@ const DISTINCT_LOOKS: Record<string, Assembly[]> = {
   'storage-materials': [house({ w: 6, d: 8, finish: 'brick', size: 0.86, extras: [{ path: F('Rock_Medium_1'), x: 4.6, z: 3, fit: 2 }, crate(-4.4, 3.6), { path: F('DeadTree_1'), x: -4.6, z: -2.8, fit: 2.6 }] })],
   bank: [house({ w: 6, d: 6, finish: 'brick', size: 0.78, extras: [chimney(2, -1.6), { path: V('Corner_Exterior_Brick'), x: -1.4, z: 3.8 }, { path: V('Corner_Exterior_Brick'), x: 1.4, z: 3.8 }] })],
   development: [house({ w: 6, d: 6, finish: 'plaster', size: 0.78, extras: [chimney(2, -1.6), chimney(-2, -1.6), crate(3.8, 3.6), crate(-3.8, 3.6)] })],
+  pond: [{
+    pieces: [
+      { path: WATER_SURFACE, x: 0, z: 0, fit: 7.2 },
+      ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({ path: F(i % 2 ? 'Rock_Medium_2' : 'Pebble_Round_1'), x: Math.cos(i * 0.785) * 4, z: Math.sin(i * 0.785) * 4, fit: i % 2 ? 1.4 : 0.8 })),
+      { path: F('Plant_1_Big'), x: 3.4, z: -3.2, fit: 1.6 },
+    ],
+    extent: 9, size: 0.92,
+  }],
   garden: [{
     pieces: [
       { path: F('CommonTree_1'), x: -2.4, z: -2.2, fit: 3.2 }, { path: F('CommonTree_2'), x: 2.6, z: -2.4, fit: 3 }, { path: F('Bush_Common_Flowers'), x: 2.2, z: 2.4, fit: 1.8 },

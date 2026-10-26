@@ -13,9 +13,9 @@ function applyCompactVillage() {
 
 /**
  * الاقتصاد الحي: المهن، وسكن لكل مهنة، والعمال وشروط فتح كل مبنى، وشروط ترقية المراحل، والمخازن والبنك والسعة، وأسعار السوق،
- * والحديقة والسور والبوابة. إضافة فقط وآمنة للتشغيل أكثر من مرة: الأعمدة الجديدة تُملأ خلاياها الفارغة فقط.
+ * والحديقة والسور والبوابة والبحيرة والجدول. إضافة فقط وآمنة للتشغيل أكثر من مرة: الأعمدة الجديدة تُملأ خلاياها الفارغة فقط.
  * The living economy: trades, housing per trade, each building's workers and unlock conditions, stage upgrade conditions,
- * stores, bank and capacity, market prices, and the garden, wall and gate. Additive and safe to re-run: new columns fill empty cells only.
+ * stores, bank and capacity, market prices, and the garden, wall, gate, lake and stream. Additive and safe to re-run: new columns fill empty cells only.
  */
 function addLivingEconomy() {
   const ss = db_();
@@ -47,6 +47,7 @@ function addLivingEconomy() {
   });
   step('buildingCosts', function (sheet) { return added(sheet, amounts_('الكمية', SEED_ECONOMY_COSTS), pair); });
   step('buildingConsumption', function (sheet) { return added(sheet, amounts_('الكمية في الدقيقة', SEED_ECONOMY_CONSUMPTION), pair); });
+  step('buildingProduction', function (sheet) { return added(sheet, amounts_('الكمية في الدقيقة', SEED_ECONOMY_PRODUCTION), pair); });
   step('storage', function (sheet, table) { return added(sheet, SEED_ROWS[table.id], pair); });
   step('marketPrices', function (sheet, table) { return added(sheet, SEED_ROWS[table.id], ['معرف المورد']); });
   step('world', function (sheet, table) { return 'إعدادات جديدة ' + ensureSettingsRows_(sheet, table); });

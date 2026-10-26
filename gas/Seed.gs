@@ -123,6 +123,8 @@ const SEED_BUILDINGS = [
   ['village_garden', 'حديقة القرية', 'services', 'plain, coast, plateau', 20, '', 'village', 0, 'garden', false, ''],
   ['wooden_wall', 'سور خشبي', 'security', 'plain, coast, plateau, desert', 8, '', 'village', 0, 'wall', false, ''],
   ['gate', 'بوابة', 'security', 'plain, coast, plateau, desert', 15, '', 'village', 0, 'gate', false, ''],
+  ['pond', 'بحيرة', 'utilities', 'plain, coast, plateau', 30, '', 'village', 0, 'pond', false, ''],
+  ['stream', 'جدول', 'utilities', 'plain, coast, plateau', 6, '', 'village', 0, 'stream', false, ''],
 ];
 
 /** المهن: [المعرف، الاسم، الأيقونة، اللون] / Trades: [id, name, icon, colour] */
@@ -150,18 +152,21 @@ const SEED_JOBS = {
   miners_house: ['miner', 0, 0, ''], traders_house: ['trader', 0, 15, ''], herders_house: ['herder', 0, 10, ''],
   farm_storage: ['', 0, 0, 'farm'], materials_storage: ['', 0, 10, ''], bank: ['', 0, 40, 'market'],
   village_garden: ['', 0, 25, ''], wooden_wall: ['', 0, 30, 'development_center'], gate: ['', 0, 30, 'development_center'],
+  pond: ['', 0, 10, ''], stream: ['', 0, 10, ''],
 };
 
 /** مباني إضافة الاقتصاد الحي / Buildings of the living economy addition */
-const SEED_ECONOMY_IDS = ['farmers_house', 'carpenters_house', 'smiths_house', 'miners_house', 'traders_house', 'herders_house', 'farm_storage', 'materials_storage', 'bank', 'village_garden', 'wooden_wall', 'gate'];
+const SEED_ECONOMY_IDS = ['farmers_house', 'carpenters_house', 'smiths_house', 'miners_house', 'traders_house', 'herders_house', 'farm_storage', 'materials_storage', 'bank', 'village_garden', 'wooden_wall', 'gate', 'pond', 'stream'];
 const SEED_ECONOMY_COSTS = [
   ['farmers_house', 'wood', 80], ['farmers_house', 'stone', 40], ['carpenters_house', 'wood', 90], ['carpenters_house', 'stone', 40],
   ['smiths_house', 'wood', 80], ['smiths_house', 'stone', 80], ['miners_house', 'wood', 90], ['miners_house', 'stone', 50],
   ['traders_house', 'wood', 100], ['traders_house', 'stone', 80], ['traders_house', 'gold', 50], ['herders_house', 'wood', 80], ['herders_house', 'stone', 30],
   ['farm_storage', 'wood', 200], ['farm_storage', 'stone', 80], ['materials_storage', 'wood', 200], ['materials_storage', 'stone', 120],
   ['bank', 'stone', 300], ['bank', 'gold', 200], ['village_garden', 'wood', 40], ['village_garden', 'gold', 20],
-  ['wooden_wall', 'wood', 10], ['gate', 'wood', 40], ['gate', 'stone', 20],
+  ['wooden_wall', 'wood', 10], ['gate', 'wood', 40], ['gate', 'stone', 20], ['pond', 'stone', 60], ['pond', 'gold', 40], ['stream', 'stone', 6],
 ];
+/** إنتاج مباني الإضافة: البحيرة تمد الدولة بالماء / Production of the addition's buildings: the lake supplies water */
+const SEED_ECONOMY_PRODUCTION = [['pond', 'water', 5]];
 const SEED_ECONOMY_CONSUMPTION = [
   ['farmers_house', 'food', 1], ['carpenters_house', 'food', 1], ['smiths_house', 'food', 1], ['miners_house', 'food', 1],
   ['traders_house', 'food', 1], ['herders_house', 'food', 1], ['farmers_house', 'water', 1], ['miners_house', 'water', 1],
@@ -285,7 +290,7 @@ const SEED_ROWS = {
     ['farm', 'food', 30], ['lumber_camp', 'wood', 24], ['mine', 'stone', 18], ['mine', 'iron', 8], ['oil_field', 'oil', 6],
     ['port', 'gold', 30], ['port', 'food', 10], ['water_desal', 'water', 25], ['power_plant', 'power', 25],
     ['livestock', 'food', 25], ['market', 'gold', 30], ['finance_center', 'gold', 60], ['factory', 'gold', 70],
-  ].concat(SEED_RESOURCE_PRODUCTION, SEED_DEPOSIT_PRODUCTION, SEED_PRIMITIVE_PRODUCTION)),
+  ].concat(SEED_RESOURCE_PRODUCTION, SEED_DEPOSIT_PRODUCTION, SEED_PRIMITIVE_PRODUCTION, SEED_ECONOMY_PRODUCTION)),
   buildingConsumption: amounts_('الكمية في الدقيقة', [
     ['houses', 'food', 2], ['houses', 'water', 1], ['apartments', 'water', 3], ['apartments', 'power', 3], ['apartments', 'food', 4],
     ['livestock', 'water', 2], ['market', 'food', 8], ['civil_defense', 'power', 1], ['hospital', 'water', 2], ['hospital', 'power', 3],

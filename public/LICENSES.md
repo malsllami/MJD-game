@@ -8,6 +8,7 @@ All assets used in the game are free under CC0 (public domain) and may be used c
 | `models/village` | Quaternius — Medieval Village MegaKit (Standard), opengameart.org/content/medieval-village-megakit | CC0 |
 | `models/forest` | Quaternius — Stylized Nature MegaKit (Standard), opengameart.org/content/stylized-nature-megakit | CC0 |
 | `models/people` | Quaternius — Universal Animation Library 2 (Standard), opengameart.org/content/universal-animation-library-2 | CC0 |
+| `models/animals` | Quaternius — LowPoly Animated Farm Animal Pack, opengameart.org/content/lowpoly-animated-farm-animal-pack | CC0 |
 | `textures/ground` | Poly Haven — leafy_grass, dirt, farm_furrows (polyhaven.com) | CC0 |
 | `models/nature`, `models/suburban`, `models/commercial`, `models/industrial`, `models/cars` | Kenney — Nature, City Kits, Car Kit (kenney.nl) | CC0 |
 

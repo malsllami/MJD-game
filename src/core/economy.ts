@@ -29,8 +29,11 @@ export const ROAD_MODELS = new Set(['road', 'paved-road']);
 
 export const isRoad = (def: BuildingDef | undefined): boolean => !!def && ROAD_MODELS.has(def.model);
 
-/** أنماط المجسم التي تُرسم أسوارًا على الحواف / Model styles drawn as walls on edges */
-export const WALL_MODELS = new Set(['wall', 'gate']);
+/**
+ * حواجز الحواف: أسوار وبوابات وجداول ماء؛ تشغل الحافة فلا يُرسم عليها طريق، ولا تدخل في اتصال الطرق
+ * Edge barriers: walls, gates and water streams; they occupy the edge so no road goes there, and never join road connectivity
+ */
+export const WALL_MODELS = new Set(['wall', 'gate', 'stream']);
 
 export const isWall = (def: BuildingDef | undefined): boolean => !!def && WALL_MODELS.has(def.model);
 
@@ -355,7 +358,7 @@ function edgeLandCheck(world: World, state: GameState, def: BuildingDef, edge: s
 export function checkWallEdge(defs: GameDefinitions, world: World, state: GameState, wall: BuildingDef, edge: string, now: number): Check {
   const gaps = unlockGaps(wall, state, defs, now);
   if (gaps.length) return { ok: false, reason: `${wall.name} مقفل؛ يحتاج: ${gaps.join('، ')}` };
-  if (roadAt(state, edge)) return { ok: false, reason: 'لا يُبنى السور فوق طريق' };
+  if (roadAt(state, edge)) return { ok: false, reason: `لا يُبنى ${wall.name} فوق طريق` };
   const land = edgeLandCheck(world, state, wall, edge);
   if (!land.ok) return land;
   const shortage = missingResources(defs, state, wall.cost);
@@ -388,7 +391,7 @@ export function placeWallPath(state: GameState, defs: GameDefinitions, world: Wo
 export function checkRoadEdge(defs: GameDefinitions, world: World, state: GameState, road: BuildingDef, edge: string): Check {
   const required = stageById(defs, road.stage);
   if (required.order > stageById(defs, state.stage).order) return { ok: false, reason: `${road.name} يُفتح في مرحلة ${required.name}` };
-  if (wallAt(state, edge)) return { ok: false, reason: 'يوجد سور على هذه الحافة؛ اهدمه أولًا' };
+  if (wallAt(state, edge)) return { ok: false, reason: 'هذه الحافة يشغلها سور أو جدول؛ أزله أولًا' };
   const land = edgeLandCheck(world, state, road, edge);
   if (!land.ok) return land;
   const shortage = missingResources(defs, state, road.cost);

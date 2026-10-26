@@ -3,7 +3,7 @@
 //
 // الاستخدام / Usage:
 //   node tools/import-assets.mjs --village <MegaKit glTF dir> --nature <Nature MegaKit glTF dir> \
-//     --people <UAL2_Standard.glb> --ground 1
+//     --people <UAL2_Standard.glb> --animals <Farm Animals OBJ dir> --ground 1
 // المصادر (CC0) / Sources (CC0): Quaternius Medieval Village MegaKit, Stylized Nature MegaKit, Universal Animation Library 2
 // (opengameart.org)، وخامات الأرض من Poly Haven / and ground textures from Poly Haven.
 
@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { NodeIO } from '@gltf-transform/core';
 import { prune, resample } from '@gltf-transform/functions';
+import obj2gltf from 'obj2gltf';
 import sharp from 'sharp';
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((out, a, i, all) => (a.startsWith('--') ? [...out, [a.slice(2), all[i + 1]]] : out), []));
@@ -33,6 +34,9 @@ const NATURE = [
 ];
 /** الحركات المستخدمة من مكتبة الحركات 2 (هيكلها واحد، فلا تحتاج نقلًا بين هياكل) / Animations kept from library 2 (one skeleton, no retargeting) */
 const PEOPLE_ANIMS = ['Farm_Harvest', 'Farm_PlantSeed', 'Farm_Watering', 'TreeChopping_Loop', 'Walk_Carry_Loop', 'Idle_FoldArms_Loop'];
+/** حيوانات الحظائر من حزمة Quaternius للحيوانات / Barn animals from Quaternius's farm animal pack */
+const ANIMALS = ['Cow', 'Sheep', 'Pig', 'Horse'];
+
 /** خامات الأرض من Poly Haven / Ground textures from Poly Haven */
 const GROUND = { grass: 'leafy_grass', dirt: 'dirt', soil: 'farm_furrows' };
 /** عشب Poly Haven بني بأوراق متساقطة؛ يُحوّل لرمادي ثم يُلوَّن أخضر كالمروج مع بقاء تفاصيله / The Poly Haven grass is leafy brown; greyscaled then tinted lawn green, keeping its detail */
@@ -152,3 +156,8 @@ if (args.village) await importPieces(args.village, VILLAGE, 'village', join(dirn
 if (args.nature) await importPieces(args.nature, NATURE, 'forest');
 if (args.people) await importAnimations(args.people, PEOPLE_ANIMS, join(OUT, 'models', 'people', 'worker.glb'));
 if (args.ground) await importGround();
+if (args.animals) {
+  mkdirSync(join(OUT, 'models', 'animals'), { recursive: true });
+  for (const name of ANIMALS) writeFileSync(join(OUT, 'models', 'animals', `${name}.glb`), await obj2gltf(join(args.animals, `${name}.obj`), { binary: true }));
+  console.log('animals:', ANIMALS.join(', '));
+}

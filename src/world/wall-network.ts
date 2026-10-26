@@ -1,7 +1,8 @@
-// مسؤولية الملف: الأسوار والبوابات على حدود المربعات — قطعة سور خشبي لكل حافة، وقوس لكل بوابة، تظهر بعد اكتمال بنائها
-// File responsibility: walls and gates on tile edges — a wooden fence piece per edge and an arch per gate, shown once built
+// مسؤولية الملف: حواجز الحواف — سور خشبي لكل حافة، وقوس لكل بوابة، وشريط ماء لكل قطعة جدول، تظهر بعد اكتمال بنائها
+// File responsibility: edge barriers — a wooden fence per edge, an arch per gate and a water ribbon per stream piece, shown once built
 
-import { TransformNode, type Scene, type ShadowGenerator } from '@babylonjs/core';
+import { MeshBuilder, TransformNode, type Scene, type ShadowGenerator } from '@babylonjs/core';
+import { waterMaterial } from './building-models';
 import type { ModelLibrary } from '../assets/model-library';
 import { edgeCorners, isUnderConstruction } from '../core/economy';
 import type { BuildingDef, GameState, World } from '../core/types';
@@ -33,8 +34,9 @@ export class WallNetwork {
       const key = `${w.edge}:${w.buildingId}`;
       alive.add(key);
       if (this.pieces.has(key)) continue;
-      const path = WALL_PIECES[this.defs.get(w.buildingId)?.model ?? ''];
-      if (!path) continue;
+      const model = this.defs.get(w.buildingId)?.model ?? '';
+      const path = WALL_PIECES[model];
+      if (!path && model !== 'stream') continue;
       const holder = new TransformNode(`wall-${key}`, this.scene);
       this.pieces.set(key, holder);
       const [[ax, az], [bx, bz]] = edgeCorners(w.edge);
@@ -45,7 +47,17 @@ export class WallNetwork {
       holder.position.set(x, Math.max(0, sampleHeight(this.world, x, z)), z);
       // الحافة الأفقية تمتد على x، والعمودية على z / A horizontal edge runs along x, a vertical one along z
       const yaw = az === bz ? 0 : Math.PI / 2;
-      void this.library.spawn(path, { footprint: s * 0.98, yaw }).then(({ root, meshes }) => {
+      if (model === 'stream') {
+        // الجدول شريط ماء على الحافة / The stream is a ribbon of water on the edge
+        const ribbon = MeshBuilder.CreateGround('stream', { width: s * 1.02, height: s * 0.24 }, this.scene);
+        ribbon.parent = holder;
+        ribbon.position.y = 0.05;
+        ribbon.rotation.y = yaw;
+        ribbon.material = waterMaterial(this.scene);
+        ribbon.isPickable = false;
+        continue;
+      }
+      void this.library.spawn(path!, { footprint: s * 0.98, yaw }).then(({ root, meshes }) => {
         if (holder.isDisposed()) return root.dispose();
         root.parent = holder;
         for (const m of meshes) this.shadows?.addShadowCaster(m);

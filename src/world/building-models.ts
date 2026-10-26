@@ -5,6 +5,7 @@
 
 import { Color3, MeshBuilder, Scene, StandardMaterial, TransformNode, type AbstractMesh, type Material, type ShadowGenerator } from '@babylonjs/core';
 import { looksFor, styleOf, type Era, type Look } from '../assets/catalog';
+import { WATER_SURFACE } from '../assets/village-kit';
 import type { ModelLibrary } from '../assets/model-library';
 import { isRoad, isUnderConstruction } from '../core/economy';
 import type { BuildingDef, GameState, PlacedBuilding, World } from '../core/types';
@@ -30,6 +31,16 @@ export async function spawnParts(library: ModelLibrary, scene: Scene, parent: Tr
     kit.scaling.setAll((look.size * tileSize) / look.extent);
     const all: AbstractMesh[] = [];
     await Promise.all(look.pieces.map(async (p) => {
+      if (p.path === WATER_SURFACE) {
+        // قرص ماء بقطر fit متر / A water disc of fit metres
+        const disc = MeshBuilder.CreateDisc('water', { radius: (p.fit ?? 4) / 2, tessellation: 28 }, scene);
+        disc.rotation.x = Math.PI / 2;
+        disc.parent = kit;
+        disc.position.set(p.x, 0.06, p.z);
+        disc.material = waterMaterial(scene);
+        all.push(disc);
+        return;
+      }
       try {
         const { root, meshes } = await library.spawn(p.path, { footprint: p.fit, yaw: p.yaw });
         root.parent = kit;
@@ -58,6 +69,18 @@ export async function spawnParts(library: ModelLibrary, scene: Scene, parent: Tr
     }
   }));
   return all;
+}
+
+/** مادة ماء مشتركة للبحيرات والجداول / A shared water material for lakes and streams */
+export function waterMaterial(scene: Scene): StandardMaterial {
+  const existing = scene.getMaterialByName('built-water') as StandardMaterial | null;
+  if (existing) return existing;
+  const m = new StandardMaterial('built-water', scene);
+  m.diffuseColor = new Color3(0.18, 0.42, 0.55);
+  m.specularColor = new Color3(0.6, 0.7, 0.75);
+  m.specularPower = 64;
+  m.alpha = 0.88;
+  return m;
 }
 
 /** شكل ثابت لكل مبنى من بدائل نمطه في العصر / A stable look per building from its style's variants in the era */
