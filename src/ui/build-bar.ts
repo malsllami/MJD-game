@@ -12,6 +12,8 @@ const ALL = '*';
 
 export class BuildBar {
   private category: string;
+  /** البطاقات تظهر عند اختيار فئة فقط، فتبقى الخريطة ظاهرة / Cards show only once a category is chosen, keeping the map visible */
+  private open = false;
   private armed: string | null = null;
   private last: { state: GameState; now: number } | null = null;
 
@@ -28,14 +30,26 @@ export class BuildBar {
       const cat = t.closest<HTMLButtonElement>('[data-cat]');
       const card = t.closest<HTMLButtonElement>('[data-building]');
       if (cat) {
+        // الضغط على الفئة المفتوحة يطويها / Tapping the open category folds it
+        this.open = !(this.open && this.category === cat.dataset.cat);
         this.category = cat.dataset.cat!;
         this.render();
       } else if (card) {
         const b = defs.buildings.find((x) => x.id === card.dataset.building);
-        if (b) this.onPick(b);
+        if (b) {
+          this.onPick(b);
+          this.setOpen(false);
+        }
       }
     });
     this.render();
+  }
+
+  /** فتح البطاقات أو طيّها / Open or fold the cards */
+  setOpen(open: boolean): void {
+    this.open = open;
+    this.el.dataset.open = String(open);
+    this.el.querySelectorAll<HTMLElement>('[data-cat]').forEach((c) => c.setAttribute('aria-selected', String(open && c.dataset.cat === this.category)));
   }
 
   /** تمييز المبنى الجاهز للوضع على الخريطة / Mark the building armed for placement */
@@ -117,6 +131,7 @@ export class BuildBar {
         img.hidden = false;
       }).catch(() => undefined);
     });
+    this.setOpen(this.open);
     if (this.last) this.update(this.last.state, this.last.now);
   }
 }

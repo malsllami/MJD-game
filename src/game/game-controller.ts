@@ -220,7 +220,11 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     return {
       start(at: DragPoint) {
         confirm.hide();
-        corners = [at.corner];
+        // السحب من أحد طرفي المسار المعروض يعدّله من ذلك الطرف، وإلا يبدأ مسارًا جديدًا
+        // Dragging from either end of the shown path adjusts it from that end; otherwise a new path starts
+        const at1 = (p?: { x: number; z: number }) => !!p && Math.abs(p.x - at.corner.x) + Math.abs(p.z - at.corner.z) <= 1;
+        if (corners.length > 1 && at1(corners[0])) corners.reverse();
+        else if (!(corners.length > 1 && at1(corners[corners.length - 1]))) corners = [at.corner];
         show();
       },
       move(at: DragPoint) {
@@ -235,30 +239,28 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
       // عند الإفلات تبقى المعاينة وينتظر التأكيد / On release the preview stays and waits for confirmation
       end() {
         const list = edges();
-        const last = corners[corners.length - 1];
-        if (!last) return;
-        const anchor = game.tileAnchor({ x: Math.min(world.settings.tilesX - 1, last.x), z: Math.min(world.settings.tilesZ - 1, last.z) });
-        anchor.y += world.settings.tileSize * 0.4;
+        if (!corners.length) return;
+        const hint = 'اسحب من طرف المسار لتعديله، أو ارسم مسارًا جديدًا';
         if (!road) {
-          return confirm.show(anchor, 'هدم الطرق', list.length ? `${formatNumber(list.length)} قطعة طريق` : 'لا طرق في هذا المسار', list.length > 0, () => {
+          return confirm.show(null, 'هدم الطرق', list.length ? `${formatNumber(list.length)} قطعة طريق` : 'لا طرق في هذا المسار', list.length > 0, () => {
             const removed = session.demolishRoads(list, Date.now());
             toast.show(`أُزيلت ${formatNumber(removed)} قطعة طريق واسترددت ${formatNumber(defs.world.demolishRefundPercent)}٪ من تكلفتها`);
             reset();
             refresh(true);
-          }, reset);
+          }, reset, hint);
         }
         const dry = placeRoadPath(session.state, defs, world, road, list, Date.now(), () => 'preview');
         const total = Object.fromEntries(Object.entries(road.cost).map(([id, n]) => [id, n * dry.placed]));
         const detail = dry.placed
           ? `${formatNumber(dry.placed)} قطعة · ${costText(total)}${dry.stoppedBy ? ` · يتوقف: ${dry.stoppedBy}` : ''}`
           : (dry.stoppedBy ?? 'لا قطع جديدة في هذا المسار');
-        confirm.show(anchor, road.name, detail, dry.placed > 0, () => {
+        confirm.show(null, road.name, detail, dry.placed > 0, () => {
           const result = session.placeRoad(road, list, Date.now());
           if (result.placed) toast.show(`بدأ بناء ${formatNumber(result.placed)} قطعة ${road.name}`);
           else if (result.stoppedBy) toast.show(result.stoppedBy);
           reset();
           refresh(true);
-        }, reset);
+        }, reset, hint);
       },
     };
   }
