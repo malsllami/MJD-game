@@ -58,6 +58,16 @@ const SHADOW_SPAN = 0.9;
 const SHADOW_MIN = 24;
 const SHADOW_MAX = 140;
 
+/**
+ * هل تضيء المادة ليلًا؟ نماذج Kenney تحمل نوافذها في خامتها فتضيء كلها؛ وقطع حزمة القرية (MI_) مواد مشتركة
+ * للجدران والأسقف فلا يضيء منها إلا الزجاج
+ * Does the material light up at night? Kenney models carry their windows in the texture, so the whole material glows;
+ * village kit pieces (MI_) share wall and roof materials, so only their glass glows
+ */
+export function glowsAtNight(name: string): boolean {
+  return !name.startsWith('MI_') || /glass/i.test(name);
+}
+
 export class DayNight {
   readonly lights = new NightLights();
   private fraction = 0.3;

@@ -96,7 +96,7 @@ export function createHud(root: HTMLElement, defs: GameDefinitions, actions: Hud
   });
   sheet.dataset.view = 'ministries';
   // على الشاشات الكبيرة تبدأ لوحة الوزارات مطوية لتبقى الخريطة في المركز / On large screens the ministries panel starts folded, keeping the map central
-  root.classList.add('panel-collapsed');
+  if (!window.matchMedia(APP_CONFIG.mobileLayoutQuery).matches) root.classList.add('panel-collapsed');
 
   const datesEl = q('[data-dates]');
   const renderDates = () => {

@@ -9,7 +9,7 @@ import type { ModelLibrary } from '../assets/model-library';
 import { isRoad, isUnderConstruction } from '../core/economy';
 import type { BuildingDef, GameState, PlacedBuilding, World } from '../core/types';
 import { sampleHeight, tileCenter } from '../core/world-gen';
-import { WINDOW_LIGHT, type Glowing, type NightLights } from './day-night';
+import { glowsAtNight, WINDOW_LIGHT, type Glowing, type NightLights } from './day-night';
 
 interface Model {
   root: TransformNode;
@@ -144,7 +144,7 @@ export class BuildingModels {
       const mat = model.original.get(m) ?? null;
       m.material = mat;
       this.shadows?.addShadowCaster(m);
-      if (mat && !this.lit.has(mat) && 'emissiveColor' in mat) {
+      if (mat && !this.lit.has(mat) && 'emissiveColor' in mat && glowsAtNight(mat.name)) {
         this.lit.add(mat);
         this.lights.add(mat as unknown as Glowing, WINDOW_LIGHT);
       }

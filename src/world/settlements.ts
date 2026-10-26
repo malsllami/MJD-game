@@ -5,7 +5,7 @@ import { TransformNode, type AbstractMesh, type Scene, type ShadowGenerator, typ
 import { settlementLook } from '../assets/catalog';
 import type { ModelLibrary } from '../assets/model-library';
 import { spawnParts } from './building-models';
-import { WINDOW_LIGHT, type Glowing, type NightLights } from './day-night';
+import { glowsAtNight, WINDOW_LIGHT, type Glowing, type NightLights } from './day-night';
 
 /**
  * ينشئ مركز القرية؛ level هو ترتيب المرحلة (1 للقرية)، ونوافذه تضيء ليلًا
@@ -27,7 +27,7 @@ export async function createSettlementModel(
   for (const m of meshes) {
     shadows?.addShadowCaster(m);
     const mat = m.material;
-    if (mat && !lit.has(mat) && 'emissiveColor' in mat) {
+    if (mat && !lit.has(mat) && 'emissiveColor' in mat && glowsAtNight(mat.name)) {
       lit.add(mat);
       lights.add(mat as unknown as Glowing, WINDOW_LIGHT);
     }
