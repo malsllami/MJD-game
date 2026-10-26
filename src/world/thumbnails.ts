@@ -5,6 +5,7 @@
 // Rendering goes to a separate texture with its own camera, so the scene camera, clicks and drags are untouched meanwhile.
 
 import { ArcRotateCamera, Color4, HemisphericLight, RenderTargetTexture, TransformNode, Vector3, type AbstractMesh, type Scene } from '@babylonjs/core';
+import type { Era } from '../assets/catalog';
 import type { ModelLibrary } from '../assets/model-library';
 import { partsFor, spawnParts } from './building-models';
 
@@ -37,20 +38,21 @@ export class Thumbnails {
    * صورة النمط (تُرسم مرة واحدة، والطلبات تُصف واحدًا تلو الآخر)
    * The style's picture (rendered once; requests are queued one after another)
    */
-  get(style: string): Promise<string> {
-    let pending = this.cache.get(style);
+  get(style: string, era: Era): Promise<string> {
+    const key = `${era}:${style}`;
+    let pending = this.cache.get(key);
     if (!pending) {
-      pending = this.queue.then(() => this.render(style));
+      pending = this.queue.then(() => this.render(style, era));
       this.queue = pending.catch(() => undefined);
-      this.cache.set(style, pending);
+      this.cache.set(key, pending);
     }
     return pending;
   }
 
-  private async render(style: string): Promise<string> {
+  private async render(style: string, era: Era): Promise<string> {
     const holder = new TransformNode(`thumb-${style}`, this.scene);
     holder.position.y = STAGE_Y;
-    const meshes = await spawnParts(this.library, this.scene, holder, partsFor(style, style), this.tileSize);
+    const meshes = await spawnParts(this.library, this.scene, holder, partsFor(style, style, era), this.tileSize);
     for (const m of meshes) m.layerMask = THUMB_LAYER;
     const texture = new RenderTargetTexture(`thumb-rt-${style}`, { width: WIDTH, height: HEIGHT }, this.scene, false);
     texture.activeCamera = this.camera;

@@ -1,8 +1,8 @@
-// مسؤولية الملف: مجسم مركز الاستيطان من نماذج Kenney (قرية ثم بلدة ثم مدينة) — يكبر ويرتفع مع كل مرحلة
-// File responsibility: settlement centre from Kenney models (village, then town, then city) — grows denser and taller each stage
+// مسؤولية الملف: مجسم مبنى الحكم (قاعة خشبية، ثم حجرية، ثم مبنى حديث) — يكبر مع كل مرحلة
+// File responsibility: the government building model (a timber hall, then stone, then modern) — grows each stage
 
 import { TransformNode, type AbstractMesh, type Scene, type ShadowGenerator, type Vector3 } from '@babylonjs/core';
-import { settlementParts } from '../assets/catalog';
+import { settlementLook } from '../assets/catalog';
 import type { ModelLibrary } from '../assets/model-library';
 import { spawnParts } from './building-models';
 import { WINDOW_LIGHT, type Glowing, type NightLights } from './day-night';
@@ -22,7 +22,7 @@ export async function createSettlementModel(
 ): Promise<{ root: TransformNode; meshes: AbstractMesh[] }> {
   const root = new TransformNode('settlement', scene);
   root.position.copyFrom(center);
-  const meshes = await spawnParts(library, scene, root, settlementParts(level), tileSize);
+  const meshes = await spawnParts(library, scene, root, settlementLook(level), tileSize);
   const lit = new Set<unknown>();
   for (const m of meshes) {
     shadows?.addShadowCaster(m);

@@ -14,6 +14,8 @@ export interface QualityPreset {
   /** كثافة الأشجار والصخور (1 = كاملة) / Tree and rock density (1 = full) */
   natureDensity: number;
   fogDensity: number;
+  /** دقة خريطة مزج الأرض (عشب، تراب، تربة) بالبكسل / Ground blend map resolution (grass, dirt, soil) in pixels */
+  groundResolution: number;
 }
 
 export const APP_CONFIG = {
@@ -45,8 +47,8 @@ export const APP_CONFIG = {
     radiusMobile: 84,
   },
   quality: {
-    low: { maxDevicePixelRatio: 1, shadowMapSize: 0, waterReflections: false, glow: false, natureDensity: 0.4, fogDensity: 0.0045 },
-    medium: { maxDevicePixelRatio: 1.5, shadowMapSize: 1024, waterReflections: true, glow: true, natureDensity: 0.7, fogDensity: 0.004 },
-    high: { maxDevicePixelRatio: 2, shadowMapSize: 2048, waterReflections: true, glow: true, natureDensity: 1, fogDensity: 0.0035 },
+    low: { maxDevicePixelRatio: 1, shadowMapSize: 0, waterReflections: false, glow: false, natureDensity: 0.4, fogDensity: 0.0045, groundResolution: 1024 },
+    medium: { maxDevicePixelRatio: 1.5, shadowMapSize: 1024, waterReflections: true, glow: true, natureDensity: 0.7, fogDensity: 0.004, groundResolution: 2048 },
+    high: { maxDevicePixelRatio: 2, shadowMapSize: 2048, waterReflections: true, glow: true, natureDensity: 1, fogDensity: 0.0035, groundResolution: 2048 },
   } satisfies Record<QualityLevel, QualityPreset>,
 };

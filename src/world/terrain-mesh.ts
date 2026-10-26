@@ -12,10 +12,10 @@ const RING = [[2, 0], [-2, 0], [0, 2], [0, -2], [2, 2], [-2, -2], [2, -2], [-2, 
 const RELIEF_STRENGTH = 0.14;
 
 /**
- * ينشئ مجسم التضاريس بألوان رؤوس ممزوجة بين المربعات المتجاورة
- * Creates the terrain mesh with vertex colours blended across neighbouring tiles
+ * ينشئ مجسم التضاريس بألوان رؤوس ممزوجة بين المربعات المتجاورة؛ textured تعني أن الخامات تلوّن الأرض والرؤوس تظلّلها فقط
+ * Creates the terrain mesh with vertex colours blended across tiles; textured means textures colour the ground and vertices only shade it
  */
-export function createTerrainMesh(scene: Scene, world: World, terrain: TerrainType[]): Mesh {
+export function createTerrainMesh(scene: Scene, world: World, terrain: TerrainType[], textured: boolean): Mesh {
   const { vertsX, vertsZ, heights } = world;
   const { tileSize, vertsPerTile, tilesX, tilesZ } = world.settings;
   const { halfX, halfZ } = worldHalfExtents(world);
@@ -96,9 +96,11 @@ export function createTerrainMesh(scene: Scene, world: World, terrain: TerrainTy
       // Ridges and peaks lighter, valleys darker, so the landform stays readable even in dim light
       const relief = heights[v] > 0 ? Math.min(0.22, Math.max(-0.28, curvature(ix, iz) * RELIEF_STRENGTH)) : 0;
       const shade = grain * (1 + relief);
-      colors[v * 4] = c.r * shade;
-      colors[v * 4 + 1] = c.g * shade;
-      colors[v * 4 + 2] = c.b * shade;
+      // مع الخامات: تفاوت ضوئي خفيف يكسر تكرارها، بلا لون / With textures: a slight light variation that breaks their repetition, no colour
+      const tint = textured ? 0.96 + (grain - 0.97) * 0.8 : 0;
+      colors[v * 4] = textured ? tint : c.r * shade;
+      colors[v * 4 + 1] = textured ? tint : c.g * shade;
+      colors[v * 4 + 2] = textured ? tint * 0.98 : c.b * shade;
       colors[v * 4 + 3] = 1;
     }
   }
@@ -109,6 +111,10 @@ export function createTerrainMesh(scene: Scene, world: World, terrain: TerrainTy
   data.indices = indices;
   data.normals = normals;
   data.colors = colors;
+  // إحداثيات الخامة من 0 إلى 1 على امتداد العالم / Texture coordinates from 0 to 1 across the world
+  const uvs = new Float32Array(vertsX * vertsZ * 2);
+  for (let iz = 0; iz < vertsZ; iz++) for (let ix = 0; ix < vertsX; ix++) uvs.set([ix / (vertsX - 1), iz / (vertsZ - 1)], (iz * vertsX + ix) * 2);
+  data.uvs = uvs;
   // قابل للتحديث حتى تُسوّى الأرض تحت المباني / Updatable so the ground can be levelled under buildings
   data.applyToMesh(mesh, true);
 

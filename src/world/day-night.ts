@@ -53,9 +53,17 @@ export class NightLights {
   }
 }
 
+/** نصف ضلع منطقة الظلال حول الكاميرا بالنسبة لنصف قطرها، وحدودها / Shadow area half-side relative to camera radius, and its limits */
+const SHADOW_SPAN = 0.9;
+const SHADOW_MIN = 24;
+const SHADOW_MAX = 140;
+
 export class DayNight {
   readonly lights = new NightLights();
   private fraction = 0.3;
+  /** مركز الظلال (مركز نظر الكاميرا) ونصف ضلعها / Shadow centre (the camera look-at point) and half-side */
+  private focus = new Vector3(0, 0, 0);
+  private shadowHalf = 60;
 
   constructor(
     scene: Scene,
@@ -65,6 +73,15 @@ export class DayNight {
     private readonly water: Mesh | null,
   ) {
     scene.onBeforeRenderObservable.add(() => this.update(new Date()));
+  }
+
+  /**
+   * الظلال تتبع الكاميرا في منطقة محدودة بدل العالم كله، فتبقى حادة ولا تظهر خطوط على الأرض المستوية
+   * Shadows follow the camera over a limited area instead of the whole world, staying sharp with no stripes on flat ground
+   */
+  setFocus(x: number, z: number, cameraRadius: number): void {
+    this.focus.set(x, 0, z);
+    this.shadowHalf = Math.min(SHADOW_MAX, Math.max(SHADOW_MIN, cameraRadius * SHADOW_SPAN));
   }
 
   /** جزء اليوم الحالي: 0 منتصف الليل، 0.25 الشروق، 0.5 الظهر، 0.75 الغروب / Day fraction: 0 midnight, .25 sunrise, .5 noon, .75 sunset */
@@ -91,7 +108,15 @@ export class DayNight {
     const dusk = Math.max(0, 1 - Math.abs(elevation) / 0.25) * smoothstep(-0.22, 0, elevation);
     const { sun, ambient, sky, glow } = this.env;
     sun.direction = position.scale(-1);
-    sun.position = position.scale(this.worldSpan);
+    const reach = Math.min(this.worldSpan, this.shadowHalf * 4);
+    sun.position = this.focus.add(position.scale(reach));
+    sun.autoUpdateExtends = false;
+    sun.orthoLeft = -this.shadowHalf;
+    sun.orthoRight = this.shadowHalf;
+    sun.orthoTop = this.shadowHalf;
+    sun.orthoBottom = -this.shadowHalf;
+    sun.shadowMinZ = 1;
+    sun.shadowMaxZ = reach * 2;
     sun.intensity = 0.95 * sunUp;
     sun.diffuse = Color3.Lerp(LOW_SUN, NOON_SUN, smoothstep(0.05, 0.45, elevation));
     sun.setEnabled(sunUp > 0.001);

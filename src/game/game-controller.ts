@@ -4,6 +4,7 @@
 // selection and commands, deposits and survey, the time loop and autosave
 
 import { Color3, type AbstractMesh, type TransformNode } from '@babylonjs/core';
+import { eraOf } from '../assets/catalog';
 import { APP_CONFIG } from '../config/app.config';
 import {
   buildingAt, buildingStatus, checkMove, checkPlacement, cornerPath, costShare, depositAt, edgeTiles, housingCapacity, isRoad,
@@ -67,9 +68,11 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const radial = new RadialMenu(hud.radial, (p) => game.project(p), () => mobile.matches);
   const borders = new TileSetOutline(game.scene, world, new Color3(0.9, 0.8, 0.5), 0.35);
   const allowed = new TileSetOutline(game.scene, world, new Color3(0.45, 0.95, 0.6), 0.45);
-  const grid = new GridLines(game.scene, world, new Color3(1, 1, 1), 0.14, 0.12);
+  // شبكة خضراء تظهر عند البناء والرسم، أو دائمًا بزر الشبكة / A green grid shown while building and drawing, or always via the grid button
+  const grid = new GridLines(game.scene, world, new Color3(0.62, 1, 0.55), 0.3, 0.12);
   const roadPreview = new GridLines(game.scene, world, new Color3(1, 0.85, 0.35), 1, 0.3);
-  const roads = new RoadNetwork(game.scene, world, byId, game.dayNight.lights);
+  // الطريق الترابي ترسمه خامة الأرض حين تتوفر / The dirt road is painted by the ground texture when available
+  const roads = new RoadNetwork(game.scene, world, byId, game.dayNight.lights, game.ground ? new Set(['road']) : new Set());
   const traffic = new Traffic(game.scene, world, game.library);
   const models = new BuildingModels(
     game.scene, world, game.library, byId, game.shadows,
@@ -80,8 +83,10 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const nature = game.nature;
   const ghost = new GhostPreview(game.scene, world, game.library);
   const confirm = new ConfirmBar(hud.confirm, (p) => game.project(p));
+  /** عصر الدولة البصري من مرحلتها الحالية / The nation's visual era from its current stage */
+  const era = () => eraOf(stageById(defs, session.state.stage).order);
   const thumbnails = new Thumbnails(game.scene, game.library, world.settings.tileSize);
-  const buildBar = new BuildBar(hud.buildBar, defs, (b) => pickBuilding(b), (style) => thumbnails.get(style));
+  const buildBar = new BuildBar(hud.buildBar, defs, (b) => pickBuilding(b), (style) => thumbnails.get(style, era()));
   const tools = new ToolDrawer(
     hud.toolNav, hud.drawer, () => ({ defs, world, state: session.state, now: Date.now() }),
     (x, z) => {
@@ -92,6 +97,8 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   );
 
   let mode: Mode = { kind: 'idle' };
+  let gridAlways = false;
+  grid.setVisible(false);
   let selected: Tile | null = null;
   let pendingDemolish: { uid: string; until: number } | null = null;
 
@@ -131,6 +138,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
 
   function setMode(next: Mode): void {
     mode = next;
+    grid.setVisible(gridAlways || next.kind !== 'idle');
     buildBar.setArmed(next.kind === 'place' || next.kind === 'road' ? next.building.id : null);
     roadPreview.clear();
     clearPreview();
@@ -174,7 +182,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   /** معاينة المبنى على المربع مع شريط تأكيد / Preview the building on the tile with a confirmation bar */
   function previewBuild(b: BuildingDef, tile: Tile): void {
     const check = checkPlacement(defs, world, session.state, b, tile, Date.now());
-    ghost.show(partsFor(b.model, `preview-${b.id}`), tile, check.ok);
+    ghost.show(partsFor(b.model, `preview-${b.id}`, era()), tile, check.ok);
     const detail = check.ok ? `${formatDuration(b.buildSeconds)} · ${costText(b.cost)}` : check.reason;
     confirm.show(labelAbove(tile.x, tile.z, 0.6), b.name, detail, check.ok, () => tryBuild(b, tile), clearPreview);
   }
@@ -271,7 +279,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     const def = placed && byId.get(placed.buildingId);
     if (!placed || !def) return setMode({ kind: 'idle' });
     const check = checkMove(defs, world, session.state, uid, tile, Date.now());
-    ghost.show(partsFor(def.model, uid), tile, check.ok);
+    ghost.show(partsFor(def.model, uid, era()), tile, check.ok);
     const detail = check.ok ? `تكلفة النقل ${costText(costShare(def.cost, defs.world.moveCostPercent)) || 'مجانًا'}` : check.reason;
     confirm.show(labelAbove(tile.x, tile.z, 0.6), `نقل ${def.name}`, detail, check.ok, () => {
       const result = session.move(uid, tile, Date.now());
@@ -422,13 +430,12 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
 
   // ===== أدوات الشبكة: إظهارها وهدم الطرق / Grid tools: show it and bulldoze roads =====
 
-  let gridVisible = true;
   root.addEventListener('click', (e) => {
     const action = (e.target as HTMLElement).closest<HTMLElement>('[data-action]')?.dataset.action;
     if (action === 'toggle-grid') {
-      gridVisible = !gridVisible;
-      grid.setVisible(gridVisible);
-      toast.show(gridVisible ? 'شبكة المربعات ظاهرة' : 'أُخفيت شبكة المربعات');
+      gridAlways = !gridAlways;
+      grid.setVisible(gridAlways || mode.kind !== 'idle');
+      toast.show(gridAlways ? 'شبكة المربعات ظاهرة دائمًا' : 'الشبكة تظهر عند البناء ورسم الطرق فقط');
     } else if (action === 'bulldoze') {
       closeSelection();
       if (mode.kind === 'bulldoze') return setMode({ kind: 'idle' });
@@ -451,8 +458,15 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     const cleared = new Set(built);
     for (const r of state.roads) for (const [x, z] of edgeTiles(r.edge)) cleared.add(tileKey(x, z));
     nature.hide(cleared);
+    // تراب تحت الطرق والمباني، وتربة محروثة تحت الحقول / Dirt under roads and buildings, tilled soil under fields
+    const isField = (id: string) => byId.get(id)?.model === 'field';
+    game.ground?.paint({
+      dirt: [state.settlement, ...state.buildings.filter((b) => !isField(b.buildingId)).map((b) => ({ x: b.x, z: b.z }))],
+      soil: state.buildings.filter((b) => isField(b.buildingId)).map((b) => ({ x: b.x, z: b.z })),
+      roads: state.roads.map((r) => r.edge),
+    });
     syncSettlement();
-    models.sync(state, now);
+    models.sync(state, now, era());
     roads.sync(state);
     traffic.sync(roads.edgesByStyle(state).get('paved-road') ?? new Set(), state.population);
     borders.show(state.territory);

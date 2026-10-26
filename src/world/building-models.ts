@@ -1,10 +1,10 @@
-// مسؤولية الملف: مجسمات المباني من نماذج Kenney حسب عمود "النموذج" — سقالة ترتفع أثناء الإنشاء ثم المبنى المكتمل
-// File responsibility: building models from Kenney assets by the "model" column — a rising scaffold, then the finished building
+// مسؤولية الملف: مجسمات المباني حسب عمود "النموذج" وعصر الدولة — سقالة ترتفع أثناء الإنشاء ثم المبنى المكتمل، ويُعاد تشكيله عند تغير العصر
+// File responsibility: building models by the "model" column and the nation's era — a rising scaffold, then the finished building, reshaped when the era changes
 //
 // الطرق تُرسم في road-network وليس هنا. / Roads are drawn by road-network, not here.
 
 import { Color3, MeshBuilder, Scene, StandardMaterial, TransformNode, type AbstractMesh, type Material, type ShadowGenerator } from '@babylonjs/core';
-import { STYLE_MODELS, type ModelPart } from '../assets/catalog';
+import { looksFor, type Era, type Look } from '../assets/catalog';
 import type { ModelLibrary } from '../assets/model-library';
 import { isRoad, isUnderConstruction } from '../core/economy';
 import type { BuildingDef, GameState, PlacedBuilding, World } from '../core/types';
@@ -17,13 +17,32 @@ interface Model {
   /** المادة الأصلية لكل جزء، تعود عند اكتمال البناء / Each part's original material, restored on completion */
   original: Map<AbstractMesh, Material | null>;
   done: boolean;
+  era: Era;
 }
 
 /**
- * يُنشئ قطع نموذج مركّب تحت عقدة أم؛ القطعة التي يتعذر تحميلها تُستبدل بصندوق بسيط
- * Spawns composite parts under a parent; a part that fails to load falls back to a plain box
+ * يُنشئ شكل المبنى تحت عقدة أم: قطع مضبوطة على المربع، أو مبنى مجمّع بالمتر يُصغَّر كله ليناسب المربع
+ * Spawns a look under a parent: tile-fitted parts, or a metre-based assembly scaled as a whole to fit the tile
  */
-export async function spawnParts(library: ModelLibrary, scene: Scene, parent: TransformNode, parts: ModelPart[], tileSize: number): Promise<AbstractMesh[]> {
+export async function spawnParts(library: ModelLibrary, scene: Scene, parent: TransformNode, look: Look, tileSize: number): Promise<AbstractMesh[]> {
+  if (!Array.isArray(look)) {
+    const kit = new TransformNode('kit', scene);
+    kit.parent = parent;
+    kit.scaling.setAll((look.size * tileSize) / look.extent);
+    const all: AbstractMesh[] = [];
+    await Promise.all(look.pieces.map(async (p) => {
+      try {
+        const { root, meshes } = await library.spawn(p.path, { footprint: p.fit, yaw: p.yaw });
+        root.parent = kit;
+        root.position.set(p.x, p.y ?? 0, p.z);
+        all.push(...meshes);
+      } catch (err) {
+        console.warn('تعذّر تحميل القطعة', p.path, err);
+      }
+    }));
+    return all;
+  }
+  const parts = look;
   const all: AbstractMesh[] = [];
   await Promise.all(parts.map(async (p) => {
     try {
@@ -42,9 +61,9 @@ export async function spawnParts(library: ModelLibrary, scene: Scene, parent: Tr
   return all;
 }
 
-/** شكل ثابت لكل مبنى من بدائل نمطه / A stable look per building from its style's variants */
-export function partsFor(style: string, uid: string): ModelPart[] {
-  const variants = STYLE_MODELS[style] ?? STYLE_MODELS.civic;
+/** شكل ثابت لكل مبنى من بدائل نمطه في العصر / A stable look per building from its style's variants in the era */
+export function partsFor(style: string, uid: string, era: Era): Look {
+  const variants = looksFor(style, era);
   return variants[hash(uid) % variants.length];
 }
 
@@ -70,14 +89,19 @@ export class BuildingModels {
   }
 
   /** مطابقة المجسمات مع الحالة وتحديث تقدم الإنشاء / Match models to state and update construction progress */
-  sync(state: GameState, now: number): void {
+  sync(state: GameState, now: number, era: Era): void {
     const alive = new Set<string>();
     for (const placed of state.buildings) {
       const def = this.defs.get(placed.buildingId);
       if (!def || isRoad(def)) continue;
       alive.add(placed.uid);
       let model = this.models.get(placed.uid);
-      if (!model) model = this.create(placed, def, state);
+      // تغيّر العصر يعيد تشكيل المبنى بشكل عصره الجديد / An era change reshapes the building into its new era's look
+      if (model && model.era !== era) {
+        this.remove(placed.uid, model);
+        model = undefined;
+      }
+      if (!model) model = this.create(placed, def, state, era);
       // النقل يحرك المجسم إلى مربعه الجديد / A move shifts the model to its new tile
       const c = tileCenter(this.world, placed.x, placed.z);
       model.root.position.set(c.x, Math.max(0, sampleHeight(this.world, c.x, c.z)), c.z);
@@ -86,20 +110,21 @@ export class BuildingModels {
       model.root.scaling.y = 0.12 + 0.88 * Math.min(1, Math.max(0, progress));
       if (!building && !model.done && model.meshes.length) this.finish(model);
     }
-    for (const [uid, model] of this.models) {
-      if (alive.has(uid)) continue;
-      for (const m of model.meshes) this.onRemove(m);
-      model.root.dispose();
-      this.models.delete(uid);
-    }
+    for (const [uid, model] of this.models) if (!alive.has(uid)) this.remove(uid, model);
   }
 
-  private create(placed: PlacedBuilding, def: BuildingDef, state: GameState): Model {
+  private remove(uid: string, model: Model): void {
+    for (const m of model.meshes) this.onRemove(m);
+    model.root.dispose();
+    this.models.delete(uid);
+  }
+
+  private create(placed: PlacedBuilding, def: BuildingDef, state: GameState, era: Era): Model {
     const root = new TransformNode(`b-${placed.uid}`, this.scene);
     root.rotation.y = this.facing(placed, state);
-    const model: Model = { root, meshes: [], original: new Map(), done: false };
+    const model: Model = { root, meshes: [], original: new Map(), done: false, era };
     this.models.set(placed.uid, model);
-    void spawnParts(this.library, this.scene, root, partsFor(def.model, placed.uid), this.world.settings.tileSize).then((meshes) => {
+    void spawnParts(this.library, this.scene, root, partsFor(def.model, placed.uid, era), this.world.settings.tileSize).then((meshes) => {
       if (root.isDisposed()) return;
       model.meshes = meshes;
       for (const m of meshes) {

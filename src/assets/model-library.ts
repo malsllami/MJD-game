@@ -2,7 +2,7 @@
 // File responsibility: loads glTF/GLB models once and spawns copies scaled to fit a tile footprint
 
 import '@babylonjs/loaders/glTF';
-import { MATERIAL_COLORS } from './catalog';
+import { LEAF_ALPHA_CUTOFF, MATERIAL_COLORS } from './catalog';
 import { LoadAssetContainerAsync, PBRMaterial, TransformNode, Vector3, type AbstractMesh, type AssetContainer, type Scene } from '@babylonjs/core';
 
 /** مسار مجلد النماذج المنشور مع اللعبة / Published models folder */
@@ -10,8 +10,8 @@ const MODELS_URL = `${import.meta.env.BASE_URL}models/`;
 
 /** طريقة ملاءمة النموذج / How a model is fitted */
 export interface FitOptions {
-  /** أكبر بعد أفقي للنموذج بوحدات العالم / Largest horizontal extent in world units */
-  footprint: number;
+  /** أكبر بعد أفقي للنموذج بوحدات العالم؛ إن غاب يبقى النموذج بمقاسه وأصله الأصليين / Largest horizontal extent; absent keeps native size and origin */
+  footprint?: number;
   /** دوران حول المحور الرأسي بالراديان / Yaw in radians */
   yaw?: number;
 }
@@ -36,6 +36,7 @@ export class ModelLibrary {
             m.roughness = 0.9;
             const color = MATERIAL_COLORS[m.name];
             if (color) m.albedoColor.set(...color);
+            if (m.transparencyMode === PBRMaterial.PBRMATERIAL_ALPHATEST) m.alphaCutOff = Math.min(m.alphaCutOff, LEAF_ALPHA_CUTOFF);
           }
         }
         // الأبعاد من نسخة مؤقتة، ثم تُحذف / Bounds from a temporary copy, then discarded
@@ -63,11 +64,13 @@ export class ModelLibrary {
     const entries = container.instantiateModelsToScene(undefined, false, { doNotInstantiate: true });
     const inner = entries.rootNodes[0] as TransformNode;
     const size = b.max.subtract(b.min);
-    const scale = fit.footprint / Math.max(size.x, size.z, 1e-3);
     const holder = new TransformNode(`model-${path}`, this.scene);
     inner.parent = holder;
-    inner.position.set(-(b.min.x + size.x / 2) * scale, -b.min.y * scale, -(b.min.z + size.z / 2) * scale);
-    inner.scaling.scaleInPlace(scale);
+    if (fit.footprint !== undefined) {
+      const scale = fit.footprint / Math.max(size.x, size.z, 1e-3);
+      inner.position.set(-(b.min.x + size.x / 2) * scale, -b.min.y * scale, -(b.min.z + size.z / 2) * scale);
+      inner.scaling.scaleInPlace(scale);
+    }
     holder.rotation.y = fit.yaw ?? 0;
     const meshes = inner.getChildMeshes(false);
     for (const m of meshes) m.isPickable = false;

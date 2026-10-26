@@ -81,6 +81,8 @@ export class RoadNetwork {
     private readonly world: World,
     private readonly defs: Map<string, BuildingDef>,
     lights: NightLights,
+    /** أنماط تُرسم على خامة الأرض بدل مجسم (الطريق الترابي في العالم المستوي) / Styles painted on the ground texture instead of a mesh */
+    private readonly painted: Set<string> = new Set(),
   ) {
     this.postMat = this.material('lamp-post', new Color3(0.25, 0.26, 0.28));
     this.lampMat = this.material('lamp-head', new Color3(0.9, 0.88, 0.8));
@@ -102,7 +104,7 @@ export class RoadNetwork {
 
   /** إعادة الرسم عند تغيّر الطرق فقط / Redraw only when roads change */
   sync(state: GameState): void {
-    const styles = this.edgesByStyle(state);
+    const styles = new Map([...this.edgesByStyle(state)].filter(([style]) => !this.painted.has(style)));
     const signature = [...styles].map(([s, set]) => `${s}:${[...set].sort().join(';')}`).join('|');
     if (signature === this.signature) return;
     this.signature = signature;

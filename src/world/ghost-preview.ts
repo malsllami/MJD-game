@@ -2,7 +2,7 @@
 // File responsibility: translucent preview of a building on its spot before confirming — green if allowed, red if not
 
 import { Color3, StandardMaterial, TransformNode, type Scene } from '@babylonjs/core';
-import type { ModelPart } from '../assets/catalog';
+import type { Look } from '../assets/catalog';
 import type { ModelLibrary } from '../assets/model-library';
 import type { World } from '../core/types';
 import { sampleHeight, tileCenter } from '../core/world-gen';
@@ -27,8 +27,9 @@ export class GhostPreview {
   }
 
   /** معاينة القطع على المربع؛ لا يُعاد إنشاؤها إن لم يتغير شيء / Preview the parts on a tile; not rebuilt if nothing changed */
-  show(parts: ModelPart[], tile: { x: number; z: number }, allowed: boolean, yaw = 0): void {
-    const key = `${tile.x},${tile.z}|${allowed}|${yaw}|${parts.map((p) => p.path).join(',')}`;
+  show(look: Look, tile: { x: number; z: number }, allowed: boolean, yaw = 0): void {
+    const paths = (Array.isArray(look) ? look : look.pieces).map((p) => p.path).join(',');
+    const key = `${tile.x},${tile.z}|${allowed}|${yaw}|${paths}`;
     if (key === this.key) return;
     this.hide();
     this.key = key;
@@ -37,7 +38,7 @@ export class GhostPreview {
     root.position.set(c.x, Math.max(0, sampleHeight(this.world, c.x, c.z)) + 0.03, c.z);
     root.rotation.y = yaw;
     this.root = root;
-    void spawnParts(this.library, this.scene, root, parts, this.world.settings.tileSize).then((meshes) => {
+    void spawnParts(this.library, this.scene, root, look, this.world.settings.tileSize).then((meshes) => {
       for (const m of meshes) {
         m.material = allowed ? this.okMat : this.badMat;
         m.isPickable = false;

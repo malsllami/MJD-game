@@ -52,7 +52,8 @@ export function createEnvironment(scene: Scene, worldSpan: number, preset: Quali
   if (preset.shadowMapSize > 0) {
     shadows = new ShadowGenerator(preset.shadowMapSize, sun);
     shadows.usePercentageCloserFiltering = true;
-    shadows.bias = 0.0015;
+    shadows.bias = 0.002;
+    shadows.normalBias = 0.015;
   }
 
   const skybox = MeshBuilder.CreateBox('skybox', { size: worldSpan * 8 }, scene);

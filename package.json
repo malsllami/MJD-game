@@ -19,7 +19,10 @@
     "@fontsource/reem-kufi": "5.3.0"
   },
   "devDependencies": {
+    "@gltf-transform/core": "4.5.1",
+    "@gltf-transform/functions": "4.5.1",
     "@types/node": "25.9.9",
+    "sharp": "0.35.5",
     "typescript": "7.0.2",
     "vite": "8.3.5",
     "vitest": "5.0.5"

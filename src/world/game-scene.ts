@@ -8,6 +8,7 @@ import { sampleHeight, tileAtPoint, tileCenter, worldHalfExtents } from '../core
 import { ModelLibrary } from '../assets/model-library';
 import { DayNight } from './day-night';
 import { Nature } from './nature';
+import { GroundPainter } from './ground-material';
 import { TerrainSurface } from './terrain-surface';
 import { createEnvironment } from './environment';
 import { StrategyCamera } from './strategy-camera';
@@ -47,6 +48,8 @@ export interface GameScene {
   readonly library: ModelLibrary;
   /** الأشجار والصخور / Trees and rocks */
   readonly nature: Nature;
+  /** رسم التراب والتربة على الأرض (العالم المستوي فقط) / Painting dirt and soil on the ground (flat world only) */
+  readonly ground: GroundPainter | null;
   /** ربط مجسم بمربعه حتى يحدد النقر عليه ذلك المربع / Bind a mesh to its tile so clicking it selects that tile */
   registerPickable(mesh: AbstractMesh, tile: Tile): void;
   unregisterPickable(mesh: AbstractMesh): void;
@@ -75,7 +78,10 @@ export function createGameScene(canvas: HTMLCanvasElement, world: World, defs: G
   const { halfX, halfZ } = worldHalfExtents(world);
   const span = Math.max(halfX, halfZ) * 2;
   const env = createEnvironment(scene, span, preset);
-  const terrain = createTerrainMesh(scene, world, defs.terrain);
+  // العالم المستوي بخامات واقعية، والقاري بألوان أنواع الأرض / The flat world uses realistic textures; the continent its terrain colours
+  const textured = world.settings.worldMode === 'flat';
+  const terrain = createTerrainMesh(scene, world, defs.terrain, textured);
+  const ground = textured ? new GroundPainter(scene, terrain, world, preset.groundResolution) : null;
   const water = createWater(scene, span, preset.waterReflections, [terrain, env.skybox]);
   const dayNight = new DayNight(scene, env, defs.world.dayLengthMinutes, span, water);
   const surface = new TerrainSurface(terrain, world);
@@ -94,6 +100,12 @@ export function createGameScene(canvas: HTMLCanvasElement, world: World, defs: G
   // Each pickable model carries its tile, so clicking a building selects its tile, not the ground behind
   const tileOfMesh = new Map<AbstractMesh, Tile>();
   const camera = new StrategyCamera(scene, canvas, { halfX, halfZ }, { x: 0, z: 0 });
+  // تفاصيل الطبيعة تتبع الكاميرا / Nature detail follows the camera
+  scene.onBeforeRenderObservable.add(() => {
+    const { target, radius } = camera.camera;
+    nature.updateDetail(target.x, target.z, radius);
+    dayNight.setFocus(target.x, target.z, radius);
+  });
   const highlighter = new TileHighlight(scene, world);
 
   /** المربع تحت المؤشر؛ النقر على مبنى يحدد مربعه / Tile under the pointer; clicking a building selects its tile */
@@ -166,6 +178,7 @@ export function createGameScene(canvas: HTMLCanvasElement, world: World, defs: G
     surface,
     library,
     nature,
+    ground,
     registerPickable: (mesh, tile) => tileOfMesh.set(mesh, tile),
     unregisterPickable: (mesh) => tileOfMesh.delete(mesh),
     onTileClick: (handler) => clickHandlers.push(handler),
