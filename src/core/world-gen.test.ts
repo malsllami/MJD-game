@@ -6,7 +6,8 @@ import { classifyTile, edgeDistance, FLAT_EDGE_FOREST, generateWorld, sampleHeig
 
 const defs = seedDefinitions();
 const { world: settings, terrain } = defs;
-const continent = { ...settings, worldMode: 'continent' as const };
+// القارة غير مفعّلة الآن، فتُختبر بمقياسها الأصلي (أرض مسطحة بنصف قطر 20 تصل الساحل) / The continent is inactive now, so it is tested at its original scale
+const continent = { ...settings, worldMode: 'continent' as const, flatZoneRadius: 20 };
 const water = new Set(terrain.filter((t) => t.isWater).map((t) => t.id));
 
 describe('generateWorld', () => {
@@ -70,7 +71,7 @@ describe('القارة / continent', () => {
 
   it('أحواض العواصم يابسة مسطحة على الساحل / capital basins are flat land on the coast', () => {
     expect(world.basins).toHaveLength(continent.startSiteCount);
-    const r = defs.stages[0].territoryRadius;
+    const r = continent.flatZoneRadius;
     for (const b of world.basins) {
       const kinds = new Set<string>();
       for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) kinds.add(at(b.x + dx, b.z + dz).terrainId);

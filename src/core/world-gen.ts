@@ -198,11 +198,28 @@ function placeDeposits(
     if (keys.length) deposits.push({ id: `${type.id}-${deposits.filter((d) => d.typeId === type.id).length + 1}`, typeId: type.id, resourceId: type.resourceId, x, z, tiles: keys });
   };
 
-  // المعادن على السلاسل الجبلية / Ores on the mountain ranges
+  // حزمة البداية في العالم المستوي: محجر ومكمن حديد وغابة حول كل موقع عاصمة، خلف حدود القرية مباشرة
+  // The flat world's starter pack: a quarry, an iron deposit and a forest around each capital site, just past the village edge
+  const starter = (resourceId: string) => types.find((t) => t.resourceId === resourceId);
+  if (flatWorld) {
+    for (const b of basins) {
+      const a0 = rng() * Math.PI * 2;
+      const pack: [DepositType | undefined, number, number][] = [[starter('stone'), 0, 1.6], [starter('iron'), 2.1, 1.6], [starter('wood'), 4.2, 3.5]];
+      for (const [type, turn, r] of pack) {
+        if (!type) continue;
+        const dist = s.flatZoneRadius + 2 + r;
+        const x = Math.round(b.x + Math.cos(a0 + turn) * dist);
+        const z = Math.round(b.z + Math.sin(a0 + turn) * dist);
+        add(type, x, z, disc(x, z, r, (t) => !water.has(t.terrainId)));
+      }
+    }
+  }
+
+  // المعادن على السلاسل الجبلية (أو مواقع المعادن في العالم المستوي) / Ores on the mountain ranges (or the flat world's ore sites)
   const ores: DepositType[] = types.filter((t) => t.place === 'mountain').flatMap((t) => Array.from({ length: t.count }, () => t));
   const free = [...massifs];
   const stone = ores.find((t) => t.resourceId === 'stone');
-  for (const b of basins) {
+  for (const b of flatWorld ? [] : basins) {
     if (!stone || !free.length || !ores.includes(stone)) break;
     free.sort((m1, m2) => Math.hypot(m1.x - b.x, m1.z - b.z) - Math.hypot(m2.x - b.x, m2.z - b.z));
     const m = free.shift()!;
@@ -223,7 +240,7 @@ function placeDeposits(
   for (const type of types.filter((t) => t.place === 'forest')) {
     let left = type.count;
     const land = (t: Tile) => !water.has(t.terrainId) && !inBasin(t.x, t.z);
-    for (const b of basins) {
+    for (const b of flatWorld ? [] : basins) {
       if (!left) break;
       const a = rng() * Math.PI * 2;
       const fx = Math.round(b.x + Math.cos(a) * (s.flatZoneRadius + 6));

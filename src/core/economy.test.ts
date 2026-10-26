@@ -266,6 +266,14 @@ describe('المكامن / deposits', () => {
     expect(checkPlacement(defs, world, state, prospector, t, T0)).toEqual({ ok: true });
   });
 
+  it('البداية فيها حجر وحديد وغابة قريبة ومكتشفة / the start has nearby, discovered stone, iron and forest', () => {
+    const found = new Set(world.deposits.filter((d) => s.discovered.includes(d.id)).map((d) => d.resourceId));
+    for (const r of ['stone', 'iron', 'wood']) expect(found.has(r), r).toBe(true);
+    // وخارج حدود القرية، فتحتاج توسعًا قريبًا / And outside the village borders, so they need a nearby expansion
+    const territory = new Set(s.territory);
+    for (const d of world.deposits.filter((x) => s.discovered.includes(x.id))) expect(d.tiles.every((k) => territory.has(k))).toBe(false);
+  });
+
   it('تُكتشف المكامن القريبة من الحدود فقط / only deposits near the borders are discovered', () => {
     const territory = new Set(s.territory);
     for (const d of world.deposits) {

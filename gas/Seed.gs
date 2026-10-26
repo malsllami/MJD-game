@@ -12,6 +12,15 @@ const CAPITAL_SCALE = {
   stageRadius: { village: 20, town: 28, city: 40 },
 };
 
+/**
+ * البداية المتقاربة: قرية 13 × 13 مربعًا، وأرض مسطحة أضيق، وقطع ضم أصغر؛ يستخدمه الإعداد الأول وapplyCompactVillage
+ * The compact start: a 13 × 13 village, a narrower flat zone, smaller annex parcels; used by the first setup and applyCompactVillage
+ */
+const COMPACT_VILLAGE = {
+  world: { flatZoneRadius: 8, annexBlockSize: 4 },
+  stageRadius: { village: 6, town: 12, city: 20 },
+};
+
 /** قيم إعدادات العالم الأولية حسب الحقل / Initial world settings by field */const SEED_WORLD = {
   seed: 1447,
   tilesX: CAPITAL_SCALE.world.tilesX,
@@ -37,8 +46,8 @@ const CAPITAL_SCALE = {
   offlineCapHours: 8,
   annexResource: 'gold',
   annexCost: 150,
-  annexBlockSize: CAPITAL_SCALE.world.annexBlockSize,
-  flatZoneRadius: 20,
+  annexBlockSize: COMPACT_VILLAGE.world.annexBlockSize,
+  flatZoneRadius: COMPACT_VILLAGE.world.flatZoneRadius,
   massifCount: 14,
   massifRadius: 10,
   lakeCount: 10,
@@ -210,9 +219,9 @@ const SEED_ROWS = {
     return { 'المعرف': d[0], 'الاسم': d[1], 'معرف المورد': d[2], 'المكان': d[3], 'العدد في العالم': d[4], 'الأيقونة': d[5], 'اللون': d[6] };
   }),
   stages: [
-    ['village', 'قرية', 0, CAPITAL_SCALE.stageRadius.village, PRIMITIVE_ERA.villageDescription],
-    ['town', 'بلدة', 150, CAPITAL_SCALE.stageRadius.town, 'الخدمات العامة والأمن وتطوير الطرق ومركز القرية'],
-    ['city', 'مدينة', 600, CAPITAL_SCALE.stageRadius.city, 'الحكومة والصناعة والميناء والمطار والقطار والقواعد العسكرية'],
+    ['village', 'قرية', 0, COMPACT_VILLAGE.stageRadius.village, PRIMITIVE_ERA.villageDescription],
+    ['town', 'بلدة', 150, COMPACT_VILLAGE.stageRadius.town, 'الخدمات العامة والأمن وتطوير الطرق ومركز القرية'],
+    ['city', 'مدينة', 600, COMPACT_VILLAGE.stageRadius.city, 'الحكومة والصناعة والميناء والمطار والقطار والقواعد العسكرية'],
   ].map(function (s, i) {
     return { 'المعرف': s[0], 'الاسم': s[1], 'الترتيب': i + 1, 'السكان المطلوبون': s[2], 'نصف قطر الحدود': s[3], 'الوصف': s[4] };
   }),

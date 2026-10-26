@@ -54,6 +54,14 @@ function addWorldAndDeposits() {
  * A deliberate edit of existing values (map size, stage borders) on the admin's explicit request; logs every old value first.
  */
 function applyCapitalScale() {
+  applyWorldScale_(CAPITAL_SCALE, 'طُبّق مقياس العاصمة');
+}
+
+/**
+ * يكتب قيم إعدادات العالم ونصف قطر حدود كل مرحلة من مقياس، ويسجّل كل قيمة قديمة قبل تغييرها
+ * Writes world settings and each stage's border radius from a scale, logging every old value first
+ */
+function applyWorldScale_(scale, label) {
   const ss = db_();
   const log = [];
 
@@ -65,11 +73,11 @@ function applyCapitalScale() {
   const keyOf = {};
   WORLD_SETTINGS.forEach(function (s) { keyOf[s.field] = s.key; });
   const wValues = wSheet.getRange(2, 1, wSheet.getLastRow() - 1, wHeader.length).getValues();
-  Object.keys(CAPITAL_SCALE.world).forEach(function (field) {
+  Object.keys(scale.world).forEach(function (field) {
     const row = wValues.findIndex(function (r) { return String(r[keyCol]).trim() === keyOf[field]; });
     if (row < 0) return;
-    log.push(keyOf[field] + ': ' + wValues[row][valueCol] + ' ← ' + CAPITAL_SCALE.world[field]);
-    wSheet.getRange(row + 2, valueCol + 1).setValue(CAPITAL_SCALE.world[field]);
+    log.push(keyOf[field] + ': ' + wValues[row][valueCol] + ' ← ' + scale.world[field]);
+    wSheet.getRange(row + 2, valueCol + 1).setValue(scale.world[field]);
   });
 
   const stages = tableById_('stages');
@@ -79,12 +87,12 @@ function applyCapitalScale() {
   const radiusCol = sHeader.indexOf('نصف قطر الحدود');
   const sValues = sSheet.getRange(2, 1, sSheet.getLastRow() - 1, sHeader.length).getValues();
   sValues.forEach(function (r, i) {
-    const radius = CAPITAL_SCALE.stageRadius[String(r[idCol]).trim()];
+    const radius = scale.stageRadius[String(r[idCol]).trim()];
     if (radius === undefined) return;
     log.push('حدود ' + r[idCol] + ': ' + r[radiusCol] + ' ← ' + radius);
     sSheet.getRange(i + 2, radiusCol + 1).setValue(radius);
   });
 
   bumpVersions_(['world', 'stages']);
-  Logger.log('طُبّق مقياس العاصمة (القيمة القديمة ← الجديدة):\n' + log.join('\n'));
+  Logger.log(label + ' (القيمة القديمة ← الجديدة):\n' + log.join('\n'));
 }

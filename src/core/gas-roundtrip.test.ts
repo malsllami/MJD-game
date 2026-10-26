@@ -107,6 +107,7 @@ describe('Apps Script: إضافة تطور القرية على قاعدة بيا
     gas.addFlatWorld();
     gas.addPrimitiveEra();
     gas.applyPrimitiveEra();
+    gas.applyCompactVillage();
     const defs = definitionsFrom(gas);
     expect(defs.buildings.find((b) => b.id === 'farm')!.name).toBe('مزرعة القمح');
     const normalise = (d: typeof defs) => ({ ...d, buildings: d.buildings.map((b) => ({ ...b, name: b.id === 'farm' ? '' : b.name })) });
@@ -209,6 +210,7 @@ describe('Apps Script: إضافة العالم والمكامن ومقياس ا�
     const { gas } = beforeWorld();
     gas.addWorldAndDeposits();
     gas.applyCapitalScale();
+    gas.applyCompactVillage();
     expect(definitionsFrom(gas)).toEqual(fresh);
   });
 
@@ -285,6 +287,22 @@ describe('Apps Script: العالم المستوي والعصر البدائي /
     const snapshot = JSON.stringify([...ss.sheets.values()].map((s) => s.values));
     runAll();
     expect(JSON.stringify([...ss.sheets.values()].map((s) => s.values))).toBe(snapshot);
+  });
+});
+
+describe('Apps Script: البداية المتقاربة / compact start', () => {
+  it('تصغّر حدود المراحل والأرض المسطحة وقطع الضم ولا تمس غيرها / shrinks stage borders, the flat zone and annex parcels only', () => {
+    const { gas } = loadGas();
+    gas.setupDatabase();
+    gas.applyCapitalScale();
+    const before = definitionsFrom(gas);
+    gas.applyCompactVillage();
+    const after = definitionsFrom(gas);
+    expect(after.stages.map((st) => st.territoryRadius)).toEqual([6, 12, 20]);
+    expect(after.world.flatZoneRadius).toBe(8);
+    expect(after.world.annexBlockSize).toBe(4);
+    expect({ ...after.world, flatZoneRadius: 0, annexBlockSize: 0 }).toEqual({ ...before.world, flatZoneRadius: 0, annexBlockSize: 0 });
+    expect(after.buildings).toEqual(before.buildings);
   });
 });
 
