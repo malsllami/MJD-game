@@ -36,7 +36,7 @@ export class SaveService {
       const file = JSON.parse(raw) as SaveFile;
       if (file.format !== 3 || !isState(file.state)) return { kind: 'none' };
       if (file.worldSignature !== this.signature) return { kind: 'world-changed' };
-      return { kind: 'loaded', state: file.state };
+      return { kind: 'loaded', state: normalise(file.state) };
     } catch {
       return { kind: 'none' };
     }
@@ -64,6 +64,11 @@ export class SaveService {
 }
 
 /** تحقق بسيط من شكل الحالة المحفوظة / Basic shape check of a saved state */
+/** حفظ أقدم بلا أسوار يبدأ بلا أسوار / An older save without walls starts with none */
+function normalise(state: GameState): GameState {
+  return Array.isArray(state.walls) ? state : { ...state, walls: [] };
+}
+
 function isState(s: unknown): s is GameState {
   const v = s as GameState;
   return !!v && !!v.settlement && typeof v.population === 'number' && typeof v.stage === 'string' && typeof v.resources === 'object' && Array.isArray(v.buildings) && Array.isArray(v.roads) && Array.isArray(v.discovered) && Array.isArray(v.territory) && typeof v.lastTick === 'number';

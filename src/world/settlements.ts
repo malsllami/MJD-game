@@ -5,11 +5,10 @@ import { TransformNode, type AbstractMesh, type Scene, type ShadowGenerator, typ
 import { settlementLook } from '../assets/catalog';
 import type { ModelLibrary } from '../assets/model-library';
 import { spawnParts } from './building-models';
-import { glowsAtNight, WINDOW_LIGHT, type Glowing, type NightLights } from './day-night';
 
 /**
- * ينشئ مركز القرية؛ level هو ترتيب المرحلة (1 للقرية)، ونوافذه تضيء ليلًا
- * Builds the settlement centre; level is the stage order (1 for the village), with windows lit at night
+ * ينشئ مبنى الحكم؛ level هو ترتيب المرحلة (1 للقرية)
+ * Builds the government building; level is the stage order (1 for the village)
  */
 export async function createSettlementModel(
   library: ModelLibrary,
@@ -18,19 +17,10 @@ export async function createSettlementModel(
   tileSize: number,
   level: number,
   shadows: ShadowGenerator | null,
-  lights: NightLights,
 ): Promise<{ root: TransformNode; meshes: AbstractMesh[] }> {
   const root = new TransformNode('settlement', scene);
   root.position.copyFrom(center);
   const meshes = await spawnParts(library, scene, root, settlementLook(level), tileSize);
-  const lit = new Set<unknown>();
-  for (const m of meshes) {
-    shadows?.addShadowCaster(m);
-    const mat = m.material;
-    if (mat && !lit.has(mat) && 'emissiveColor' in mat && glowsAtNight(mat.name)) {
-      lit.add(mat);
-      lights.add(mat as unknown as Glowing, WINDOW_LIGHT);
-    }
-  }
+  for (const m of meshes) shadows?.addShadowCaster(m);
   return { root, meshes };
 }

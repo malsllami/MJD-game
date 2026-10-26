@@ -1,8 +1,9 @@
-// مسؤولية الملف: شبكة الطرق على حدود المربعات — شريط متصل بين زوايا الشبكة، بتقاطعات وحواف وخط منقط، مع أعمدة إنارة تضيء ليلًا
-// File responsibility: the road network on tile edges — a continuous ribbon between grid corners, with junctions, kerbs,
-// a dashed centre line, and street lamps lit at night
+// مسؤولية الملف: شبكة الطرق على حدود المربعات — شريط متصل بين زوايا الشبكة بتقاطعات وحواف وخط منقط، وإنارة الطرقات ليلًا:
+// مصابيح على الطرق المعبدة ومشاعل على الطرق الترابية (التي ترسمها خامة الأرض)
+// File responsibility: the road network on tile edges — a continuous ribbon between grid corners with junctions, kerbs and a
+// dashed centre line, and street lighting at night: lamps on paved roads, torches on dirt roads (painted by the ground texture)
 
-import { Color3, Mesh, MeshBuilder, Scene, StandardMaterial, VertexData } from '@babylonjs/core';
+import { Color3, GlowLayer, Mesh, MeshBuilder, Scene, StandardMaterial, VertexData } from '@babylonjs/core';
 import { edgeCorners, tileKey } from '../core/economy';
 import type { BuildingDef, GameState, World } from '../core/types';
 import { sampleHeight, worldHalfExtents } from '../core/world-gen';
@@ -22,6 +23,10 @@ const STYLES: Record<string, { surface: Color3; dashed: boolean }> = {
 const KERB = new Color3(0.8, 0.78, 0.74);
 const DASH = new Color3(0.95, 0.88, 0.55);
 const LAMP_LIGHT = new Color3(1, 0.82, 0.45);
+const TORCH_LIGHT = new Color3(1, 0.5, 0.12);
+const TORCH_POST = new Color3(0.36, 0.24, 0.14);
+/** مشعل على كل قطعتين من الطريق الترابي / A torch every second dirt-road piece */
+const TORCH_EVERY = 2;
 
 /** هندسة تُجمع ثم تتحول إلى مجسم واحد / Geometry gathered then turned into one mesh */
 class Builder {
@@ -75,6 +80,8 @@ export class RoadNetwork {
   private readonly materials = new Map<string, StandardMaterial>();
   private readonly postMat: StandardMaterial;
   private readonly lampMat: StandardMaterial;
+  private readonly torchPostMat: StandardMaterial;
+  private readonly torchMat: StandardMaterial;
 
   constructor(
     private readonly scene: Scene,
@@ -88,6 +95,9 @@ export class RoadNetwork {
     this.lampMat = this.material('lamp-head', new Color3(0.9, 0.88, 0.8));
     // أعمدة الإنارة تضيء تلقائيًا مع حلول الظلام / Street lamps switch on automatically at dusk
     lights.add(this.lampMat, LAMP_LIGHT);
+    this.torchPostMat = this.material('torch-post', TORCH_POST);
+    this.torchMat = this.material('torch-flame', new Color3(0.9, 0.45, 0.1));
+    lights.add(this.torchMat, TORCH_LIGHT);
   }
 
   /** حواف كل نمط طريق / Edges of each road style */
@@ -104,8 +114,9 @@ export class RoadNetwork {
 
   /** إعادة الرسم عند تغيّر الطرق فقط / Redraw only when roads change */
   sync(state: GameState): void {
-    const styles = new Map([...this.edgesByStyle(state)].filter(([style]) => !this.painted.has(style)));
-    const signature = [...styles].map(([s, set]) => `${s}:${[...set].sort().join(';')}`).join('|');
+    const all = this.edgesByStyle(state);
+    const styles = new Map([...all].filter(([style]) => !this.painted.has(style)));
+    const signature = [...all].map(([s, set]) => `${s}:${[...set].sort().join(';')}`).join('|');
     if (signature === this.signature) return;
     this.signature = signature;
     for (const m of this.meshes) m.dispose();
@@ -153,11 +164,22 @@ export class RoadNetwork {
       const mesh = b.build(name, this.scene, this.material(name, color));
       if (mesh) this.meshes.push(mesh);
     }
-    if (lamps.length) this.meshes.push(...this.buildLamps(lamps));
+    if (lamps.length) this.meshes.push(...this.buildLamps(lamps, this.postMat, this.lampMat));
+    // الطرق المرسومة على الأرض تُنار بمشاعل على جانبها / Ground-painted roads are lit by torches at their side
+    const torches: [number, number][] = [];
+    for (const style of this.painted) {
+      [...(all.get(style) ?? [])].sort().forEach((edge, i) => {
+        if (i % TORCH_EVERY) return;
+        const [[ax, az], [bx, bz]] = edgeCorners(edge).map(([x, z]) => at(x, z));
+        const side = s * 0.24;
+        torches.push([(ax + bx) / 2 + (bz !== az ? side : 0), (az + bz) / 2 + (bx !== ax ? side : 0)]);
+      });
+    }
+    if (torches.length) this.meshes.push(...this.buildLamps(torches, this.torchPostMat, this.torchMat));
   }
 
-  /** عمود إنارة على جانب كل قطعة طريق / A street lamp beside every road piece */
-  private buildLamps(spots: [number, number][]): Mesh[] {
+  /** عمود برأس مضيء في كل موضع (مصباح أو مشعل) / A post with a glowing head at each spot (a lamp or a torch) */
+  private buildLamps(spots: [number, number][], postMat: StandardMaterial, headMat: StandardMaterial): Mesh[] {
     const s = this.world.settings.tileSize;
     const posts: Mesh[] = [];
     const heads: Mesh[] = [];
@@ -177,7 +199,10 @@ export class RoadNetwork {
       m.isPickable = false;
       return m;
     };
-    return [merge(posts, this.postMat), merge(heads, this.lampMat)];
+    const glowing = merge(heads, headMat);
+    // رؤوس الإنارة وحدها تتوهج ليلًا / Only the lamp heads glow at night
+    for (const layer of this.scene.effectLayers) if (layer instanceof GlowLayer) layer.addIncludedOnlyMesh(glowing);
+    return [merge(posts, postMat), glowing];
   }
 
   private material(name: string, color: Color3): StandardMaterial {

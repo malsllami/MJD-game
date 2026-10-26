@@ -55,6 +55,8 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
 .res .ico { color: var(--c); }
 .res b { font-size: 13px; }
 .res small { color: var(--ink-soft); }
+/* المخزن الممتلئ يتلون حتى يعرف اللاعب أن الإنتاج توقف / A full store is coloured so the player knows output stopped */
+.res small.full { color: #f0c477; font-weight: 700; }
 .res i { font-style: normal; font-size: 11px; }
 .clock { padding: 3px 10px; border-radius: 999px; background: var(--chip); font-size: 12px; font-weight: 700; white-space: nowrap; }
 .civic { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
@@ -118,10 +120,7 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
 .card .cost span { display: inline-flex; align-items: center; gap: 3px; }
 .card .cost .ico { width: 12px; height: 12px; color: var(--gold-soft); }
 .card .fx { color: #8fe0b0; padding-inline: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.card em { font-style: normal; color: #f0c477; padding-inline: 2px; }
-.card em:empty { display: none; }
 .card[aria-pressed='true'] { border-color: var(--gold); background: rgba(201, 169, 97, 0.14); }
-.card.lock { opacity: 0.5; }
 .card.short b { color: #f0c477; }
 .bar-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
 .queue { display: flex; gap: 8px; font-size: 11px; color: var(--ink-soft); }

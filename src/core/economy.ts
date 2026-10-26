@@ -7,6 +7,7 @@
 // Every function returns a new state without mutating the old one, and time is passed explicitly.
 
 import type { BuildingDef, Deposit, GameDefinitions, GameState, PlacedBuilding, Stage, Tile, World } from './types';
+import { addCapped, capacities, seedResidents, settle, staffing } from './workforce';
 
 /** مفتاح مربع أو زاوية / Tile or corner key */
 export const tileKey = (x: number, z: number): string => `${x},${z}`;
@@ -19,12 +20,19 @@ export type BuildingStatus =
   | { kind: 'constructing' }
   | { kind: 'operating' }
   | { kind: 'stopped'; missing: string[] }
-  | { kind: 'disconnected' };
+  | { kind: 'disconnected' }
+  /** يعمل لكن بلا أي عامل من مهنته / Running but with no worker of its trade */
+  | { kind: 'understaffed'; profession: string };
 
 /** أنماط المجسم التي تُعامل كطرق / Model styles treated as roads */
 export const ROAD_MODELS = new Set(['road', 'paved-road']);
 
 export const isRoad = (def: BuildingDef | undefined): boolean => !!def && ROAD_MODELS.has(def.model);
+
+/** أنماط المجسم التي تُرسم أسوارًا على الحواف / Model styles drawn as walls on edges */
+export const WALL_MODELS = new Set(['wall', 'gate']);
+
+export const isWall = (def: BuildingDef | undefined): boolean => !!def && WALL_MODELS.has(def.model);
 
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
@@ -87,6 +95,7 @@ export function createInitialState(defs: GameDefinitions, world: World, site: { 
     stage: first.id,
     buildings: [],
     roads: [],
+    walls: [],
     territory: landAround(defs, world, site.x, site.z, first.territoryRadius),
     discovered: [],
     lastTick: now,
@@ -95,21 +104,40 @@ export function createInitialState(defs: GameDefinitions, world: World, site: { 
 }
 
 /**
- * ترقية المرحلة عند بلوغ السكان المطلوبين، مع توسيع الحدود (لا تتراجع المرحلة أبدًا)
- * Advance the stage when population is reached, widening territory (the stage never goes back)
+ * الانتقال إلى مرحلة مع توسيع الحدود واكتشاف ما قربها (يُستدعى بعد نجاح ترقية مبنى الحكم)
+ * Move into a stage, widening territory and discovering near it (called after a successful government upgrade)
  */
-export function applyStageProgress(state: GameState, defs: GameDefinitions, world: World): GameState {
-  let next = nextStage(defs, state.stage);
-  if (!next || state.population < next.population) return state;
-  let stage = state.stage;
-  while (next && state.population >= next.population) {
-    stage = next.id;
-    next = nextStage(defs, stage);
-  }
-  const reached = stageById(defs, stage);
+export function enterStage(state: GameState, defs: GameDefinitions, world: World, stageId: string): GameState {
+  const reached = stageById(defs, stageId);
   const territory = new Set(state.territory);
   for (const k of landAround(defs, world, state.settlement.x, state.settlement.z, reached.territoryRadius)) territory.add(k);
-  return discoverNearTerritory({ ...state, stage, territory: [...territory] }, defs, world);
+  return discoverNearTerritory({ ...state, stage: stageId, territory: [...territory] }, defs, world);
+}
+
+// ===== فتح المباني / Unlocking buildings =====
+
+/** مبانٍ مكتملة بمعرفها / Completed buildings by id */
+export function builtIds(state: GameState, now: number): Set<string> {
+  return new Set(state.buildings.filter((b) => !isUnderConstruction(b, now)).map((b) => b.buildingId));
+}
+
+/**
+ * ما ينقص المبنى ليُفتح: المرحلة، والتقنية، والسكان، والمباني المكتملة المطلوبة؛ قائمة فارغة تعني أنه مفتوح
+ * What a building lacks to unlock: stage, research, population and required completed buildings; an empty list means unlocked
+ */
+export function unlockGaps(def: BuildingDef, state: GameState, defs: GameDefinitions, now: number): string[] {
+  const gaps: string[] = [];
+  const required = stageById(defs, def.stage);
+  if (required.order > stageById(defs, state.stage).order) gaps.push(`ترقية الدولة إلى ${required.name}`);
+  if (def.requiresTech) gaps.push('بحث لم يُنجز بعد');
+  if (Math.floor(state.population) < def.requiredPopulation) gaps.push(`${def.requiredPopulation} نسمة`);
+  const built = builtIds(state, now);
+  for (const id of def.requiredBuildings) if (!built.has(id)) gaps.push(defs.buildings.find((b) => b.id === id)?.name ?? id);
+  return gaps;
+}
+
+export function isUnlocked(def: BuildingDef, state: GameState, defs: GameDefinitions, now: number): boolean {
+  return unlockGaps(def, state, defs, now).length === 0;
 }
 
 // ===== المكامن والاكتشاف / Deposits and discovery =====
@@ -262,20 +290,107 @@ export function roadAt(state: GameState, edge: string) {
 }
 
 /**
+ * أقصر طريق تلقائي على حواف الشبكة من شبكة الطرق (أو زوايا مبنى الحكم) ينتهي على أحد أضلاع المربع؛
+ * يمر بحواف يُسمح فيها بالطريق فقط، ويعيد الحواف الجديدة، أو [] إن كان المربع يطل على طريق، أو null إن تعذر الوصول
+ * The shortest automatic road on grid edges from the road network (or the government corners) ending on one of the tile's sides;
+ * it uses only edges where the road is allowed, returning the new edges, [] when the tile already faces a road, or null if unreachable
+ */
+export function autoRoadPath(defs: GameDefinitions, world: World, state: GameState, road: BuildingDef, tile: { x: number; z: number }, now: number): string[] | null {
+  const network = connectedRoads(state, now, true);
+  if (hasRoadAccess(state, tile.x, tile.z, network)) return [];
+  const sides = new Set(tileEdges(tile.x, tile.z));
+  const starts = new Set(hubCorners(state));
+  for (const edge of network) for (const [x, z] of edgeCorners(edge)) starts.add(tileKey(x, z));
+  // البحث بلا تكلفة: التكلفة تُفحص عند الرسم / Search ignores cost: it is checked when laying
+  const free = { ...state, resources: Object.fromEntries(Object.keys(road.cost).map((id) => [id, Infinity])) };
+  const from = new Map<string, string | null>([...starts].map((k) => [k, null]));
+  const queue = [...starts];
+  const allowed = (edge: string) => !!roadAt(state, edge) || checkRoadEdge(defs, world, free, road, edge).ok;
+  const trail = (corner: string): string[] => {
+    const edges: string[] = [];
+    for (let at: string | null = corner; at && from.get(at); at = from.get(at)!) {
+      const [ax, az] = at.split(',').map(Number);
+      const [bx, bz] = from.get(at)!.split(',').map(Number);
+      edges.unshift(edgeBetween({ x: ax, z: az }, { x: bx, z: bz }));
+    }
+    return edges;
+  };
+  for (let i = 0; i < queue.length; i++) {
+    const key = queue[i];
+    const [x, z] = key.split(',').map(Number);
+    for (const [dx, dz] of NEIGHBOURS) {
+      const edge = edgeBetween({ x, z }, { x: x + dx, z: z + dz });
+      if (!allowed(edge)) continue;
+      // الوصول إلى ضلع من أضلاع المربع ينهي البحث / Reaching one of the tile's sides ends the search
+      if (sides.has(edge)) return [...trail(key), edge].filter((e) => !roadAt(state, e));
+      const next = tileKey(x + dx, z + dz);
+      if (from.has(next)) continue;
+      from.set(next, key);
+      queue.push(next);
+    }
+  }
+  return null;
+}
+
+/** السور على حافة / The wall on an edge */
+export function wallAt(state: GameState, edge: string) {
+  return state.walls.find((w) => w.edge === edge);
+}
+
+/** حافة في الدولة على أحد جانبيها، بأرض تسمح بالمبنى / An edge with nation land on one side that allows the building */
+function edgeLandCheck(world: World, state: GameState, def: BuildingDef, edge: string): Check {
+  const owned = new Set(state.territory);
+  const sides = edgeTiles(edge)
+    .map(([x, z]) => (x >= 0 && z >= 0 && x < world.settings.tilesX && z < world.settings.tilesZ ? world.tiles[z * world.settings.tilesX + x] : null))
+    .filter((t): t is Tile => !!t);
+  if (!sides.some((t) => owned.has(tileKey(t.x, t.z)))) return { ok: false, reason: `${def.name} خارج حدود الدولة` };
+  if (!sides.some((t) => owned.has(tileKey(t.x, t.z)) && def.allowedTerrain.includes(t.terrainId))) return { ok: false, reason: `لا يُرسم ${def.name} هنا؛ الأرض لا تسمح بذلك` };
+  return { ok: true };
+}
+
+/**
+ * هل يمكن رسم السور أو البوابة على هذه الحافة؟ مفتوح، وفي الدولة، وليس فوق طريق، والموارد كافية
+ * Can the wall or gate go on this edge? Unlocked, in the nation, not over a road, and affordable
+ */
+export function checkWallEdge(defs: GameDefinitions, world: World, state: GameState, wall: BuildingDef, edge: string, now: number): Check {
+  const gaps = unlockGaps(wall, state, defs, now);
+  if (gaps.length) return { ok: false, reason: `${wall.name} مقفل؛ يحتاج: ${gaps.join('، ')}` };
+  if (roadAt(state, edge)) return { ok: false, reason: 'لا يُبنى السور فوق طريق' };
+  const land = edgeLandCheck(world, state, wall, edge);
+  if (!land.ok) return land;
+  const shortage = missingResources(defs, state, wall.cost);
+  if (shortage) return { ok: false, reason: `الموارد غير كافية؛ ينقص ${shortage}` };
+  return { ok: true };
+}
+
+/** رسم سور على حواف: يتخطى ما فيه سور، ويتوقف عند أول حافة ممنوعة / Lay a wall along edges: skips walled edges, stops at the first refused one */
+export function placeWallPath(state: GameState, defs: GameDefinitions, world: World, wall: BuildingDef, edges: string[], now: number, uid: () => string): RoadPathResult {
+  let current = state;
+  let placed = 0;
+  for (const edge of edges) {
+    if (wallAt(current, edge)) continue;
+    const check = checkWallEdge(defs, world, current, wall, edge, now);
+    if (!check.ok) return { state: current, placed, stoppedBy: check.reason };
+    current = {
+      ...current,
+      resources: pay(current.resources, wall.cost),
+      walls: [...current.walls, { uid: uid(), buildingId: wall.id, edge, startedAt: now, completesAt: now + wall.buildSeconds * 1000 }],
+    };
+    placed++;
+  }
+  return { state: current, placed, stoppedBy: null };
+}
+
+/**
  * هل يمكن رسم الطريق على هذه الحافة؟ تحتاج يابسة في الدولة على أحد جانبيها تسمح بالطريق
  * Can the road go on this edge? It needs nation land on one side that allows the road
  */
 export function checkRoadEdge(defs: GameDefinitions, world: World, state: GameState, road: BuildingDef, edge: string): Check {
   const required = stageById(defs, road.stage);
   if (required.order > stageById(defs, state.stage).order) return { ok: false, reason: `${road.name} يُفتح في مرحلة ${required.name}` };
-  const owned = new Set(state.territory);
-  const sides = edgeTiles(edge)
-    .map(([x, z]) => (x >= 0 && z >= 0 && x < world.settings.tilesX && z < world.settings.tilesZ ? world.tiles[z * world.settings.tilesX + x] : null))
-    .filter((t): t is Tile => !!t);
-  if (!sides.some((t) => owned.has(tileKey(t.x, t.z)))) return { ok: false, reason: 'الطريق خارج حدود الدولة' };
-  if (!sides.some((t) => owned.has(tileKey(t.x, t.z)) && road.allowedTerrain.includes(t.terrainId))) {
-    return { ok: false, reason: `لا يُرسم ${road.name} هنا؛ الأرض لا تسمح بذلك` };
-  }
+  if (wallAt(state, edge)) return { ok: false, reason: 'يوجد سور على هذه الحافة؛ اهدمه أولًا' };
+  const land = edgeLandCheck(world, state, road, edge);
+  if (!land.ok) return land;
   const shortage = missingResources(defs, state, road.cost);
   if (shortage) return { ok: false, reason: `الموارد غير كافية؛ ينقص ${shortage}` };
   return { ok: true };
@@ -310,18 +425,18 @@ export function placeRoadPath(state: GameState, defs: GameDefinitions, world: Wo
   return { state: current, placed, stoppedBy: null };
 }
 
-/** إزالة طرق حواف واسترداد نسبة من تكلفتها / Remove edge roads and refund part of their cost */
+/** إزالة طرق وأسوار الحواف واسترداد نسبة من تكلفتها / Remove edge roads and walls, refunding part of their cost */
 export function demolishRoads(state: GameState, defs: GameDefinitions, edges: string[]): { state: GameState; removed: number } {
   const drop = new Set(edges);
   const resources = { ...state.resources };
   let removed = 0;
-  for (const r of state.roads) {
+  for (const r of [...state.roads, ...state.walls]) {
     if (!drop.has(r.edge)) continue;
     const def = defs.buildings.find((b) => b.id === r.buildingId);
     for (const [id, n] of Object.entries(costShare(def?.cost ?? {}, defs.world.demolishRefundPercent))) resources[id] = (resources[id] ?? 0) + n;
     removed++;
   }
-  return { state: { ...state, resources, roads: state.roads.filter((r) => !drop.has(r.edge)) }, removed };
+  return { state: { ...state, resources, roads: state.roads.filter((r) => !drop.has(r.edge)), walls: state.walls.filter((w) => !drop.has(w.edge)) }, removed };
 }
 
 // ===== المباني / Buildings =====
@@ -349,7 +464,33 @@ export function buildingStatus(placed: PlacedBuilding, state: GameState, defs: G
   const def = defs.buildings.find((b) => b.id === placed.buildingId);
   if (def?.requiresRoad && !hasRoadAccess(state, placed.x, placed.z, connectedRoads(state, now))) return { kind: 'disconnected' };
   const missing = def ? missingInputs(def, state.resources) : [];
-  return missing.length ? { kind: 'stopped', missing } : { kind: 'operating' };
+  if (missing.length) return { kind: 'stopped', missing };
+  if (def?.profession && def.workers > 0 && (staffingAt(state, defs, now).get(placed.uid)?.assigned ?? 0) === 0) return { kind: 'understaffed', profession: def.profession };
+  return { kind: 'operating' };
+}
+
+/**
+ * هل يعمل المبنى قبل حساب العمال: مكتمل، ويصله طريق إن احتاجه، ومدخلاته متوفرة
+ * Is the building running before staffing: completed, road-connected if needed, inputs in stock
+ */
+function runner(state: GameState, defs: GameDefinitions, now: number, stock: Record<string, number> = state.resources) {
+  const byId = new Map(defs.buildings.map((b) => [b.id, b]));
+  const roads = connectedRoads(state, now);
+  return (b: PlacedBuilding): boolean => {
+    const def = byId.get(b.buildingId);
+    if (!def || now < b.completesAt || missingInputs(def, stock).length) return false;
+    return !def.requiresRoad || hasRoadAccess(state, b.x, b.z, roads);
+  };
+}
+
+/** توزيع العمال الآن / Worker assignment now */
+export function staffingAt(state: GameState, defs: GameDefinitions, now: number) {
+  return staffing(state.buildings, new Map(defs.buildings.map((b) => [b.id, b])), runner(state, defs, now));
+}
+
+/** سعة كل مورد الآن / Each resource's capacity now */
+export function capacityAt(state: GameState, defs: GameDefinitions, now: number): Record<string, number> {
+  return capacities(defs, state.buildings, new Map(defs.buildings.map((b) => [b.id, b])), runner(state, defs, now));
 }
 
 /** خيارات التحقق للنقل / Check options used when moving */
@@ -364,12 +505,11 @@ interface PlacementOptions {
  * Can this building go on this tile now? Returns the first blocking reason
  */
 export function checkPlacement(defs: GameDefinitions, world: World, state: GameState, building: BuildingDef, tile: Tile, now: number, opts: PlacementOptions = {}): Check {
-  if (isRoad(building)) return { ok: false, reason: 'الطرق تُرسم على حدود المربعات بالسحب' };
-  const required = stageById(defs, building.stage);
-  if (!opts.alreadyBuilt && required.order > stageById(defs, state.stage).order) {
-    return { ok: false, reason: `${building.name} يُفتح في مرحلة ${required.name} عند ${required.population} نسمة` };
+  if (isRoad(building) || isWall(building)) return { ok: false, reason: `${building.name} يُرسم على حدود المربعات بالسحب` };
+  if (!opts.alreadyBuilt) {
+    const gaps = unlockGaps(building, state, defs, now);
+    if (gaps.length) return { ok: false, reason: `${building.name} مقفل؛ يحتاج: ${gaps.join('، ')}` };
   }
-  if (!opts.alreadyBuilt && building.requiresTech) return { ok: false, reason: `${building.name} يتطلب بحثًا لم يُنجز بعد` };
   if (isSettlementTile(state, tile.x, tile.z)) return { ok: false, reason: 'هذا المربع يشغله مبنى الحكم' };
   if (!state.territory.includes(tileKey(tile.x, tile.z))) return { ok: false, reason: 'المربع خارج حدود الدولة؛ ضمّه للدولة أولًا' };
   const occupant = buildingAt(state, tile.x, tile.z);
@@ -461,31 +601,37 @@ export function moveBuilding(state: GameState, defs: GameDefinitions, uid: strin
  * Advance time to now in steps of at most a minute: a building runs only with its inputs in stock and a road when needed;
  * population moves toward the capacity of operating housing, then stage progress is checked
  */
-export function advance(state: GameState, defs: GameDefinitions, world: World, now: number): GameState {
+export function advance(state: GameState, defs: GameDefinitions, _world: World, now: number): GameState {
   if (now <= state.lastTick) return state;
   const byId = new Map(defs.buildings.map((b) => [b.id, b]));
   const resources = { ...state.resources };
-  let population = state.population;
+  // حفظ أقدم بلا سكان لكل مسكن يُوزَّع سكانه أولًا / An older save without per-home residents is spread first
+  let buildings = seedResidents(state.buildings, byId, state.population);
 
   for (let from = state.lastTick; from < now; from += STEP_MS) {
     const to = Math.min(now, from + STEP_MS);
     const stock = { ...resources };
-    const roads = connectedRoads(state, to);
-    let capacity = 0;
-    for (const placed of state.buildings) {
+    const current = { ...state, buildings };
+    const running = runner(current, defs, to, stock);
+    // يعمل في هذه الدفعة ما بدأ قبل نهايتها / What started before this step's end runs in it
+    const active = (b: PlacedBuilding) => b.completesAt < to && running({ ...b, completesAt: Math.min(b.completesAt, to) });
+    const crew = staffing(buildings, byId, active);
+    const caps = capacities(defs, buildings, byId, active);
+    for (const placed of buildings) {
       const def = byId.get(placed.buildingId);
       const start = Math.max(from, placed.completesAt);
-      if (!def || start >= to || missingInputs(def, stock).length) continue;
-      if (def.requiresRoad && !hasRoadAccess(state, placed.x, placed.z, roads)) continue;
-      const minutes = (to - start) / MINUTE_MS;
-      for (const [id, n] of Object.entries(def.production)) resources[id] = (resources[id] ?? 0) + n * minutes;
+      if (!def || start >= to || !active(placed)) continue;
+      // الإنتاج والاستهلاك بقدر العمال المتوفرين / Output and input scale with the available workers
+      const minutes = ((to - start) / MINUTE_MS) * (crew.get(placed.uid)?.efficiency ?? 1);
+      for (const [id, n] of Object.entries(def.production)) resources[id] = addCapped(resources[id] ?? 0, n * minutes, caps[id] ?? Infinity);
       for (const [id, n] of Object.entries(def.consumption)) resources[id] = Math.max(0, (resources[id] ?? 0) - n * minutes);
-      capacity += def.housing;
     }
+    // السكان يتجهون نحو سعة المساكن العاملة / Residents move toward the capacity of operating homes
     const change = defs.world.populationGrowthPerMinute * ((to - from) / MINUTE_MS);
-    population = population < capacity ? Math.min(capacity, population + change) : Math.max(capacity, population - change);
+    buildings = settle(buildings, byId, (b) => (active(b) ? byId.get(b.buildingId)?.housing ?? 0 : 0), change);
   }
-  return applyStageProgress({ ...state, resources, population, lastTick: now }, defs, world);
+  const population = buildings.reduce((sum, b) => sum + (b.residents ?? 0), 0);
+  return { ...state, buildings, resources, population, lastTick: now };
 }
 
 /**
@@ -503,11 +649,13 @@ export function netRates(state: GameState, defs: GameDefinitions, now: number): 
 export function rateBreakdown(state: GameState, defs: GameDefinitions, now: number): { production: Record<string, number>; consumption: Record<string, number> } {
   const production: Record<string, number> = {};
   const consumption: Record<string, number> = {};
+  const crew = staffingAt(state, defs, now);
   for (const placed of state.buildings) {
     if (buildingStatus(placed, state, defs, now).kind !== 'operating') continue;
     const def = defs.buildings.find((b) => b.id === placed.buildingId)!;
-    for (const [id, n] of Object.entries(def.production)) production[id] = (production[id] ?? 0) + n;
-    for (const [id, n] of Object.entries(def.consumption)) consumption[id] = (consumption[id] ?? 0) + n;
+    const efficiency = crew.get(placed.uid)?.efficiency ?? 1;
+    for (const [id, n] of Object.entries(def.production)) production[id] = (production[id] ?? 0) + n * efficiency;
+    for (const [id, n] of Object.entries(def.consumption)) consumption[id] = (consumption[id] ?? 0) + n * efficiency;
   }
   return { production, consumption };
 }
@@ -587,7 +735,7 @@ export function missingResources(defs: GameDefinitions, state: GameState, cost: 
   return missing.length ? missing.join('، ') : null;
 }
 
-function pay(resources: Record<string, number>, cost: Record<string, number>): Record<string, number> {
+export function pay(resources: Record<string, number>, cost: Record<string, number>): Record<string, number> {
   const next = { ...resources };
   for (const [id, n] of Object.entries(cost)) next[id] = (next[id] ?? 0) - n;
   return next;

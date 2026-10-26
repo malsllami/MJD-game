@@ -1,7 +1,8 @@
-// مسؤولية الملف: شريط البناء — تبويب "الكل" وفئات المباني، وبطاقات مصوّرة لكل مبنى بحالتها (متاح، ينقصه موارد، مقفل)، وطابور الإنشاء
-// File responsibility: build bar — an "all" tab and categories, picture cards per building with their state (available, short, locked), and the queue
+// مسؤولية الملف: شريط البناء — تبويب "الكل" وفئات المباني، وبطاقات مصوّرة للمباني المفتوحة فقط بحالتها (متاح أو ينقصه موارد)، وطابور الإنشاء
+// File responsibility: build bar — an "all" tab and categories, picture cards for unlocked buildings only with their state (available or short), and the queue
 
-import { isRoad, isUnderConstruction, missingResources, stageById } from '../core/economy';
+import { styleOf } from '../assets/catalog';
+import { isRoad, isUnderConstruction, isUnlocked, isWall, missingResources } from '../core/economy';
 import type { BuildingDef, GameDefinitions, GameState } from '../core/types';
 import { formatDuration, formatNumber } from '../utils/format';
 import { esc } from '../utils/html';
@@ -16,6 +17,8 @@ export class BuildBar {
   private open = false;
   private armed: string | null = null;
   private last: { state: GameState; now: number } | null = null;
+  /** المباني المفتوحة المعروضة حاليًا / The unlocked buildings currently shown */
+  private unlocked = '';
 
   constructor(
     private readonly el: HTMLElement,
@@ -64,20 +67,19 @@ export class BuildBar {
    */
   update(state: GameState, now: number): void {
     this.last = { state, now };
-    const current = stageById(this.defs, state.stage);
+    // مبنى جديد فُتح يعيد بناء البطاقات / A newly unlocked building rebuilds the cards
+    const unlocked = this.defs.buildings.filter((b) => isUnlocked(b, state, this.defs, now)).map((b) => b.id).join(',');
+    if (unlocked !== this.unlocked) {
+      this.unlocked = unlocked;
+      this.render();
+      return;
+    }
     this.el.querySelectorAll<HTMLElement>('[data-building]').forEach((card) => {
       const b = this.defs.buildings.find((x) => x.id === card.dataset.building);
       if (!b) return;
-      const required = stageById(this.defs, b.stage);
-      const lockedByStage = required.order > current.order;
-      const locked = lockedByStage || !!b.requiresTech;
-      const short = locked ? null : missingResources(this.defs, state, b.cost);
-      card.classList.toggle('lock', locked);
+      const short = missingResources(this.defs, state, b.cost);
       card.classList.toggle('short', !!short);
-      const note = card.querySelector<HTMLElement>('[data-lock]')!;
-      note.textContent = lockedByStage ? `يُفتح في ${required.name} · ${formatNumber(required.population)} نسمة` : b.requiresTech ? 'يتطلب بحثًا' : '';
-      const status = locked ? note.textContent : short ? `ينقص: ${short}` : 'متاح للبناء';
-      card.title = [b.name, card.dataset.info ?? '', status].join('\n');
+      card.title = [b.name, card.dataset.info ?? '', short ? `ينقص: ${short}` : 'متاح للبناء'].join('\n');
     });
     const names = new Map(this.defs.buildings.map((b) => [b.id, b.name]));
     const active = state.buildings.filter((b) => isUnderConstruction(b, now));
@@ -97,13 +99,16 @@ export class BuildBar {
     const terrainName = new Map(this.defs.terrain.map((t) => [t.id, t.name]));
     const resourceName = new Map(this.defs.resources.map((r) => [r.id, r.name]));
     const resourceIcon = new Map(this.defs.resources.map((r) => [r.id, r.icon]));
-    const cats = [{ id: ALL, name: 'الكل' }, ...this.defs.buildingCategories.filter((c) => this.defs.buildings.some((b) => b.category === c.id))]
+    // المقفل لا يظهر أصلًا؛ والفئة بلا مبانٍ مفتوحة لا تظهر / Locked buildings never show; a category with none open is hidden
+    const open = new Set(this.unlocked.split(','));
+    const available = this.defs.buildings.filter((b) => open.has(b.id));
+    const cats = [{ id: ALL, name: 'الكل' }, ...this.defs.buildingCategories.filter((c) => available.some((b) => b.category === c.id))]
       .map((c) => `<button type="button" role="tab" data-cat="${esc(c.id)}" aria-selected="${c.id === this.category}">${esc(c.name)}</button>`)
       .join('');
     const list = (m: Record<string, number>) => Object.entries(m).map(([id, n]) => `${formatNumber(n)} ${esc(resourceName.get(id) ?? id)}`).join(' · ');
     // التكلفة رقائق بأيقونات الموارد / Cost as chips with resource icons
     const cost = (m: Record<string, number>) => Object.entries(m).map(([id, n]) => `<span title="${esc(resourceName.get(id) ?? id)}">${icon(resourceIcon.get(id) ?? id)}${formatNumber(n)}</span>`).join('');
-    const shown = this.defs.buildings.filter((b) => this.category === ALL || b.category === this.category);
+    const shown = available.filter((b) => this.category === ALL || b.category === this.category);
     const cards = shown
       .map((b) => {
         const where = b.allowedTerrain.map((id) => terrainName.get(id) ?? id).join('، ');
@@ -114,13 +119,12 @@ export class BuildBar {
         ].filter(Boolean);
         // التفاصيل الكاملة في التلميح، وأهم أثر تحت الاسم / Full details in the tooltip, the main effect under the name
         const info = [`يُبنى على: ${where}`, formatDuration(b.buildSeconds), ...effects].join('\n');
-        const picture = isRoad(b) ? `<span class="thumb road">${icon('road')}</span>` : `<span class="thumb"><img data-thumb="${esc(b.model)}" alt="" hidden></span>`;
+        const picture = isRoad(b) || isWall(b) ? `<span class="thumb road">${icon(isWall(b) ? 'shield' : 'road')}</span>` : `<span class="thumb"><img data-thumb="${esc(styleOf(b))}" alt="" hidden></span>`;
         return `<button type="button" class="card" data-building="${esc(b.id)}" aria-pressed="${this.armed === b.id}" data-info="${esc(info)}">
           ${picture}
           <b>${esc(b.name)}</b>
           <span class="cost">${cost(b.cost)}</span>
           ${effects.length ? `<small class="fx">${esc(effects[0])}</small>` : ''}
-          <em data-lock></em>
         </button>`;
       })
       .join('');

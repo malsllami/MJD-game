@@ -23,6 +23,15 @@ export type StyleVariants = ModelPart[][];
 /** شكل مبنى: قطع مضبوطة على المربع، أو مبنى مجمّع بالمتر / A building look: tile-fitted parts, or a metre-based assembly */
 export type Look = ModelPart[] | Assembly;
 
+/**
+ * مبانٍ قائمة نمطها في الشيت مشترك مع غيرها، فتأخذ شكلًا خاصًا بها (تنسيق بصري تقني فقط)
+ * Existing buildings whose sheet style is shared with others get a look of their own (a technical visual mapping only)
+ */
+const STYLE_OVERRIDES: Record<string, string> = { market: 'market', development_center: 'development' };
+
+/** نمط شكل المبنى / A building's look style */
+export const styleOf = (def: { id: string; model: string }): string => STYLE_OVERRIDES[def.id] ?? def.model;
+
 /** العصر البصري حسب ترتيب المرحلة / Visual era by stage order */
 export type Era = 'primitive' | 'transitional' | 'modern';
 export const eraOf = (stageOrder: number): Era => (stageOrder <= 1 ? 'primitive' : stageOrder === 2 ? 'transitional' : 'modern');

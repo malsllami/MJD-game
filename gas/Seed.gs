@@ -58,6 +58,8 @@ const COMPACT_VILLAGE = {
   surveyCost: 200,
   governmentName: 'مبنى الحكم',
   worldMode: 'flat',
+  marketBuilding: 'market',
+  developmentBuilding: 'development_center',
 };
 
 /**
@@ -108,7 +110,77 @@ const SEED_BUILDINGS = [
   // إضافة العصر البدائي / Primitive era addition
   ['well', 'بئر', 'utilities', 'plain, coast, plateau, desert', 20, '', 'village', 0, 'well', false, ''],
   ['tent', 'خيمة', 'housing', 'plain, coast, plateau, desert', 10, '', 'village', 4, 'tent', false, ''],
+  // إضافة الاقتصاد الحي: سكن لكل مهنة، والمخازن والبنك، والحديقة والسور والبوابة / Living economy: housing per trade, stores and bank, garden, wall and gate
+  ['farmers_house', 'سكن المزارعين', 'housing', 'plain, coast, plateau', 25, '', 'village', 8, 'house-farmer', true, ''],
+  ['carpenters_house', 'سكن النجارين', 'housing', 'plain, coast, plateau', 25, '', 'village', 6, 'house-carpenter', true, ''],
+  ['smiths_house', 'سكن الحدادين', 'housing', 'plain, coast, plateau', 30, '', 'village', 4, 'house-smith', true, ''],
+  ['miners_house', 'سكن المنقبين', 'housing', 'plain, coast, plateau, desert', 30, '', 'village', 6, 'house-miner', true, ''],
+  ['traders_house', 'سكن التجار', 'housing', 'plain, coast, plateau', 30, '', 'village', 4, 'house-trader', true, ''],
+  ['herders_house', 'سكن الرعاة', 'housing', 'plain, coast, plateau', 25, '', 'village', 4, 'house-herder', true, ''],
+  ['farm_storage', 'مخزن المزارع', 'economy', 'plain, coast, plateau, desert', 40, '', 'village', 0, 'storage-farm', true, ''],
+  ['materials_storage', 'مخزن المواد', 'economy', 'plain, coast, plateau, desert', 40, '', 'village', 0, 'storage-materials', true, ''],
+  ['bank', 'البنك', 'economy', 'plain, coast, plateau', 60, '', 'village', 0, 'bank', true, ''],
+  ['village_garden', 'حديقة القرية', 'services', 'plain, coast, plateau', 20, '', 'village', 0, 'garden', false, ''],
+  ['wooden_wall', 'سور خشبي', 'security', 'plain, coast, plateau, desert', 8, '', 'village', 0, 'wall', false, ''],
+  ['gate', 'بوابة', 'security', 'plain, coast, plateau, desert', 15, '', 'village', 0, 'gate', false, ''],
 ];
+
+/** المهن: [المعرف، الاسم، الأيقونة، اللون] / Trades: [id, name, icon, colour] */
+const SEED_PROFESSIONS = [
+  ['farmer', 'مزارع', 'food', '#b6d77a'], ['carpenter', 'نجار', 'wood', '#c99a63'], ['smith', 'حداد', 'iron', '#9fb1c4'],
+  ['miner', 'منقب', 'stone', '#b9b3a8'], ['trader', 'تاجر', 'gold', '#e9c46a'], ['herder', 'راعٍ', 'food', '#8fbf6a'], ['laborer', 'عامل', 'build', '#d8c69a'],
+];
+
+/**
+ * المهنة والعمال وشروط الفتح لكل مبنى: [المهنة، عدد العمال، السكان المطلوبون، المباني المطلوبة]
+ * للسكن: المهنة هي مهنة سكانه، وعدد العمال صفر
+ * Trade, workers and unlock conditions per building: [trade, workers, required population, required buildings]
+ * For housing the trade is its residents' trade, with zero workers
+ */
+const SEED_JOBS = {
+  farm: ['farmer', 4, 0, ''], lumber_camp: ['carpenter', 3, 0, ''], sawmill: ['carpenter', 3, 0, 'lumber_camp'],
+  blacksmith: ['smith', 2, 20, ''], mine: ['miner', 3, 0, ''], oil_field: ['miner', 3, 0, ''],
+  oil_prospector: ['miner', 2, 0, ''], gold_prospector: ['miner', 2, 0, ''], stone_prospector: ['miner', 2, 0, ''],
+  copper_prospector: ['miner', 2, 0, ''], silver_prospector: ['miner', 2, 0, ''],
+  livestock: ['herder', 2, 15, 'farm'], market: ['trader', 2, 20, ''], development_center: ['', 0, 30, 'market'],
+  well: ['laborer', 1, 0, ''], water_desal: ['laborer', 3, 0, ''], power_plant: ['laborer', 3, 0, ''],
+  factory: ['laborer', 8, 0, ''], port: ['laborer', 6, 0, ''],
+  houses: ['laborer', 0, 0, ''], tent: ['laborer', 0, 0, ''], apartments: ['laborer', 0, 0, ''],
+  farmers_house: ['farmer', 0, 0, ''], carpenters_house: ['carpenter', 0, 0, ''], smiths_house: ['smith', 0, 10, ''],
+  miners_house: ['miner', 0, 0, ''], traders_house: ['trader', 0, 15, ''], herders_house: ['herder', 0, 10, ''],
+  farm_storage: ['', 0, 0, 'farm'], materials_storage: ['', 0, 10, ''], bank: ['', 0, 40, 'market'],
+  village_garden: ['', 0, 25, ''], wooden_wall: ['', 0, 30, 'development_center'], gate: ['', 0, 30, 'development_center'],
+};
+
+/** مباني إضافة الاقتصاد الحي / Buildings of the living economy addition */
+const SEED_ECONOMY_IDS = ['farmers_house', 'carpenters_house', 'smiths_house', 'miners_house', 'traders_house', 'herders_house', 'farm_storage', 'materials_storage', 'bank', 'village_garden', 'wooden_wall', 'gate'];
+const SEED_ECONOMY_COSTS = [
+  ['farmers_house', 'wood', 80], ['farmers_house', 'stone', 40], ['carpenters_house', 'wood', 90], ['carpenters_house', 'stone', 40],
+  ['smiths_house', 'wood', 80], ['smiths_house', 'stone', 80], ['miners_house', 'wood', 90], ['miners_house', 'stone', 50],
+  ['traders_house', 'wood', 100], ['traders_house', 'stone', 80], ['traders_house', 'gold', 50], ['herders_house', 'wood', 80], ['herders_house', 'stone', 30],
+  ['farm_storage', 'wood', 200], ['farm_storage', 'stone', 80], ['materials_storage', 'wood', 200], ['materials_storage', 'stone', 120],
+  ['bank', 'stone', 300], ['bank', 'gold', 200], ['village_garden', 'wood', 40], ['village_garden', 'gold', 20],
+  ['wooden_wall', 'wood', 10], ['gate', 'wood', 40], ['gate', 'stone', 20],
+];
+const SEED_ECONOMY_CONSUMPTION = [
+  ['farmers_house', 'food', 1], ['carpenters_house', 'food', 1], ['smiths_house', 'food', 1], ['miners_house', 'food', 1],
+  ['traders_house', 'food', 1], ['herders_house', 'food', 1], ['farmers_house', 'water', 1], ['miners_house', 'water', 1],
+];
+/** سعة المخازن: [المبنى، المورد، السعة] / Store capacities: [building, resource, capacity] */
+const SEED_STORAGE = [
+  ['farm_storage', 'food', 2000], ['materials_storage', 'wood', 2000], ['materials_storage', 'stone', 2000], ['materials_storage', 'iron', 1000],
+  ['materials_storage', 'oil', 500], ['bank', 'gold', 5000], ['bank', 'copper', 1000], ['bank', 'silver', 1000],
+];
+/** السعة الأساسية لكل مورد قبل بناء أي مخزن / Base capacity per resource before any store */
+const SEED_BASE_CAPACITY = { food: 600, wood: 600, stone: 600, iron: 300, oil: 200, gold: 1500, water: 800, power: 500, copper: 200, silver: 200 };
+/** أسعار السوق بالذهب: [المورد، سعر الشراء، سعر البيع] / Market prices in gold: [resource, buy, sell] */
+const SEED_PRICES = [['food', 3, 1], ['wood', 4, 2], ['stone', 4, 2], ['iron', 10, 6], ['oil', 14, 8], ['copper', 12, 7], ['silver', 18, 11]];
+/** شروط الترقية لكل مرحلة: [المباني المطلوبة، تكلفة الترقية] / Upgrade conditions per stage: [required buildings, upgrade cost] */
+const SEED_STAGE_UPGRADE = {
+  village: ['', ''],
+  town: ['development_center, market, houses, farmers_house, carpenters_house, smiths_house, miners_house, traders_house, herders_house', 'gold:500, wood:400, stone:400'],
+  city: ['village_center, school, hospital, police', 'gold:2000, stone:1500, iron:500'],
+};
 
 /** صفوف إضافة العصر البدائي: [المبنى، المورد، الكمية] / Rows of the primitive era addition */
 const SEED_PRIMITIVE_IDS = ['well', 'tent'];
@@ -177,7 +249,9 @@ const SEED_ROWS = {
     ['iron', 'حديد', 'iron', '#9fb1c4', 100], ['oil', 'نفط', 'oil', '#8494a6', 0], ['gold', 'ذهب', 'gold', '#e9c46a', 1000],
     ['water', 'ماء', 'water', '#6fb7d6', 150], ['power', 'كهرباء', 'power', '#f2d35b', 0],
     ['copper', 'نحاس', 'copper', '#c97a4a', 0], ['silver', 'فضة', 'silver', '#cfd6dc', 0],
-  ].map(function (r, i) { return { 'المعرف': r[0], 'الاسم': r[1], 'الأيقونة': r[2], 'اللون': r[3], 'الكمية الابتدائية': r[4], 'الترتيب': i + 1 }; }),
+  ].map(function (r, i) {
+    return { 'المعرف': r[0], 'الاسم': r[1], 'الأيقونة': r[2], 'اللون': r[3], 'الكمية الابتدائية': r[4], 'الترتيب': i + 1, 'السعة الأساسية': SEED_BASE_CAPACITY[r[0]] };
+  }),
   buildingCategories: [
     ['economy', 'الاقتصاد'], ['housing', 'الإسكان'], ['transport', 'النقل'], ['security', 'الأمن'], ['military', 'الجيش'], ['science', 'العلوم'],
     ['utilities', 'المرافق'], ['agriculture', 'الزراعة'], ['services', 'الخدمات'], ['government', 'الحكومة'], ['industry', 'الصناعة'],
@@ -186,6 +260,8 @@ const SEED_ROWS = {
     return {
       'المعرف': b[0], 'الاسم': b[1], 'الفئة': b[2], 'التضاريس المسموحة': b[3], 'مدة البناء بالثواني': b[4], 'التقنية المطلوبة': b[5],
       'الترتيب': i + 1, 'المرحلة المطلوبة': b[6], 'السكان المضافون': b[7], 'النموذج': b[8], 'يتطلب طريق': b[9], 'يتطلب مكمن': b[10] || '',
+      'المهنة': (SEED_JOBS[b[0]] || [''])[0], 'عدد العمال': (SEED_JOBS[b[0]] || ['', 0])[1],
+      'السكان المطلوبون': (SEED_JOBS[b[0]] || ['', 0, 0])[2], 'المباني المطلوبة': (SEED_JOBS[b[0]] || ['', 0, 0, ''])[3],
     };
   }),
   buildingCosts: amounts_('الكمية', [
@@ -204,7 +280,7 @@ const SEED_ROWS = {
     ['military_base', 'stone', 1500], ['military_base', 'iron', 600], ['military_base', 'gold', 800],
     ['development_center', 'stone', 200], ['development_center', 'wood', 150], ['development_center', 'gold', 200],
     ['military_command', 'stone', 600], ['military_command', 'iron', 200], ['military_command', 'gold', 400],
-  ].concat(SEED_RESOURCE_COSTS, SEED_DEPOSIT_COSTS, SEED_PRIMITIVE_COSTS)),
+  ].concat(SEED_RESOURCE_COSTS, SEED_DEPOSIT_COSTS, SEED_PRIMITIVE_COSTS, SEED_ECONOMY_COSTS)),
   buildingProduction: amounts_('الكمية في الدقيقة', [
     ['farm', 'food', 30], ['lumber_camp', 'wood', 24], ['mine', 'stone', 18], ['mine', 'iron', 8], ['oil_field', 'oil', 6],
     ['port', 'gold', 30], ['port', 'food', 10], ['water_desal', 'water', 25], ['power_plant', 'power', 25],
@@ -214,7 +290,7 @@ const SEED_ROWS = {
     ['houses', 'food', 2], ['houses', 'water', 1], ['apartments', 'water', 3], ['apartments', 'power', 3], ['apartments', 'food', 4],
     ['livestock', 'water', 2], ['market', 'food', 8], ['civil_defense', 'power', 1], ['hospital', 'water', 2], ['hospital', 'power', 3],
     ['park', 'water', 1], ['finance_center', 'power', 3], ['factory', 'power', 6], ['factory', 'iron', 2],
-  ].concat(SEED_RESOURCE_CONSUMPTION, SEED_PRIMITIVE_CONSUMPTION)),
+  ].concat(SEED_RESOURCE_CONSUMPTION, SEED_PRIMITIVE_CONSUMPTION, SEED_ECONOMY_CONSUMPTION)),
   depositTypes: SEED_DEPOSIT_TYPES.map(function (d) {
     return { 'المعرف': d[0], 'الاسم': d[1], 'معرف المورد': d[2], 'المكان': d[3], 'العدد في العالم': d[4], 'الأيقونة': d[5], 'اللون': d[6] };
   }),
@@ -223,8 +299,14 @@ const SEED_ROWS = {
     ['town', 'بلدة', 150, COMPACT_VILLAGE.stageRadius.town, 'الخدمات العامة والأمن وتطوير الطرق ومركز القرية'],
     ['city', 'مدينة', 600, COMPACT_VILLAGE.stageRadius.city, 'الحكومة والصناعة والميناء والمطار والقطار والقواعد العسكرية'],
   ].map(function (s, i) {
-    return { 'المعرف': s[0], 'الاسم': s[1], 'الترتيب': i + 1, 'السكان المطلوبون': s[2], 'نصف قطر الحدود': s[3], 'الوصف': s[4] };
+    return {
+      'المعرف': s[0], 'الاسم': s[1], 'الترتيب': i + 1, 'السكان المطلوبون': s[2], 'نصف قطر الحدود': s[3], 'الوصف': s[4],
+      'المباني المطلوبة': SEED_STAGE_UPGRADE[s[0]][0], 'تكلفة الترقية': SEED_STAGE_UPGRADE[s[0]][1],
+    };
   }),
+  professions: SEED_PROFESSIONS.map(function (p) { return { 'المعرف': p[0], 'الاسم': p[1], 'الأيقونة': p[2], 'اللون': p[3] }; }),
+  storage: SEED_STORAGE.map(function (s) { return { 'معرف المبنى': s[0], 'معرف المورد': s[1], 'السعة': s[2] }; }),
+  marketPrices: SEED_PRICES.map(function (p) { return { 'معرف المورد': p[0], 'سعر الشراء': p[1], 'سعر البيع': p[2] }; }),
   ministries: [
     ['finance', 'المالية', 'الموارد والميزانية والضرائب'],
     ['interior', 'الداخلية', 'السكان والأمن الداخلي والرضا'],

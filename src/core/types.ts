@@ -51,6 +51,10 @@ export interface WorldSettings {
   governmentName: string;
   /** شكل العالم: أرض مستوية متصلة، أو قارة بجبال وبحيرات / World shape: connected flat land, or a continent with ranges and lakes */
   worldMode: WorldMode;
+  /** معرف مبنى السوق، أو فارغ / The market building's id, or empty */
+  marketBuilding: string;
+  /** معرف مبنى التطوير، أو فارغ / The development building's id, or empty */
+  developmentBuilding: string;
 }
 
 export type WorldMode = 'flat' | 'continent';
@@ -102,6 +106,25 @@ export interface ResourceDef {
   icon: string;
   color: string;
   startAmount: number;
+  /** السعة قبل بناء أي مخزن؛ null تعني بلا حد (خادم أقدم) / Capacity before any store; null means unlimited (older server) */
+  baseCapacity: number | null;
+}
+
+/** مهنة سكان / A residents' trade */
+export interface Profession {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+}
+
+/** سعر مورد في السوق بالذهب / A resource's market price in gold */
+export interface MarketPrice {
+  resourceId: string;
+  /** ما يدفعه اللاعب لشراء وحدة / What the player pays to buy one unit */
+  buyPrice: number;
+  /** ما يناله اللاعب ببيع وحدة / What the player gets for selling one unit */
+  sellPrice: number;
 }
 
 /** فئة مبانٍ في شريط البناء / Building category */
@@ -119,6 +142,10 @@ export interface Stage {
   population: number;
   territoryRadius: number;
   description: string;
+  /** المباني المكتملة اللازمة لترقية الدولة إلى هذه المرحلة / Completed buildings needed to upgrade into this stage */
+  requiredBuildings: string[];
+  /** تكلفة الترقية إلى هذه المرحلة / Cost of upgrading into this stage */
+  upgradeCost: Record<string, number>;
 }
 
 /** تعريف مبنى / Building definition */
@@ -143,6 +170,16 @@ export interface BuildingDef {
   requiresRoad: boolean;
   /** معرف المورد الذي يجب أن يُبنى المبنى على مكمنه، أو null / Resource whose deposit the building must sit on, or null */
   requiresDeposit: string | null;
+  /** للسكن: مهنة سكانه؛ ولغيره: مهنة عماله؛ أو null / Housing: its residents' trade; others: its workers' trade; or null */
+  profession: string | null;
+  /** العمال اللازمون ليعمل بكامل طاقته (صفر = لا يحتاج عمالًا) / Workers needed for full output (zero = needs none) */
+  workers: number;
+  /** السكان اللازمون ليظهر في شريط البناء / Population needed for it to appear in the build bar */
+  requiredPopulation: number;
+  /** مبانٍ مكتملة لازمة ليظهر / Completed buildings needed for it to appear */
+  requiredBuildings: string[];
+  /** سعة التخزين التي يضيفها لكل مورد / Storage capacity it adds per resource */
+  storage: Record<string, number>;
 }
 
 /** وزارة في لوحة الحكم / Government ministry */
@@ -178,6 +215,8 @@ export interface GameDefinitions {
   deposits: DepositType[];
   ministries: Ministry[];
   contextMenus: ContextMenuDef[];
+  professions: Profession[];
+  marketPrices: MarketPrice[];
 }
 
 /** مربع منطقي في شبكة العالم / Logical tile of the world grid */
@@ -210,6 +249,8 @@ export interface PlacedBuilding {
   /** وقت بدء الإنشاء ووقت اكتماله (ميلي ثانية) / Construction start and completion times (ms) */
   startedAt: number;
   completesAt: number;
+  /** سكان المسكن الآن (للمساكن فقط) / Residents living here now (housing only) */
+  residents?: number;
 }
 
 /**
@@ -236,6 +277,8 @@ export interface GameState {
   buildings: PlacedBuilding[];
   /** الطرق على حدود المربعات / Roads on tile edges */
   roads: PlacedRoad[];
+  /** الأسوار والبوابات على حدود المربعات؛ لا تدخل في اتصال الطرق / Walls and gates on tile edges; never part of road connectivity */
+  walls: PlacedRoad[];
   /** مربعات الدولة بصيغة "x,z" / Nation tiles as "x,z" keys */
   territory: string[];
   /** معرفات المكامن المكتشفة / Discovered deposit ids */

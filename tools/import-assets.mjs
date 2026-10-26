@@ -37,6 +37,8 @@ const PEOPLE_ANIMS = ['Farm_Harvest', 'Farm_PlantSeed', 'Farm_Watering', 'TreeCh
 const GROUND = { grass: 'leafy_grass', dirt: 'dirt', soil: 'farm_furrows' };
 /** عشب Poly Haven بني بأوراق متساقطة؛ يُحوّل لرمادي ثم يُلوَّن أخضر كالمروج مع بقاء تفاصيله / The Poly Haven grass is leafy brown; greyscaled then tinted lawn green, keeping its detail */
 const GRASS_TINT = '#5a8c33';
+/** تراب Poly Haven بني داكن؛ يُلوَّن رمليًا فتبدو الطرق الترابية رملية فاتحة / The Poly Haven dirt is dark brown; tinted sand so dirt roads look light and sandy */
+const SAND_TINT = '#c9a46a';
 
 /** أقصى ضلع لكل نوع خامة / Max side per texture kind */
 const sideFor = (name) => (/normal|_nor|orm|rough/i.test(name) ? 512 : 1024);
@@ -139,6 +141,7 @@ async function importGround() {
     for (const [map, suffix] of [['Diffuse', 'color'], ['nor_gl', 'normal']]) {
       let buf = Buffer.from(await (await fetch(files[map]['1k'].jpg.url)).arrayBuffer());
       if (key === 'grass' && suffix === 'color') buf = await sharp(await sharp(buf).greyscale().linear(1.3, -25).toBuffer()).tint(GRASS_TINT).toBuffer();
+      if (key === 'dirt' && suffix === 'color') buf = await sharp(await sharp(buf).greyscale().linear(0.7, 105).toBuffer()).tint(SAND_TINT).toBuffer();
       await sharp(buf).resize(suffix === 'normal' ? 512 : 1024).jpeg({ quality: 82, mozjpeg: true }).toFile(join(out, `${key}_${suffix}.jpg`));
     }
   }

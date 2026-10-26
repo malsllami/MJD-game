@@ -34,6 +34,9 @@ export class ModelLibrary {
           if (m instanceof PBRMaterial) {
             m.metallic = 0;
             m.roughness = 0.9;
+            // لا إشعاع ذاتي لأي نموذج: الإنارة ليلًا للطرقات فقط / No model self-emits: night light is for streets only
+            m.emissiveColor.set(0, 0, 0);
+            m.emissiveTexture = null;
             const color = MATERIAL_COLORS[m.name];
             if (color) m.albedoColor.set(...color);
             if (m.transparencyMode === PBRMaterial.PBRMATERIAL_ALPHATEST) m.alphaCutOff = Math.min(m.alphaCutOff, LEAF_ALPHA_CUTOFF);

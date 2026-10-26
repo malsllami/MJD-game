@@ -4,12 +4,11 @@
 // الطرق تُرسم في road-network وليس هنا. / Roads are drawn by road-network, not here.
 
 import { Color3, MeshBuilder, Scene, StandardMaterial, TransformNode, type AbstractMesh, type Material, type ShadowGenerator } from '@babylonjs/core';
-import { looksFor, type Era, type Look } from '../assets/catalog';
+import { looksFor, styleOf, type Era, type Look } from '../assets/catalog';
 import type { ModelLibrary } from '../assets/model-library';
 import { isRoad, isUnderConstruction } from '../core/economy';
 import type { BuildingDef, GameState, PlacedBuilding, World } from '../core/types';
 import { sampleHeight, tileCenter } from '../core/world-gen';
-import { glowsAtNight, WINDOW_LIGHT, type Glowing, type NightLights } from './day-night';
 
 interface Model {
   root: TransformNode;
@@ -70,7 +69,6 @@ export function partsFor(style: string, uid: string, era: Era): Look {
 export class BuildingModels {
   private readonly models = new Map<string, Model>();
   private readonly scaffold: StandardMaterial;
-  private readonly lit = new Set<Material>();
 
   constructor(
     private readonly scene: Scene,
@@ -80,7 +78,6 @@ export class BuildingModels {
     private readonly shadows: ShadowGenerator | null,
     private readonly onCreate: (mesh: AbstractMesh, placed: PlacedBuilding) => void,
     private readonly onRemove: (mesh: AbstractMesh) => void,
-    private readonly lights: NightLights,
   ) {
     this.scaffold = new StandardMaterial('scaffold', scene);
     this.scaffold.diffuseColor = new Color3(0.86, 0.68, 0.36);
@@ -124,7 +121,7 @@ export class BuildingModels {
     root.rotation.y = this.facing(placed, state);
     const model: Model = { root, meshes: [], original: new Map(), done: false, era };
     this.models.set(placed.uid, model);
-    void spawnParts(this.library, this.scene, root, partsFor(def.model, placed.uid, era), this.world.settings.tileSize).then((meshes) => {
+    void spawnParts(this.library, this.scene, root, partsFor(styleOf(def), placed.uid, era), this.world.settings.tileSize).then((meshes) => {
       if (root.isDisposed()) return;
       model.meshes = meshes;
       for (const m of meshes) {
@@ -137,17 +134,12 @@ export class BuildingModels {
     return model;
   }
 
-  /** إظهار المبنى المكتمل بألوانه وظلاله وإنارته الليلية / Reveal the finished building with colours, shadows and night lights */
+  /** إظهار المبنى المكتمل بألوانه وظلاله / Reveal the finished building with its colours and shadows */
   private finish(model: Model): void {
     model.done = true;
     for (const m of model.meshes) {
-      const mat = model.original.get(m) ?? null;
-      m.material = mat;
+      m.material = model.original.get(m) ?? null;
       this.shadows?.addShadowCaster(m);
-      if (mat && !this.lit.has(mat) && 'emissiveColor' in mat && glowsAtNight(mat.name)) {
-        this.lit.add(mat);
-        this.lights.add(mat as unknown as Glowing, WINDOW_LIGHT);
-      }
     }
   }
 

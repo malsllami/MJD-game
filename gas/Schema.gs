@@ -57,6 +57,9 @@ const WORLD_SETTINGS = [
   { key: 'اسم مبنى الحكم', field: 'governmentName', type: 'string', description: 'اسم أول مبنى في القرية' },
   // إضافة العالم المستوي (addFlatWorld) / Flat world addition
   { key: 'نوع العالم', field: 'worldMode', type: 'string', description: 'flat أرض مستوية متصلة بحدود من الغابات، أو continent قارة بجبال وبحيرات وسواحل' },
+  // إضافة الاقتصاد الحي (addLivingEconomy) / Living economy addition
+  { key: 'مبنى السوق', field: 'marketBuilding', type: 'string', description: 'معرف المبنى الذي تتم فيه التجارة بيعًا وشراءً' },
+  { key: 'مبنى التطوير', field: 'developmentBuilding', type: 'string', description: 'معرف المبنى الذي يعرض مهام الانتقال إلى المرحلة التالية' },
 ];
 
 /**
@@ -98,6 +101,8 @@ const TABLES = [
       { name: 'الكمية الابتدائية', field: 'startAmount', type: 'number' },
       { name: 'الترتيب', field: 'order', type: 'number' },
       DISABLED_COLUMN,
+      // إضافة الاقتصاد الحي (addLivingEconomy) / Living economy addition
+      { name: 'السعة الأساسية', field: 'baseCapacity', type: 'number' },
     ],
   },
   {
@@ -127,6 +132,11 @@ const TABLES = [
       { name: 'يتطلب طريق', field: 'requiresRoad', type: 'boolean' },
       // إضافة العالم والمكامن / World and deposits addition
       { name: 'يتطلب مكمن', field: 'requiresDeposit', type: 'string' },
+      // إضافة الاقتصاد الحي (addLivingEconomy) / Living economy addition
+      { name: 'المهنة', field: 'profession', type: 'string' },
+      { name: 'عدد العمال', field: 'workers', type: 'number' },
+      { name: 'السكان المطلوبون', field: 'requiredPopulation', type: 'number' },
+      { name: 'المباني المطلوبة', field: 'requiredBuildings', type: 'list' },
     ],
   },
   {
@@ -151,6 +161,38 @@ const TABLES = [
       { name: 'السكان المطلوبون', field: 'population', type: 'number' },
       { name: 'نصف قطر الحدود', field: 'territoryRadius', type: 'number' },
       { name: 'الوصف', field: 'description', type: 'string' },
+      DISABLED_COLUMN,
+      // إضافة الاقتصاد الحي (addLivingEconomy) / Living economy addition
+      { name: 'المباني المطلوبة', field: 'requiredBuildings', type: 'list' },
+      { name: 'تكلفة الترقية', field: 'upgradeCost', type: 'list' },
+    ],
+  },
+  // إضافة الاقتصاد الحي (addLivingEconomy) / Living economy addition
+  {
+    id: 'professions', name: 'المهن',
+    columns: [
+      { name: 'المعرف', field: 'id', type: 'string' },
+      { name: 'الاسم', field: 'name', type: 'string' },
+      { name: 'الأيقونة', field: 'icon', type: 'string' },
+      { name: 'اللون', field: 'color', type: 'string' },
+      DISABLED_COLUMN,
+    ],
+  },
+  {
+    id: 'storage', name: 'سعة المخازن',
+    columns: [
+      { name: 'معرف المبنى', field: 'buildingId', type: 'string' },
+      { name: 'معرف المورد', field: 'resourceId', type: 'string' },
+      { name: 'السعة', field: 'capacity', type: 'number' },
+      DISABLED_COLUMN,
+    ],
+  },
+  {
+    id: 'marketPrices', name: 'أسعار السوق',
+    columns: [
+      { name: 'معرف المورد', field: 'resourceId', type: 'string' },
+      { name: 'سعر الشراء', field: 'buyPrice', type: 'number' },
+      { name: 'سعر البيع', field: 'sellPrice', type: 'number' },
       DISABLED_COLUMN,
     ],
   },

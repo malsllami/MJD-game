@@ -1,7 +1,8 @@
 // مسؤولية الملف: أدوات القيادة على اليسار — نظرة عامة، الخريطة، المهام، التنبيهات، التقارير؛ كل محتواها محسوب من حالة الدولة الحقيقية
 // File responsibility: left command tools — overview, map, tasks, alerts, reports; all content is computed from the real nation state
 
-import { buildingStatus, housingCapacity, isRoad, isUnderConstruction, netRates, nextStage, rateBreakdown, stageById } from '../core/economy';
+import { buildingStatus, housingCapacity, isRoad, isUnderConstruction, netRates, nextStage, rateBreakdown, stageById, unlockGaps } from '../core/economy';
+import { upgradeRequirements } from '../core/progression';
 import { formatDuration, formatNumber } from '../utils/format';
 import { esc } from '../utils/html';
 import { icon } from './icons';
@@ -110,19 +111,20 @@ function overview({ defs, world, state, now }: PanelContext): string {
  */
 function tasks({ defs, state, now }: PanelContext): string {
   const stage = stageById(defs, state.stage);
-  const next = nextStage(defs, state.stage);
   const items: { ok: boolean; text: string }[] = [];
-  const pop = Math.floor(state.population);
-  if (next) items.push({ ok: false, text: `بلوغ ${formatNumber(next.population)} نسمة لتصبح ${next.name} (الآن ${formatNumber(pop)})` });
   items.push({ ok: state.roads.length > 0, text: 'ارسم أول طريق متصل بمبنى الحكم' });
   const disconnected = state.buildings.filter((b) => buildingStatus(b, state, defs, now).kind === 'disconnected').length;
   if (disconnected) items.push({ ok: false, text: `اربط ${formatNumber(disconnected)} من المباني بطريق متصل` });
-  const built = new Set(state.buildings.filter((b) => !isUnderConstruction(b, now)).map((b) => b.buildingId));
-  for (const b of defs.buildings.filter((x) => x.stage === stage.id && !x.requiresTech && !isRoad(x))) items.push({ ok: built.has(b.id), text: `ابنِ ${b.name}` });
-  // غير المنجز أولًا / Unfinished first
+  // شروط ترقية مبنى الحكم إلى المرحلة التالية / Conditions to upgrade the government building to the next stage
+  const upgrade = upgradeRequirements(defs, state, now);
+  for (const r of upgrade?.items ?? []) items.push({ ok: r.met, text: r.label });
   const sorted = [...items.filter((i) => !i.ok), ...items.filter((i) => i.ok)];
   const list = sorted.map((i) => `<li class="${i.ok ? 'done' : ''}"><i>${i.ok ? '✓' : ''}</i>${esc(i.text)}</li>`).join('');
-  return `<p class="panel-note">مهام مرحلة ${esc(stage.name)}: أُنجز ${formatNumber(items.filter((i) => i.ok).length)} من ${formatNumber(items.length)}</p><ul class="tasks">${list}</ul>`;
+  // ما سيُفتح لاحقًا وما ينقصه / What unlocks next and what it lacks
+  const locked = defs.buildings.filter((b) => !isRoad(b) && stageById(defs, b.stage).order <= stage.order && unlockGaps(b, state, defs, now).length);
+  const lockedList = locked.length ? `<h3>مبانٍ ستُفتح</h3><ul class="tasks">${locked.map((b) => `<li><i></i>${esc(b.name)}: ${esc(unlockGaps(b, state, defs, now).join('، '))}</li>`).join('')}</ul>` : '';
+  const heading = upgrade ? `الترقية إلى ${esc(upgrade.stage)} من ${esc(defs.world.governmentName || 'مبنى الحكم')}: أُنجز ${formatNumber(items.filter((i) => i.ok).length)} من ${formatNumber(items.length)}` : 'بلغت الدولة أعلى مرحلة';
+  return `<p class="panel-note">${heading}</p><ul class="tasks">${list}</ul>${lockedList}`;
 }
 
 /** التنبيهات: مبانٍ متوقفة، وموارد تنفد، ومساكن ممتلئة / Alerts: stopped buildings, running-out resources, full housing */
@@ -134,6 +136,7 @@ function collectAlerts({ defs, state, now }: PanelContext): Alert[] {
     const s = buildingStatus(b, state, defs, now);
     if (s.kind === 'disconnected') out.push({ text: `${name.get(b.buildingId) ?? ''}: لا يصله طريق متصل بمبنى الحكم`, at: b });
     else if (s.kind === 'stopped') out.push({ text: `${name.get(b.buildingId) ?? ''}: متوقف لنقص ${s.missing.map((id) => resource.get(id) ?? id).join('، ')}`, at: b });
+    else if (s.kind === 'understaffed') out.push({ text: `${name.get(b.buildingId) ?? ''}: لا يعمل؛ ابنِ سكنًا لمهنة ${defs.professions.find((p) => p.id === s.profession)?.name ?? s.profession}`, at: b });
   }
   for (const [id, rate] of Object.entries(netRates(state, defs, now))) {
     if (rate >= 0) continue;

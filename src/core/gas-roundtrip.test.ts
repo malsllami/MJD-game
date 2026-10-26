@@ -290,6 +290,67 @@ describe('Apps Script: العالم المستوي والعصر البدائي /
   });
 });
 
+describe('Apps Script: الاقتصاد الحي / living economy', () => {
+  const fresh = seedDefinitions();
+
+  /** قاعدة بيانات قبل الاقتصاد الحي: بلا جداوله وأعمدته ومبانيه وإعداداته / The DB before the living economy */
+  function beforeEconomy() {
+    const { gas, ss } = loadGas();
+    gas.setupDatabase();
+    for (const name of ['المهن', 'سعة المخازن', 'أسعار السوق']) ss.sheets.delete(name);
+    const dropColumns = (sheetName: string, columns: string[]) => {
+      const sheet = ss.sheets.get(sheetName)!;
+      const idx = columns.map((c) => sheet.values[0].indexOf(c)).filter((i) => i >= 0);
+      sheet.values = sheet.values.map((row) => row.filter((_, i) => !idx.includes(i)));
+    };
+    dropColumns('المباني', ['المهنة', 'عدد العمال', 'السكان المطلوبون', 'المباني المطلوبة']);
+    dropColumns('الموارد', ['السعة الأساسية']);
+    dropColumns('مراحل التطور', ['المباني المطلوبة', 'تكلفة الترقية']);
+    for (const [name, column] of [['المباني', 'المعرف'], ['تكاليف المباني', 'معرف المبنى'], ['استهلاك المباني', 'معرف المبنى']]) {
+      const sheet = ss.sheets.get(name)!;
+      const c = sheet.values[0].indexOf(column);
+      sheet.values = sheet.values.filter((row, i) => i === 0 || !gas.SEED_ECONOMY_IDS.includes(row[c] as string));
+    }
+    const world = ss.sheets.get('إعدادات العالم')!;
+    world.values = world.values.filter((row) => row[0] !== 'مبنى السوق' && row[0] !== 'مبنى التطوير');
+    return { gas: loadGas(ss).gas, ss };
+  }
+
+  it('الخادم الأقدم يعمل بلا مهن ولا سعة ولا أسعار / an older server runs with no trades, capacity or prices', () => {
+    const defs = definitionsFrom(beforeEconomy().gas);
+    expect(defs.professions).toEqual([]);
+    expect(defs.marketPrices).toEqual([]);
+    expect(defs.resources.every((r) => r.baseCapacity === null)).toBe(true);
+    expect(defs.buildings.every((b) => b.workers === 0 && !b.profession)).toBe(true);
+  });
+
+  it('الإضافة تطابق قاعدة بيانات جديدة / the addition matches a fresh database', () => {
+    const { gas } = beforeEconomy();
+    gas.addLivingEconomy();
+    expect(definitionsFrom(gas)).toEqual(fresh);
+  });
+
+  it('تشغيلها مرتين لا يكرر ولا يغير شيئًا / running it twice duplicates or changes nothing', () => {
+    const { gas, ss } = beforeEconomy();
+    gas.addLivingEconomy();
+    const snapshot = JSON.stringify([...ss.sheets.values()].map((s) => s.values));
+    gas.addLivingEconomy();
+    expect(JSON.stringify([...ss.sheets.values()].map((s) => s.values))).toBe(snapshot);
+  });
+
+  it('لا تمس قيمة كتبها المدير / never touches a value the admin wrote', () => {
+    const { gas, ss } = beforeEconomy();
+    gas.addLivingEconomy();
+    const sheet = ss.sheets.get('المباني')!;
+    const c = sheet.values[0].indexOf('عدد العمال');
+    const farmRow = sheet.values.findIndex((r) => r[0] === 'farm');
+    sheet.values[farmRow][c] = 9;
+    const again = loadGas(ss).gas;
+    again.addLivingEconomy();
+    expect(definitionsFrom(again).buildings.find((b) => b.id === 'farm')!.workers).toBe(9);
+  });
+});
+
 describe('Apps Script: البداية المتقاربة / compact start', () => {
   it('تصغّر حدود المراحل والأرض المسطحة وقطع الضم ولا تمس غيرها / shrinks stage borders, the flat zone and annex parcels only', () => {
     const { gas } = loadGas();

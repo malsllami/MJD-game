@@ -1,7 +1,7 @@
 // مسؤولية الملف: البيئة المحيطة — السماء والإضاءة والظلال والضباب
 // File responsibility: environment — sky, lighting, shadows and fog
 
-import { Color3, DirectionalLight, GlowLayer, HemisphericLight, MeshBuilder, Scene, ShadowGenerator, Vector3, type Mesh } from '@babylonjs/core';
+import { Color3, DirectionalLight, GlowLayer, HemisphericLight, Mesh, MeshBuilder, Scene, ShadowGenerator, Vector3 } from '@babylonjs/core';
 import { SkyMaterial } from '@babylonjs/materials';
 import type { QualityPreset } from '../config/app.config';
 
@@ -74,6 +74,11 @@ export function createEnvironment(scene: Scene, worldSpan: number, preset: Quali
   if (preset.glow) {
     glow = new GlowLayer('night-glow', scene, { mainTextureSamples: 2 });
     glow.intensity = 0;
+    // التوهج لرؤوس مصابيح الطرق ومشاعلها فقط؛ مجسم فارغ يجعل القائمة محصورة من البداية فلا تتوهج المباني ولا الأشجار ولا الشبكة
+    // Glow is for street lamp and torch heads only; an empty placeholder keeps the list exclusive from the start, so buildings, trees and the grid never glow
+    const none = new Mesh('glow-none', scene);
+    none.isVisible = false;
+    glow.addIncludedOnlyMesh(none);
   }
 
   return { skybox, sky, sun, moon, ambient, fogDensity: preset.fogDensity, shadows, glow };

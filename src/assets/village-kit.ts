@@ -126,6 +126,37 @@ export const PRIMITIVE_LOOKS: Record<string, Assembly[]> = {
   'oil-rig': [{ pieces: [...shelter(0, 0), { path: F('Rock_Medium_3'), x: -3, z: 2.4, fit: 2 }, { path: V('Prop_Crate'), x: 3, z: 2.6 }, { path: V('Prop_Crate'), x: 3, z: -2.4 }], extent: 8, size: 0.62 }],
 };
 
+/** قطع متكررة للأشكال المميزة / Recurring pieces for the distinct looks */
+const crate = (x: number, z: number): KitPiece => ({ path: V('Prop_Crate'), x, z });
+const wagon = (x: number, z: number, yaw = 0): KitPiece => ({ path: V('Prop_Wagon'), x, z, yaw });
+const chimney = (x: number, z: number, tall = false): KitPiece => ({ path: V(tall ? 'Prop_Chimney2' : 'Prop_Chimney'), x, z, y: tall ? 2.8 : 3.6 });
+
+/**
+ * شكل مميز لكل نوع سكن ومخزن ومبنى عام، حتى يُعرف المبنى من شكله
+ * A distinct look for each kind of housing, store and public building, so a building is known by its shape
+ */
+const DISTINCT_LOOKS: Record<string, Assembly[]> = {
+  'house-farmer': [house({ w: 4, d: 4, finish: 'timber', size: 0.62, extras: [wagon(3.4, 1.5, 0.4), { path: F('Plant_1'), x: -3, z: 3, fit: 1.4 }, { path: F('Plant_1'), x: -1.8, z: 3.4, fit: 1.2 }] })],
+  'house-carpenter': [house({ w: 4, d: 6, finish: 'timber', size: 0.66, extras: [{ path: F('DeadTree_1'), x: 3.4, z: -2, fit: 2.6 }, crate(3.2, 2.6), crate(2.2, 3.4)] })],
+  'house-smith': [house({ w: 4, d: 4, finish: 'brick', size: 0.6, extras: [chimney(1.2, -1.2, true), crate(3, 2.6)] })],
+  'house-miner': [house({ w: 4, d: 4, finish: 'plaster', size: 0.6, extras: [{ path: F('Rock_Medium_2'), x: 3.2, z: 2.6, fit: 1.8 }, wagon(-3.4, 1, -0.3)] })],
+  'house-trader': [house({ w: 4, d: 6, finish: 'plaster', size: 0.66, extras: [crate(3.2, 3), crate(3.2, 1.9), crate(2.1, 3.4)] })],
+  'house-herder': [house({ w: 4, d: 4, finish: 'timber', size: 0.7, extras: fenceRing(4) })],
+  'storage-farm': [house({ w: 6, d: 8, finish: 'timber', size: 0.86, extras: [wagon(4.6, 2, 0.2), crate(-4.4, 3.6), crate(-4.4, 2.4)] })],
+  'storage-materials': [house({ w: 6, d: 8, finish: 'brick', size: 0.86, extras: [{ path: F('Rock_Medium_1'), x: 4.6, z: 3, fit: 2 }, crate(-4.4, 3.6), { path: F('DeadTree_1'), x: -4.6, z: -2.8, fit: 2.6 }] })],
+  bank: [house({ w: 6, d: 6, finish: 'brick', size: 0.78, extras: [chimney(2, -1.6), { path: V('Corner_Exterior_Brick'), x: -1.4, z: 3.8 }, { path: V('Corner_Exterior_Brick'), x: 1.4, z: 3.8 }] })],
+  development: [house({ w: 6, d: 6, finish: 'plaster', size: 0.78, extras: [chimney(2, -1.6), chimney(-2, -1.6), crate(3.8, 3.6), crate(-3.8, 3.6)] })],
+  garden: [{
+    pieces: [
+      { path: F('CommonTree_1'), x: -2.4, z: -2.2, fit: 3.2 }, { path: F('CommonTree_2'), x: 2.6, z: -2.4, fit: 3 }, { path: F('Bush_Common_Flowers'), x: 2.2, z: 2.4, fit: 1.8 },
+      { path: F('Bush_Common_Flowers'), x: -2.6, z: 2.2, fit: 1.6 }, { path: F('Flower_3_Group'), x: 0, z: 0.4, fit: 1.4 }, { path: F('Flower_4_Group'), x: 0.6, z: 2.8, fit: 1.2 },
+      ...fenceRing(4).map((p) => ({ ...p, x: p.x * 1.05, z: p.z * 1.05 })),
+    ],
+    extent: 9, size: 0.85,
+  }],
+};
+Object.assign(PRIMITIVE_LOOKS, DISTINCT_LOOKS);
+
 /** أشكال العصر الانتقالي: بيوت جصية وحجرية أكبر / Transitional-era looks: larger plaster and brick houses */
 export const TRANSITIONAL_LOOKS: Record<string, Assembly[]> = {
   house: [house({ w: 4, d: 6, finish: 'plaster', size: 0.66, extras: [{ path: V('Prop_Chimney'), x: 1.2, z: -1.5, y: 3.6 }] }), house({ w: 6, d: 6, finish: 'plaster', size: 0.72 })],
@@ -144,6 +175,20 @@ export const TRANSITIONAL_LOOKS: Record<string, Assembly[]> = {
  */
 export function governmentAssembly(level: number): Assembly | null {
   if (level <= 1) return house({ w: 6, d: 6, finish: 'timber', size: 0.7, extras: [{ path: V('Prop_Chimney'), x: 2, z: -1.6, y: 3.6 }, ...fenceRing(6).map((p) => ({ ...p, x: p.x * 1.25, z: p.z * 1.25 }))] });
-  if (level === 2) return house({ w: 6, d: 8, finish: 'brick', size: 0.8, extras: [{ path: V('Prop_Chimney2'), x: 2, z: -2.5, y: 3.6 }] });
+  // البلدة: قاعة حجرية بسور وبوابة وحديقة / Town: a stone hall with a wall, a gate and a garden
+  if (level === 2) {
+    // السور والحديقة حول القاعة يوسّعان امتداد المبنى / The wall and garden around the hall widen its extent
+    const hall = house({
+      w: 6, d: 8, finish: 'brick', size: 0.86,
+      extras: [
+        { path: V('Prop_Chimney2'), x: 2, z: -2.5, y: 3.6 },
+        ...fenceRing(8).map((p) => ({ ...p, x: p.x * 1.1, z: p.z * 1.1 })),
+        { path: V('Wall_Arch'), x: 0, z: 8.8 },
+        { path: F('CommonTree_1'), x: -6.5, z: 6, fit: 2.8 }, { path: F('CommonTree_2'), x: 6.5, z: 6, fit: 2.6 },
+        { path: F('Bush_Common_Flowers'), x: -6.4, z: -6, fit: 1.6 }, { path: F('Bush_Common_Flowers'), x: 6.4, z: -6, fit: 1.6 },
+      ],
+    });
+    return { ...hall, extent: 19 };
+  }
   return null;
 }

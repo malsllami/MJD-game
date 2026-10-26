@@ -3,8 +3,10 @@
 
 import {
   advance, annexTile, checkAnnex, checkMove, checkPlacement, createInitialState, demolishBuilding, demolishRoads, moveBuilding,
-  placeBuilding, placeRoadPath, resumeAfterAbsence, surveyTile, type Check, type Resume, type RoadPathResult,
+  placeBuilding, placeRoadPath, placeWallPath, resumeAfterAbsence, surveyTile, type Check, type Resume, type RoadPathResult,
 } from '../core/economy';
+import { checkTrade, trade, type Side } from '../core/market';
+import { checkUpgrade, upgradeGovernment } from '../core/progression';
 import type { BuildingDef, Deposit, GameDefinitions, GameState, Tile, World } from '../core/types';
 import type { SaveService } from '../services/save-service';
 
@@ -100,6 +102,38 @@ export class GameSession {
   }
 
   /** محاولة ضم مربع للدولة / Try to annex a tile */
+  /** رسم سور أو بوابة على حواف / Draw a wall or gate along edges */
+  placeWall(wall: BuildingDef, edges: string[], now: number): RoadPathResult {
+    this.tick(now);
+    let n = 0;
+    const result = placeWallPath(this.current, this.defs, this.world, wall, edges, now, () => `w${now.toString(36)}-${n++}`);
+    this.current = result.state;
+    if (result.placed) this.persist();
+    return result;
+  }
+
+  /** ترقية مبنى الحكم إلى المرحلة التالية / Upgrade the government building to the next stage */
+  upgrade(now: number): Check {
+    this.tick(now);
+    const check = checkUpgrade(this.defs, this.current, now);
+    if (check.ok) {
+      this.current = upgradeGovernment(this.current, this.defs, this.world);
+      this.persist();
+    }
+    return check;
+  }
+
+  /** بيع أو شراء في السوق / Buy or sell at the market */
+  trade(resourceId: string, amount: number, side: Side, now: number): Check {
+    this.tick(now);
+    const check = checkTrade(this.current, this.defs, resourceId, amount, side, now);
+    if (check.ok) {
+      this.current = trade(this.current, this.defs, resourceId, amount, side);
+      this.persist();
+    }
+    return check;
+  }
+
   annex(tile: Tile, now: number): Check {
     this.tick(now);
     const check = checkAnnex(this.defs, this.world, this.current, tile);

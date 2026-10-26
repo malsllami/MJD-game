@@ -3,9 +3,9 @@
 import { describe, expect, it } from 'vitest';
 import { seedDefinitions } from '../test/gas-harness';
 import {
-  advance, annexTile, applyStageProgress, buildingStatus, checkAnnex, checkMove, checkPlacement, checkRoadEdge, connectedRoads, cornerPath,
+  advance, annexTile, autoRoadPath, buildingStatus, capacityAt, checkAnnex, checkMove, checkPlacement, checkRoadEdge, connectedRoads, cornerPath,
   createInitialState, demolishBuilding, demolishRoads, depositAt, hasRoadAccess, housingCapacity, moveBuilding, netRates, pathEdges,
-  placeBuilding, placeRoadPath, rateBreakdown, resumeAfterAbsence, surveyCost, surveyTile, tileKey,
+  placeBuilding, placeRoadPath, placeWallPath, rateBreakdown, resumeAfterAbsence, staffingAt, surveyCost, surveyTile, tileKey, unlockGaps,
 } from './economy';
 import { suggestStartSites } from './start-sites';
 import type { BuildingDef, GameState, Tile } from './types';
@@ -37,13 +37,19 @@ function spotFor(state: GameState, b: BuildingDef): Tile {
   return tileOf(key);
 }
 
-/** وضع مبنى مع موارد كافية، وإنهاء إنشائه فورًا / Place a building with ample resources and finish it at once */
-function built(state: GameState, id: string, at = T0): GameState {
+/** وضع مبنى مع موارد كافية، وإنهاء إنشائه فورًا، ومسكن بعدد سكان إن طُلب / Place a building with ample resources, finish it at once, optionally housed */
+function built(state: GameState, id: string, at = T0, residents?: number): GameState {
   const b = building(id);
   const placed = placeBuilding(rich(state), b, spotFor(state, b), at, `${id}-${state.buildings.length}`);
-  placed.buildings[placed.buildings.length - 1].completesAt = at;
-  return { ...placed, resources: state.resources };
+  const last = placed.buildings[placed.buildings.length - 1];
+  last.completesAt = at;
+  if (residents !== undefined) last.residents = residents;
+  const population = placed.buildings.reduce((n, p) => n + (p.residents ?? 0), 0);
+  return { ...placed, resources: state.resources, population };
 }
+
+/** مزرعة مع سكن مزارعين ممتلئ حتى تعمل بكامل طاقتها / A farm with a full farmers' house so it runs at full output */
+const staffedFarm = (s: GameState) => built(built(s, 'farmers_house', T0, building('farmers_house').housing), 'farm');
 
 describe('البداية / start', () => {
   const s = createInitialState(defs, world, site, T0);
@@ -101,11 +107,14 @@ describe('الزمن / time', () => {
 
   it('لا إنتاج قبل اكتمال الإنشاء، ثم إنتاج بالدقيقة بعده / no output while constructing, per-minute output after', () => {
     const farm = building('farm');
-    const placed = placeBuilding(s, farm, spotFor(s, farm), T0, 'f');
+    const housed = built(s, 'farmers_house', T0, building('farmers_house').housing);
+    const placed = placeBuilding(housed, farm, spotFor(housed, farm), T0, 'f');
     const food = placed.resources.food;
-    expect(advance(placed, defs, world, T0 + farm.buildSeconds * 1000).resources.food).toBeCloseTo(food);
+    // سكن المزارعين يأكل قليلًا أثناء الإنشاء / The farmers' house eats a little during construction
+    expect(advance(placed, defs, world, T0 + farm.buildSeconds * 1000).resources.food).toBeCloseTo(food, 0);
     const later = advance(placed, defs, world, T0 + farm.buildSeconds * 1000 + 2 * MIN);
-    expect(later.resources.food).toBeCloseTo(food + 2 * farm.production.food);
+    const eaten = 2 * (building('farmers_house').consumption.food ?? 0);
+    expect(later.resources.food).toBeCloseTo(food + 2 * farm.production.food - eaten, 0);
   });
 
   it('المنازل تستهلك وتجذب السكان حتى سعتها / houses consume and fill up to capacity', () => {
@@ -123,28 +132,97 @@ describe('الزمن / time', () => {
   });
 
   it('صافي الإنتاج = الإنتاج ناقص الاستهلاك / net rate is production minus consumption', () => {
-    const state = built(built(s, 'well'), 'houses');
+    const state = built(built(s, 'houses', T0, building('houses').housing), 'well');
     expect(netRates(state, defs, T0).water).toBe(building('well').production.water - building('houses').consumption.water);
     const { production, consumption } = rateBreakdown(state, defs, T0);
     expect(production.water).toBe(building('well').production.water);
     expect(consumption.water).toBe(building('houses').consumption.water);
   });
 
-  it('بلوغ سكان البلدة يرقّي المرحلة ويوسع الحدود / reaching town population upgrades the stage and widens borders', () => {
-    const town = defs.stages[1];
-    const next = applyStageProgress({ ...s, population: town.population }, defs, world);
-    expect(next.stage).toBe(town.id);
-    expect(applyStageProgress({ ...s, population: town.population - 1 }, defs, world).stage).toBe(s.stage);
-    expect(next.territory.length).toBeGreaterThan(s.territory.length);
+  it('بلوغ السكان وحده لا يرقّي المرحلة / reaching the population alone does not upgrade the stage', () => {
+    const state = { ...built(s, 'houses', T0, 12), population: defs.stages[1].population };
+    expect(advance(state, defs, world, T0 + MIN).stage).toBe(s.stage);
   });
 
-  it('الغياب يُحسب حتى الحد الأقصى فقط / absence is credited only up to the cap', () => {
-    const state = built(s, 'farm');
+  it('الغياب يُحسب حتى الحد الأقصى فقط، والإنتاج لا يتجاوز السعة / absence is capped, and output never exceeds capacity', () => {
+    const state = staffedFarm({ ...s, resources: { ...s.resources, food: 0 } });
     const cap = defs.world.offlineCapHours * 60 * MIN;
     const resume = resumeAfterAbsence(state, defs, world, T0 + cap * 3);
     expect(resume.creditedMs).toBe(cap);
     expect(resume.state.lastTick).toBe(T0 + cap * 3);
-    expect(resume.gained.food).toBeCloseTo(building('farm').production.food * defs.world.offlineCapHours * 60);
+    expect(resume.state.resources.food).toBeCloseTo(capacityAt(state, defs, T0).food, 0);
+  });
+});
+
+describe('المهن والعمال / trades and workers', () => {
+  const s = createInitialState(defs, world, site, T0);
+  const farm = building('farm');
+
+  it('المزرعة بلا مزارعين لا تنتج / a farm without farmers produces nothing', () => {
+    const state = built(s, 'farm');
+    expect(buildingStatus(state.buildings[0], state, defs, T0).kind).toBe('understaffed');
+    expect(advance(state, defs, world, T0 + 5 * MIN).resources.food).toBeCloseTo(state.resources.food);
+  });
+
+  it('الإنتاج بقدر العمال المتوفرين / output follows the available workers', () => {
+    const half = built(built(s, 'farmers_house', T0, farm.workers / 2), 'farm');
+    expect(staffingAt(half, defs, T0).get(half.buildings[1].uid)?.efficiency).toBe(0.5);
+    expect(rateBreakdown(half, defs, T0).production.food).toBe(farm.production.food / 2);
+    const full = staffedFarm(s);
+    expect(rateBreakdown(full, defs, T0).production.food).toBe(farm.production.food);
+  });
+
+  it('سكان سكن المهنة لا يعملون في مهنة أخرى / residents of one trade do not work another', () => {
+    const state = built(built(s, 'carpenters_house', T0, 6), 'farm');
+    expect(buildingStatus(state.buildings[1], state, defs, T0).kind).toBe('understaffed');
+  });
+
+  it('المساكن تمتلئ حتى سعتها، والمجموع هو عدد السكان / homes fill to capacity and their sum is the population', () => {
+    const state = built(built(s, 'houses'), 'farmers_house');
+    const later = advance(state, defs, world, T0 + 30 * MIN);
+    expect(later.buildings.map((b) => b.residents)).toEqual([building('houses').housing, building('farmers_house').housing]);
+    expect(later.population).toBe(building('houses').housing + building('farmers_house').housing);
+  });
+
+  it('حفظ أقدم بلا سكان لكل مسكن يوزّع سكانه / an older save without per-home residents spreads its population', () => {
+    const state = { ...built(s, 'houses'), population: 7 };
+    expect(advance(state, defs, world, T0 + 1000).buildings[0].residents).toBeGreaterThanOrEqual(7);
+  });
+});
+
+describe('المخازن والسعة / storage and capacity', () => {
+  const s = createInitialState(defs, world, site, T0);
+
+  it('السعة الأساسية ثم يزيدها المخزن / base capacity, raised by a store', () => {
+    const base = capacityAt(s, defs, T0).food;
+    expect(base).toBe(defs.resources.find((r) => r.id === 'food')!.baseCapacity);
+    const stored = built(s, 'farm_storage');
+    expect(capacityAt(stored, defs, T0).food).toBe(base + building('farm_storage').storage.food);
+  });
+
+  it('الإنتاج يتوقف عند امتلاء المخزن، والمخزون القديم فوق السعة يبقى / output stops when full; old stock above capacity stays', () => {
+    const full = staffedFarm({ ...s, resources: { ...s.resources, food: 50_000 } });
+    expect(advance(full, defs, world, T0 + 5 * MIN).resources.food).toBeLessThanOrEqual(50_000);
+    expect(advance(full, defs, world, T0 + 5 * MIN).resources.food).toBeGreaterThan(capacityAt(full, defs, T0).food);
+  });
+});
+
+describe('فتح المباني / unlocking buildings', () => {
+  const s = createInitialState(defs, world, site, T0);
+
+  it('السوق يحتاج سكانًا، ومركز التطوير يحتاج سوقًا / the market needs residents; the development centre needs a market', () => {
+    const market = building('market');
+    expect(unlockGaps(market, s, defs, T0).length).toBeGreaterThan(0);
+    expect(unlockGaps(market, { ...s, population: market.requiredPopulation }, defs, T0)).toEqual([]);
+    const dev = building('development_center');
+    const gaps = unlockGaps(dev, { ...s, population: dev.requiredPopulation }, defs, T0);
+    expect(gaps).toContain(market.name);
+  });
+
+  it('المقفل يُرفض عند الوضع / a locked building is refused on placement', () => {
+    const market = building('market');
+    const result = checkPlacement(defs, world, rich(s), market, spotFor(s, market), T0);
+    expect(!result.ok && result.reason).toContain('مقفل');
   });
 });
 
@@ -202,10 +280,36 @@ describe('الطرق على حدود المربعات / roads on tile edges', ()
     expect(checkRoadEdge(defs, world, s, road, `h:${outside.x},${outside.z + 1}`).ok).toBe(false);
   });
 
+  it('الطريق التلقائي يصل المبنى البعيد بالشبكة بأقصر مسار / the automatic road links a far building to the network by the shortest path', () => {
+    const path = autoRoadPath(defs, world, s, road, far, T0)!;
+    expect(path.length).toBeGreaterThan(0);
+    const laid = placeRoadPath(s, defs, world, road, path, T0, uid).state;
+    expect(hasRoadAccess(laid, far.x, far.z, connectedRoads(laid, T0, true))).toBe(true);
+    expect(checkPlacement(defs, world, laid, houses, far, T0)).toEqual({ ok: true });
+    // المسار لا يطول عن المسافة على الشبكة / The path is no longer than the grid distance
+    expect(path.length).toBeLessThanOrEqual(Math.abs(far.x - site.x) + Math.abs(far.z - site.z));
+    expect(autoRoadPath(defs, world, laid, road, far, T0)).toEqual([]);
+  });
+
   it('الطرق لا تُحسب من حد البناء المتزامن / roads do not count toward the concurrent limit', () => {
     let state = s;
     for (let i = 0; i < defs.world.maxConcurrentBuilds; i++) state = placeBuilding(state, building('farm'), spotFor(state, building('farm')), T0, `f${i}`);
     expect(placeRoadPath(state, defs, world, road, edgesTo(far), T0, uid).stoppedBy).toBeNull();
+  });
+
+  it('السور لا يفتح إلا بشروطه، ولا يُرسم فوق طريق، ولا يدخل في اتصال الطرق / walls need their conditions, avoid roads and never connect', () => {
+    const wall = building('wooden_wall');
+    const edges = edgesTo(far);
+    expect(placeWallPath(s, defs, world, wall, edges, T0, uid).placed).toBe(0);
+    // نفتح السور بشروطه: السكان ومركز التطوير / Unlock it: population and the development centre
+    const open = { ...built(s, 'development_center'), population: wall.requiredPopulation, resources: s.resources };
+    const walled = placeWallPath(open, defs, world, wall, edges.slice(0, 2), T0, uid);
+    expect(walled.placed).toBe(2);
+    expect(connectedRoads(walled.state, T0, true).size).toBe(0);
+    expect(placeRoadPath(walled.state, defs, world, road, edges.slice(0, 1), T0, uid).stoppedBy).toContain('سور');
+    const withRoad = placeRoadPath(open, defs, world, road, edges.slice(0, 1), T0, uid).state;
+    expect(placeWallPath(withRoad, defs, world, wall, edges.slice(0, 1), T0, uid).stoppedBy).toContain('طريق');
+    expect(demolishRoads(walled.state, defs, edges.slice(0, 2)).state.walls).toHaveLength(0);
   });
 
   it('الجرّافة تزيل الطرق وتسترد النسبة المحددة / the bulldozer removes roads and refunds the set share', () => {
@@ -292,7 +396,7 @@ describe('المكامن / deposits', () => {
 
   it('المبنى يُقبل على مكمن مكتشف داخل الدولة / the building is accepted on a discovered deposit inside the nation', () => {
     const combo = world.deposits.flatMap((d) => d.tiles.map((k) => ({ d, t: tileOf(k) }))).flatMap(({ d, t }) => {
-      const b = defs.buildings.find((x) => x.requiresDeposit === d.resourceId && x.allowedTerrain.includes(t.terrainId) && !x.requiresTech && x.stage === defs.stages[0].id);
+      const b = defs.buildings.find((x) => x.requiresDeposit === d.resourceId && x.allowedTerrain.includes(t.terrainId) && !x.requiresTech && x.stage === defs.stages[0].id && !x.requiredPopulation && !x.requiredBuildings.length);
       return b ? [{ d, t, b }] : [];
     })[0];
     expect(combo).toBeDefined();
