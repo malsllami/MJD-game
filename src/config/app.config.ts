@@ -16,6 +16,8 @@ export interface QualityPreset {
   fogDensity: number;
   /** دقة خريطة مزج الأرض (عشب، تراب، تربة) بالبكسل / Ground blend map resolution (grass, dirt, soil) in pixels */
   groundResolution: number;
+  /** أقصى عدد للسكان والعمال المتحركين الظاهرين قرب الكاميرا / Max moving residents and workers shown near the camera */
+  maxPeople: number;
 }
 
 export const APP_CONFIG = {
@@ -47,8 +49,8 @@ export const APP_CONFIG = {
     radiusMobile: 84,
   },
   quality: {
-    low: { maxDevicePixelRatio: 1, shadowMapSize: 0, waterReflections: false, glow: false, natureDensity: 0.4, fogDensity: 0.0045, groundResolution: 1024 },
-    medium: { maxDevicePixelRatio: 1.5, shadowMapSize: 1024, waterReflections: true, glow: true, natureDensity: 0.7, fogDensity: 0.004, groundResolution: 2048 },
-    high: { maxDevicePixelRatio: 2, shadowMapSize: 2048, waterReflections: true, glow: true, natureDensity: 1, fogDensity: 0.0035, groundResolution: 2048 },
+    low: { maxDevicePixelRatio: 1, shadowMapSize: 0, waterReflections: false, glow: false, natureDensity: 0.4, fogDensity: 0.0045, groundResolution: 1024, maxPeople: 12 },
+    medium: { maxDevicePixelRatio: 1.5, shadowMapSize: 1024, waterReflections: true, glow: true, natureDensity: 0.7, fogDensity: 0.004, groundResolution: 2048, maxPeople: 28 },
+    high: { maxDevicePixelRatio: 2, shadowMapSize: 2048, waterReflections: true, glow: true, natureDensity: 1, fogDensity: 0.0035, groundResolution: 2048, maxPeople: 48 },
   } satisfies Record<QualityLevel, QualityPreset>,
 };

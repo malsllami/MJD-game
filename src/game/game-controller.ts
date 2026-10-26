@@ -11,6 +11,7 @@ import {
   isSettlementTile, isUnderConstruction, netRates, nextStage, pathEdges, placeRoadPath, roadAt, stageById, surveyCost, tileKey,
 } from '../core/economy';
 import type { BuildingDef, ContextCommand, EntityType, GameDefinitions, Tile, World } from '../core/types';
+import { tileAtPoint } from '../core/world-gen';
 import { BottomSheet } from '../ui/bottom-sheet';
 import { BuildBar } from '../ui/build-bar';
 import { ConfirmBar } from '../ui/confirm-bar';
@@ -507,6 +508,10 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
       buildBar.update(state, now);
       ministries.refresh();
       tools.refresh();
+      // الناس قرب ما تنظر إليه الكاميرا / People near what the camera looks at
+      const look = game.camera.camera.target;
+      const focus = tileAtPoint(world, look.x, look.z) ?? settlementTile;
+      game.people.sync(state, defs, now, focus);
       const deposits = world.deposits.filter((d) => state.discovered.includes(d.id)).map((d) => ({ x: d.x, z: d.z, emphasis: false }));
       minimap.setOverlay(state.territory, [{ x: settlementTile.x, z: settlementTile.z, emphasis: true }, ...deposits]);
     }

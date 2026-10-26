@@ -8,6 +8,7 @@ import { sampleHeight, tileAtPoint, tileCenter, worldHalfExtents } from '../core
 import { ModelLibrary } from '../assets/model-library';
 import { DayNight } from './day-night';
 import { Nature } from './nature';
+import { People } from './people';
 import { GroundPainter } from './ground-material';
 import { TerrainSurface } from './terrain-surface';
 import { createEnvironment } from './environment';
@@ -48,6 +49,8 @@ export interface GameScene {
   readonly library: ModelLibrary;
   /** الأشجار والصخور / Trees and rocks */
   readonly nature: Nature;
+  /** العمال والمارة المتحركون / Moving workers and passers-by */
+  readonly people: People;
   /** رسم التراب والتربة على الأرض (العالم المستوي فقط) / Painting dirt and soil on the ground (flat world only) */
   readonly ground: GroundPainter | null;
   /** ربط مجسم بمربعه حتى يحدد النقر عليه ذلك المربع / Bind a mesh to its tile so clicking it selects that tile */
@@ -89,6 +92,7 @@ export function createGameScene(canvas: HTMLCanvasElement, world: World, defs: G
   // الطبيعة جزء من العالم نفسه، فتظهر من شاشة اختيار الموقع / Nature belongs to the world, so it shows from the start-site screen
   const nature = new Nature(library, world, preset.natureDensity);
   void nature.build(env.shadows);
+  const people = new People(scene, world, preset.maxPeople, env.shadows);
 
   const heightAt = (x: number, z: number): number => sampleHeight(world, x, z);
   const tileAnchor = (t: { x: number; z: number }): Vector3 => {
@@ -179,6 +183,7 @@ export function createGameScene(canvas: HTMLCanvasElement, world: World, defs: G
     library,
     nature,
     ground,
+    people,
     registerPickable: (mesh, tile) => tileOfMesh.set(mesh, tile),
     unregisterPickable: (mesh) => tileOfMesh.delete(mesh),
     onTileClick: (handler) => clickHandlers.push(handler),

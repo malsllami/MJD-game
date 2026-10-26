@@ -3,8 +3,8 @@
 //
 // الاستخدام / Usage:
 //   node tools/import-assets.mjs --village <MegaKit glTF dir> --nature <Nature MegaKit glTF dir> \
-//     --people <UAL2_Standard.glb> --moves <AnimationLibrary_Standard.glb>
-// المصادر (CC0) / Sources (CC0): Quaternius Medieval Village MegaKit, Stylized Nature MegaKit, Universal Animation Library 1 & 2
+//     --people <UAL2_Standard.glb> --ground 1
+// المصادر (CC0) / Sources (CC0): Quaternius Medieval Village MegaKit, Stylized Nature MegaKit, Universal Animation Library 2
 // (opengameart.org)، وخامات الأرض من Poly Haven / and ground textures from Poly Haven.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -31,9 +31,8 @@ const NATURE = [
   'Bush_Common_Flowers', 'Flower_3_Group', 'Flower_4_Group',
   'Rock_Medium_1', 'Rock_Medium_2', 'Rock_Medium_3', 'Pebble_Round_1', 'Plant_1', 'Plant_1_Big', 'DeadTree_1',
 ];
-/** الحركات المستخدمة من كل مكتبة / Animations kept from each library */
+/** الحركات المستخدمة من مكتبة الحركات 2 (هيكلها واحد، فلا تحتاج نقلًا بين هياكل) / Animations kept from library 2 (one skeleton, no retargeting) */
 const PEOPLE_ANIMS = ['Farm_Harvest', 'Farm_PlantSeed', 'Farm_Watering', 'TreeChopping_Loop', 'Walk_Carry_Loop', 'Idle_FoldArms_Loop'];
-const MOVE_ANIMS = ['Walk_Loop', 'Idle_Loop', 'Fixing_Kneeling', 'Interact', 'PickUp_Table'];
 /** خامات الأرض من Poly Haven / Ground textures from Poly Haven */
 const GROUND = { grass: 'leafy_grass', dirt: 'dirt', soil: 'farm_furrows' };
 /** عشب Poly Haven بني بأوراق متساقطة؛ يُحوّل لرمادي ثم يُلوَّن أخضر كالمروج مع بقاء تفاصيله / The Poly Haven grass is leafy brown; greyscaled then tinted lawn green, keeping its detail */
@@ -112,7 +111,7 @@ function glb(json, bin) {
 }
 
 /** يبقي الحركات المطلوبة فقط ويحذف ما لا يُستخدم / Keeps only the wanted animations and prunes the rest */
-async function importAnimations(src, keep, outFile, keepMesh) {
+async function importAnimations(src, keep, outFile) {
   const io = new NodeIO();
   const doc = await io.read(src);
   const root = doc.getRoot();
@@ -124,7 +123,6 @@ async function importAnimations(src, keep, outFile, keepMesh) {
     for (const s of a.listSamplers()) s.dispose();
     a.dispose();
   }
-  if (!keepMesh) for (const m of root.listMeshes()) m.dispose();
   // حذف الإطارات المتكررة / Drop redundant keyframes
   await doc.transform(resample(), prune());
   mkdirSync(dirname(outFile), { recursive: true });
@@ -149,6 +147,5 @@ async function importGround() {
 
 if (args.village) await importPieces(args.village, VILLAGE, 'village', join(dirname(args.village), 'Textures', 'Normals Godot-Unity'));
 if (args.nature) await importPieces(args.nature, NATURE, 'forest');
-if (args.people) await importAnimations(args.people, PEOPLE_ANIMS, join(OUT, 'models', 'people', 'worker.glb'), true);
-if (args.moves) await importAnimations(args.moves, MOVE_ANIMS, join(OUT, 'models', 'people', 'moves.glb'), false);
+if (args.people) await importAnimations(args.people, PEOPLE_ANIMS, join(OUT, 'models', 'people', 'worker.glb'));
 if (args.ground) await importGround();
