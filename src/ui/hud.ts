@@ -16,6 +16,7 @@ export interface HudElements {
   minimap: HTMLCanvasElement;
   toolNav: HTMLElement;
   drawer: HTMLElement;
+  buildingPanel: HTMLElement;
   radial: HTMLElement;
   confirm: HTMLElement;
   labels: HTMLElement;
@@ -55,6 +56,7 @@ export function createHud(root: HTMLElement, defs: GameDefinitions, actions: Hud
 
     <nav class="toolnav glass" data-toolnav aria-label="أدوات القيادة"></nav>
     <section class="drawer glass" data-drawer hidden></section>
+    <section class="building-panel glass" data-bpanel aria-label="داخل المبنى" hidden></section>
 
     <div class="zoom glass" aria-label="الكاميرا">
       <button type="button" class="icon-btn" data-action="zoom-in" aria-label="تقريب" title="تقريب">${icon('plus')}</button>
@@ -114,6 +116,7 @@ export function createHud(root: HTMLElement, defs: GameDefinitions, actions: Hud
     minimap: q<HTMLCanvasElement>('[data-minimap]'),
     toolNav: q('[data-toolnav]'),
     drawer: q('[data-drawer]'),
+    buildingPanel: q('[data-bpanel]'),
     radial: q('[data-radial]'),
     confirm: q('[data-confirmbar]'),
     labels: q('[data-labels]'),

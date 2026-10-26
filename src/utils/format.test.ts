@@ -1,6 +1,17 @@
 // اختبارات التنسيق / Formatting tests
 import { describe, expect, it } from 'vitest';
-import { formatDualDate, formatDuration, formatNumber } from './format';
+import { formatDualDate, formatDuration, formatNumber, parseNumber } from './format';
+
+describe('parseNumber', () => {
+  it('يقبل الأرقام العربية والإنجليزية والفواصل / accepts Arabic and English digits and separators', () => {
+    expect(parseNumber('١٢٥')).toBe(125);
+    expect(parseNumber('1,250')).toBe(1250);
+    expect(parseNumber('١٬٢٥٠')).toBe(1250);
+    expect(parseNumber('۴۵')).toBe(45);
+    expect(parseNumber('abc')).toBeNaN();
+    expect(parseNumber('')).toBeNaN();
+  });
+});
 
 describe('formatNumber', () => {
   it('يستخدم الأرقام العربية وفاصل الآلاف / uses Arabic digits and thousands separator', () => {

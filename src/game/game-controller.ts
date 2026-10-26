@@ -21,6 +21,7 @@ import { Minimap } from '../ui/minimap';
 import { RadialMenu, type RadialContent } from '../ui/radial-menu';
 import { Toast } from '../ui/toast';
 import { ToolDrawer } from '../ui/tool-drawer';
+import { BuildingPanel } from '../ui/building-panel';
 import { WorldLabels } from '../ui/world-labels';
 import { formatDuration, formatNumber } from '../utils/format';
 import { BuildingModels, partsFor } from '../world/building-models';
@@ -92,6 +93,39 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const era = () => eraOf(stageById(defs, session.state.stage).order);
   const thumbnails = new Thumbnails(game.scene, game.library, world.settings.tileSize);
   const buildBar = new BuildBar(hud.buildBar, defs, (b) => pickBuilding(b), (style) => thumbnails.get(style, era()));
+  // لوحة داخل المبنى وأوامرها / The inside-the-building panel and its commands
+  const panel = new BuildingPanel(
+    hud.buildingPanel,
+    () => ({ defs, world, state: session.state, now: Date.now() }),
+    (def) => thumbnails.get(styleOf(def), era()),
+    {
+      upgrade: () => {
+        const result = session.upgrade(Date.now());
+        if (result.ok) refresh(true);
+        return result;
+      },
+      trade: (resourceId, amount, side) => {
+        const result = session.trade(resourceId, amount, side, Date.now());
+        if (result.ok) refresh(true);
+        return result;
+      },
+      move: (uid) => {
+        const def = byId.get(session.state.buildings.find((b) => b.uid === uid)?.buildingId ?? '');
+        if (!def) return;
+        const price = costText(costShare(def.cost, defs.world.moveCostPercent));
+        setMode({ kind: 'move', uid });
+        toast.show(`اختر موقعًا جديدًا لـ${def.name} من المربعات الخضراء${price ? ` · تكلفة النقل ${price}` : ''}`, 5000);
+      },
+      demolish: (uid) => {
+        const def = byId.get(session.state.buildings.find((b) => b.uid === uid)?.buildingId ?? '');
+        session.demolish(uid, Date.now());
+        game.highlight(null);
+        refresh(true);
+        toast.show(`هُدم ${def?.name ?? ''} واسترددت ${formatNumber(defs.world.demolishRefundPercent)}٪ من تكلفته`);
+      },
+    },
+    () => game.highlight(null),
+  );
   const tools = new ToolDrawer(
     hud.toolNav, hud.drawer, () => ({ defs, world, state: session.state, now: Date.now() }),
     (x, z) => {
@@ -105,7 +139,6 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   let gridAlways = false;
   grid.setVisible(false);
   let selected: Tile | null = null;
-  let pendingDemolish: { uid: string; until: number } | null = null;
 
   const labelAbove = (x: number, z: number, lift: number) => {
     const p = game.tileAnchor({ x, z });
@@ -296,6 +329,18 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     if (mode.kind === 'road' || mode.kind === 'bulldoze') return;
     selected = tile;
     game.highlight(tile);
+    // الضغط على مبنى يدخل إليه: تقترب الكاميرا وتفتح لوحته؛ والمربع الفارغ يفتح القائمة الدائرية
+    // Tapping a building enters it: the camera closes in and its panel opens; an empty tile opens the radial menu
+    const placed = buildingAt(session.state, tile.x, tile.z);
+    if (isSettlementTile(session.state, tile.x, tile.z) || placed) {
+      radial.close();
+      const at = game.tileAnchor(tile);
+      game.camera.focus(at.x, at.z);
+      game.camera.camera.radius = Math.min(game.camera.camera.radius, world.settings.tileSize * 9);
+      panel.open(placed ? { kind: 'building', uid: placed.uid } : { kind: 'government' });
+      return;
+    }
+    panel.close();
     radial.open(game.tileAnchor(tile), describe(tile), (cmd) => runCommand(cmd, tile));
   });
 
@@ -320,6 +365,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   function closeSelection(): void {
     selected = null;
     radial.close();
+    panel.close();
     game.highlight(null);
   }
 
@@ -334,40 +380,17 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
 
   /** نوع العنصر في المربع وعنوان القائمة / Entity on the tile and the menu heading */
   function describe(tile: Tile): RadialContent {
-    const now = Date.now();
     const state = session.state;
     const terrain = terrainById.get(tile.terrainId);
     const coords = `المربع ${formatNumber(tile.x + 1)}، ${formatNumber(tile.z + 1)}`;
-    const placed = buildingAt(state, tile.x, tile.z);
     const owned = state.territory.includes(tileKey(tile.x, tile.z));
     const deposit = depositAt(world, state, tile.x, tile.z);
-    let entity: EntityType | null = terrain?.isWater ? null : 'empty_tile';
-    let title = deposit ? (depositTypeById.get(deposit.typeId)?.name ?? '') : (terrain?.name ?? '');
-    let subtitle = `${coords} · ${owned ? 'داخل الدولة' : 'خارج الدولة'}`;
-    if (isSettlementTile(state, tile.x, tile.z)) {
-      entity = 'city';
-      title = governmentName;
-      subtitle = `${defs.world.capitalName} · ${stageById(defs, state.stage).name} · ${formatNumber(Math.floor(state.population))} نسمة`;
-    } else if (placed) {
-      entity = 'building';
-      title = byId.get(placed.buildingId)?.name ?? placed.buildingId;
-      subtitle = statusText(placed.uid, now);
-    }
+    // القائمة الدائرية للمربعات الفارغة فقط؛ المباني تفتح لوحتها / The radial menu is for empty tiles only; buildings open their panel
+    const entity: EntityType | null = terrain?.isWater ? null : 'empty_tile';
+    const title = deposit ? (depositTypeById.get(deposit.typeId)?.name ?? '') : (terrain?.name ?? '');
+    const subtitle = `${coords} · ${owned ? 'داخل الدولة' : 'خارج الدولة'}`;
     const commands = entity ? (defs.contextMenus.find((m) => m.entityType === entity)?.commands ?? []) : [];
     return { title, subtitle, commands };
-  }
-
-  function statusText(uid: string, now: number): string {
-    const placed = session.state.buildings.find((b) => b.uid === uid);
-    if (!placed) return '';
-    const status = buildingStatus(placed, session.state, defs, now);
-    switch (status.kind) {
-      case 'constructing': return `تحت الإنشاء · ${formatDuration(Math.ceil((placed.completesAt - now) / 1000))}`;
-      case 'disconnected': return `متوقف · لا يطل على طريق متصل بـ${governmentName}`;
-      case 'stopped': return `متوقف · ينقصه ${status.missing.map(resourceName).join('، ')}`;
-      case 'understaffed': return `متوقف · ينقصه عمال (${professionName(status.profession)})`;
-      default: return 'يعمل';
-    }
   }
 
   /** أحدث طريق مفتوح في المرحلة الحالية / The latest road unlocked at the current stage */
@@ -381,7 +404,6 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     const now = Date.now();
     const state = session.state;
     const placed = buildingAt(state, tile.x, tile.z);
-    const def = placed && byId.get(placed.buildingId);
     switch (cmd.id) {
       case 'build': {
         if (isSettlementTile(state, tile.x, tile.z) || placed || !state.territory.includes(tileKey(tile.x, tile.z))) {
@@ -408,25 +430,6 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
         refresh(true);
         return toast.show(names ? `اكتشف المسح: ${names}` : `لم يجد المسح مكامن جديدة حول هذا المربع · ${costText(surveyCost(defs))}`, 6000);
       }
-      case 'move': {
-        if (!placed || !def) return;
-        const price = costText(costShare(def.cost, defs.world.moveCostPercent));
-        closeSelection();
-        setMode({ kind: 'move', uid: placed.uid });
-        return toast.show(`اختر موقعًا جديدًا لـ${def.name} من المربعات الخضراء${price ? ` · تكلفة النقل ${price}` : ''}`, 5000);
-      }
-      case 'demolish': {
-        if (!placed || !def) return;
-        if (pendingDemolish?.uid !== placed.uid || pendingDemolish.until < now) {
-          pendingDemolish = { uid: placed.uid, until: now + CONFIRM_MS };
-          return toast.show(`اضغط «${cmd.name}» مرة أخرى خلال ${formatNumber(CONFIRM_MS / 1000)} ثوانٍ لتأكيد هدم ${def.name}`);
-        }
-        pendingDemolish = null;
-        session.demolish(placed.uid, now);
-        closeSelection();
-        refresh(true);
-        return toast.show(`هُدم ${def.name} واسترددت ${formatNumber(defs.world.demolishRefundPercent)}٪ من تكلفته`);
-      }
       case 'annex': {
         const result = session.annex(tile, now);
         toast.show(result.ok ? `انضمت قطعة أرض جديدة إلى الدولة مقابل ${formatNumber(defs.world.annexCost)} ${resourceName(defs.world.annexResource)}` : result.reason);
@@ -436,21 +439,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
         }
         return;
       }
-      case 'upgrade': {
-        if (!isSettlementTile(state, tile.x, tile.z)) return toast.show('ترقية المباني تأتي لاحقًا؛ الترقية الآن لمبنى الحكم');
-        const result = session.upgrade(now);
-        if (!result.ok) return toast.show(result.reason, 7000);
-        closeSelection();
-        refresh(true);
-        return;
-      }
       case 'info': {
-        if (placed && def) {
-          const out = Object.entries(def.production).map(([id, n]) => `+${formatNumber(n)} ${resourceName(id)}`);
-          const use = Object.entries(def.consumption).map(([id, n]) => `−${formatNumber(n)} ${resourceName(id)}`);
-          const flows = [...out, ...use].join('، ');
-          return toast.show(`${def.name}: ${statusText(placed.uid, now)}${flows ? ` · في الدقيقة ${flows}` : ''}${def.housing ? ` · يسكنه ${formatNumber(def.housing)}` : ''}`, 6000);
-        }
         const deposit = depositAt(world, state, tile.x, tile.z);
         const fits = defs.buildings
           .filter((b) => !isRoad(b) && b.allowedTerrain.includes(tile.terrainId) && (!b.requiresDeposit || deposit?.resourceId === b.requiresDeposit))
@@ -545,6 +534,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
       buildBar.update(state, now);
       ministries.refresh();
       tools.refresh();
+      panel.refresh();
       // الناس قرب ما تنظر إليه الكاميرا / People near what the camera looks at
       const look = game.camera.camera.target;
       const focus = tileAtPoint(world, look.x, look.z) ?? settlementTile;

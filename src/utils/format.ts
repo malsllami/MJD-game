@@ -11,6 +11,20 @@ export function formatNumber(n: number): string {
 }
 
 /**
+ * قراءة رقم كتبه المستخدم بالأرقام العربية أو الفارسية أو الإنجليزية، مع فواصل الآلاف؛ NaN إن لم يكن رقمًا
+ * Reads a number typed in Arabic, Persian or English digits, with thousands separators; NaN when it is not a number
+ */
+export function parseNumber(text: string): number {
+  const normal = text
+    .trim()
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660))
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6f0))
+    .replace(/[٬,\s]/g, '')
+    .replace('٫', '.');
+  return normal && /^-?\d+(\.\d+)?$/.test(normal) ? Number(normal) : NaN;
+}
+
+/**
  * تنسيق مدة بالثواني إلى صيغة مختصرة: "45 ث" أو "3 د" أو "1 س 5 د"
  * Formats a duration in seconds as a short Arabic label
  */

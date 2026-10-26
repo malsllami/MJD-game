@@ -203,6 +203,32 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
 .pin-warn { color: #f5a397; font-size: 11px; background: rgba(60, 18, 14, 0.85); }
 .pin-warn::before { background: #f5a397; box-shadow: 0 0 0 3px rgba(245, 163, 151, 0.25); }
 
+/* ===== لوحة داخل المبنى (يمين، فوق الوزارات) / Inside-the-building panel (right, above the ministries) ===== */
+.building-panel {
+  position: absolute; top: calc(72px + var(--safe-t)); right: calc(var(--gap) + var(--safe-r)); bottom: calc(var(--gap) + var(--safe-b));
+  width: 390px; padding: 16px; display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 12px; z-index: 5; background: rgba(14, 26, 30, 0.95);
+}
+.bp-head { display: flex; align-items: center; gap: 12px; }
+.bp-pic { width: 60px; height: 48px; flex: none; display: grid; place-items: center; border-radius: 12px; overflow: hidden; background: rgba(143, 196, 160, 0.16); color: var(--gold-soft); }
+.bp-pic img { width: 100%; height: 100%; object-fit: contain; }
+.bp-pic .ico { width: 26px; height: 26px; }
+.bp-title { flex-grow: 1; display: grid; gap: 2px; min-width: 0; }
+.bp-title h2 { margin: 0; font-family: var(--display); font-size: 20px; color: var(--gold-soft); }
+.bp-title small { color: var(--ink-soft); font-size: 12px; }
+.bp-tabs { display: grid; gap: 6px; }
+.bp-tabs button { min-height: 40px; }
+.bp-body { min-height: 0; overflow: auto; display: grid; align-content: start; gap: 10px; }
+.bp-body h3 { margin: 4px 0 0; font-size: 13px; color: var(--gold-soft); }
+.bp-label { font-size: 12px; color: var(--ink-soft); }
+.bp-input { height: 44px; border-radius: 10px; border: 1px solid var(--line); background: #0b1518; color: var(--ink); padding: 0 12px; font: inherit; font-size: 15px; }
+.bp-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.bp-pair .text-btn, .bp-main { min-height: 44px; font-size: 13px; }
+.bp-pair .ok, .bp-main { background: #2c3a36; border-color: var(--gold); color: var(--gold-soft); }
+.bp-main:disabled { opacity: 0.45; cursor: not-allowed; }
+.bp-pair .sell { background: #2c6a57; border-color: #3d8a71; color: #fff; }
+.bp-msg { color: var(--gold-soft); font-weight: 700; }
+.chip.on { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); }
+
 /* ===== شريط تأكيد البناء / Build confirmation bar ===== */
 .confirm-bar {
   position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px;
@@ -320,6 +346,7 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
   .toolnav { top: calc(100px + var(--safe-t)); left: auto; right: calc(var(--gap) + var(--safe-r)); width: auto; }
   .toolnav button span { display: none; }
   .toolnav button { padding: 11px; }
+  .building-panel { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 62dvh; border-radius: 22px 22px 0 0; padding-bottom: calc(14px + var(--safe-b)); z-index: 6; background: var(--glass-solid); }
   .drawer {
     top: calc(100px + var(--safe-t)); left: calc(var(--gap) + var(--safe-l)); right: calc(66px + var(--safe-r)); width: auto;
     max-height: calc(100dvh - 110px - var(--sheet-h, 42dvh) - var(--safe-t)); z-index: 3; background: var(--glass-solid);

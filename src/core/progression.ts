@@ -4,6 +4,7 @@
 
 import { builtIds, enterStage, missingResources, nextStage, pay, type Check } from './economy';
 import type { GameDefinitions, GameState, World } from './types';
+import { formatNumber } from '../utils/format';
 
 /** شرط واحد للترقية مع حالته / One upgrade condition with its state */
 export interface Requirement {
@@ -21,9 +22,9 @@ export function upgradeRequirements(defs: GameDefinitions, state: GameState, now
   const built = builtIds(state, now);
   const name = (id: string) => defs.buildings.find((b) => b.id === id)?.name ?? id;
   const resource = (id: string) => defs.resources.find((r) => r.id === id)?.name ?? id;
-  const items: Requirement[] = [{ label: `${next.population} نسمة (الآن ${Math.floor(state.population)})`, met: Math.floor(state.population) >= next.population }];
+  const items: Requirement[] = [{ label: `${formatNumber(next.population)} نسمة (الآن ${formatNumber(Math.floor(state.population))})`, met: Math.floor(state.population) >= next.population }];
   for (const id of next.requiredBuildings) items.push({ label: `بناء ${name(id)}`, met: built.has(id) });
-  for (const [id, n] of Object.entries(next.upgradeCost)) items.push({ label: `${n} ${resource(id)}`, met: Math.floor(state.resources[id] ?? 0) >= n });
+  for (const [id, n] of Object.entries(next.upgradeCost)) items.push({ label: `${formatNumber(n)} ${resource(id)}`, met: Math.floor(state.resources[id] ?? 0) >= n });
   return { stage: next.name, items };
 }
 
