@@ -3,14 +3,16 @@
 //
 // الاستخدام / Usage:
 //   node tools/import-assets.mjs --village <MegaKit glTF dir> --nature <Nature MegaKit glTF dir> \
-//     --people <UAL2_Standard.glb> --animals <Farm Animals OBJ dir> --ground 1
-// المصادر (CC0) / Sources (CC0): Quaternius Medieval Village MegaKit, Stylized Nature MegaKit, Universal Animation Library 2
-// (opengameart.org)، وخامات الأرض من Poly Haven / and ground textures from Poly Haven.
+//     --people <UAL2_Standard.glb> --characters <Universal Base Characters dir> --outfits <Modular Character Outfits dir> \
+//     --animals <Farm Animals OBJ dir> --ground 1
+// المصادر (CC0) / Sources (CC0): Quaternius Medieval Village MegaKit, Stylized Nature MegaKit, Universal Animation Library 2,
+// (opengameart.org)، و Universal Base Characters و Modular Character Outfits - Fantasy (quaternius.itch.io)، وخامات الأرض من Poly Haven / and ground textures from Poly Haven.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { NodeIO } from '@gltf-transform/core';
-import { prune, resample } from '@gltf-transform/functions';
+import { Accessor, Document, Format, NodeIO } from '@gltf-transform/core';
+import { compactPrimitive, joinPrimitives, mergeDocuments, prune, resample, simplify, weld } from '@gltf-transform/functions';
+import { MeshoptSimplifier } from 'meshoptimizer';
 import obj2gltf from 'obj2gltf';
 import sharp from 'sharp';
 
@@ -116,11 +118,15 @@ function glb(json, bin) {
   return Buffer.concat([header, body]);
 }
 
-/** يبقي الحركات المطلوبة فقط ويحذف ما لا يُستخدم / Keeps only the wanted animations and prunes the rest */
+/**
+ * يبقي الحركات المطلوبة فقط ويحذف المجسم، فيبقى الهيكل وحركاته مكتبةً تُربط بالشخصيات بأسماء العظام
+ * Keeps only the wanted animations and drops the mesh, leaving the skeleton and its motions as a library bound to characters by bone name
+ */
 async function importAnimations(src, keep, outFile) {
   const io = new NodeIO();
   const doc = await io.read(src);
   const root = doc.getRoot();
+  for (const n of root.listNodes()) if (n.getMesh()) n.dispose();
   // حذف الحركة لا يحذف بياناتها، فتُحذف قنواتها وعيّناتها، ثم يزيل prune ما لم يعد مستخدمًا (الأزمنة قد تكون مشتركة)
   // Disposing an animation keeps its data, so channels and samplers go too; prune then drops what is unused (times may be shared)
   for (const a of root.listAnimations()) {
@@ -134,6 +140,194 @@ async function importAnimations(src, keep, outFile) {
   mkdirSync(dirname(outFile), { recursive: true });
   await io.write(outFile, doc);
   console.log(`${basename(outFile)}: ${root.listAnimations().map((a) => a.getName()).join(', ')}`);
+}
+
+/**
+ * قراءة glTF مع تجاوز الخامات الناقصة في الحزمة (تُستبدل بصورة 1×1؛ الخامات الفعلية تُضبط لاحقًا)
+ * Reads a glTF tolerating textures missing from the pack (replaced by a 1×1 image; the real textures are set later)
+ */
+async function readGltf(io, file) {
+  const json = JSON.parse(readFileSync(file, 'utf8'));
+  const resources = {};
+  for (const b of json.buffers ?? []) resources[b.uri] = readFileSync(join(dirname(file), decodeURIComponent(b.uri)));
+  for (const im of json.images ?? []) {
+    const path = join(dirname(file), decodeURIComponent(im.uri));
+    resources[im.uri] = existsSync(path) ? readFileSync(path) : TINY_PNG;
+  }
+  return io.readJSON({ json, resources });
+}
+const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
+/**
+ * يقتطع الرأس والرقبة من الجسم الكامل حسب أوزان العظام: يبقى كل مثلث تتبع رؤوسه الثلاثة عظام الرأس
+ * Cuts the head and neck out of the full body by bone weights: a triangle stays when all three vertices follow head bones
+ */
+function cutHead(prim, joints, headBones) {
+  const J = prim.getAttribute('JOINTS_0');
+  const W = prim.getAttribute('WEIGHTS_0');
+  const keep = new Uint8Array(J.getCount());
+  const j = [], w = [];
+  for (let v = 0; v < keep.length; v++) {
+    J.getElement(v, j);
+    W.getElement(v, w);
+    const top = w.indexOf(Math.max(...w));
+    keep[v] = headBones.has(joints[j[top]].getName()) ? 1 : 0;
+  }
+  const src = prim.getIndices().getArray();
+  const out = [];
+  for (let t = 0; t < src.length; t += 3) if (keep[src[t]] && keep[src[t + 1]] && keep[src[t + 2]]) out.push(src[t], src[t + 1], src[t + 2]);
+  prim.getIndices().setArray(new Uint32Array(out));
+  compactPrimitive(prim);
+}
+
+/**
+ * يجمع كل قطع الشخصية على هيكل واحد وجلد واحد وشبكة واحدة؛ الهياكل المدموجة متطابقة (نفس الحزمة) فتُربط بالاسم
+ * Gathers every character part onto one skeleton, one skin and one mesh; the merged skeletons are identical (same kit) so they bind by name
+ */
+/** أنواع موحدة للعظام والأوزان حتى تُدمج القطع / Uniform bone and weight types so parts can be joined */
+function unifyAccessors(doc, prim) {
+  const I = prim.getIndices();
+  if (I.getComponentType() !== Accessor.ComponentType.UNSIGNED_INT) prim.setIndices(doc.createAccessor().setType('SCALAR').setArray(new Uint32Array(I.getArray())).setBuffer(I.getBuffer()));
+  const J = prim.getAttribute('JOINTS_0');
+  if (J.getComponentType() !== Accessor.ComponentType.UNSIGNED_SHORT) prim.setAttribute('JOINTS_0', doc.createAccessor().setType('VEC4').setArray(new Uint16Array(J.getArray())).setBuffer(J.getBuffer()));
+  const W = prim.getAttribute('WEIGHTS_0');
+  if (W.getComponentType() !== Accessor.ComponentType.FLOAT || W.getNormalized()) {
+    const out = new Float32Array(W.getCount() * 4);
+    const v = [];
+    for (let i = 0; i < W.getCount(); i++) out.set(W.getElement(i, v), i * 4);
+    prim.setAttribute('WEIGHTS_0', doc.createAccessor().setType('VEC4').setArray(out).setBuffer(W.getBuffer()));
+  }
+}
+
+function unifySkeleton(doc) {
+  const root = doc.getRoot();
+  const [skin, ...others] = root.listSkins();
+  const index = new Map(skin.listJoints().map((n, i) => [n.getName(), i]));
+  const parts = root.listNodes().filter((n) => n.getMesh());
+  const [holder] = parts;
+  const mesh = holder.getMesh();
+  for (const node of parts) {
+    const own = node.getSkin();
+    const remap = own.listJoints().map((n) => index.get(n.getName()));
+    if (remap.some((r) => r === undefined)) throw new Error(`${node.getName()}: unknown bone`);
+    for (const prim of node.getMesh().listPrimitives()) {
+      if (own !== skin && remap.some((r, i) => r !== i)) {
+        // ترتيب العظام يختلف فتُعاد أرقامها / Bone order differs, so the indices are renumbered
+        const joints = prim.getAttribute('JOINTS_0').clone();
+        const v = [];
+        for (let i = 0; i < joints.getCount(); i++) joints.setElement(i, joints.getElement(i, v).map((x) => remap[x]));
+        prim.setAttribute('JOINTS_0', joints);
+      }
+      if (node !== holder) mesh.addPrimitive(prim);
+    }
+  }
+  holder.setSkin(skin);
+  for (const node of parts) if (node !== holder) node.dispose();
+  // هياكل القطع المدموجة ومشاهدها لم تعد مستخدمة / The merged parts' skeletons and scenes are no longer used
+  for (const s of others) s.dispose();
+  for (const scene of root.listScenes().slice(1)) {
+    scene.traverse((n) => n !== holder && n.dispose());
+    scene.dispose();
+  }
+  const [buffer] = root.listBuffers();
+  for (const a of root.listAccessors()) a.setBuffer(buffer);
+  for (const b of root.listBuffers().slice(1)) b.dispose();
+}
+
+/**
+ * الشخصيات بالملابس: ملابس الحزمة + رأس الشخصية الأساسية (بخامة جلد الملابس، فتخطيطها واحد) + شعر، بلا حركات
+ * Dressed characters: the kit outfit + the base character's head (with the outfit skin texture, same layout) + hair, without motions
+ */
+const CHARACTERS = [
+  { name: 'male_peasant', sex: 'Male', outfit: 'Male_Peasant', hair: ['Hair_SimpleParted'] },
+  { name: 'female_peasant', sex: 'Female', outfit: 'Female_Peasant', hair: ['Hair_Buns'] },
+  { name: 'male_ranger', sex: 'Male', outfit: 'Male_Ranger', hair: [] },
+  { name: 'female_ranger', sex: 'Female', outfit: 'Female_Ranger', hair: [] },
+];
+/** خصائص الرؤوس التي تحتاجها اللعبة / The vertex attributes the game needs */
+const CHARACTER_ATTRIBUTES = new Set(['POSITION', 'NORMAL', 'TEXCOORD_0', 'JOINTS_0', 'WEIGHTS_0']);
+/** خامات الألوان: الأساسية لكل مادة، والبديلة تختارها اللعبة للتنويع / Colour textures: the base per material, the alternates the game picks for variety */
+const CHARACTER_TEXTURES = {
+  Peasant: ['Peasant/T_Peasant_BaseColor', 'Peasant/T_Peasant_2_BaseColor'],
+  Ranger: ['Ranger/T_Ranger_BaseColor', 'Ranger/T_Ranger_3_BaseColor'],
+};
+
+async function importCharacters(baseDir, outfitDir) {
+  const io = new NodeIO();
+  const out = join(OUT, 'models', 'people');
+  mkdirSync(join(out, 'textures'), { recursive: true });
+  const done = new Set();
+  /** خامة لون واحدة بحجم مناسب، تُحوّل مرة واحدة / One colour texture at a fitting size, converted once */
+  const texture = async (doc, source, side) => {
+    const name = basename(source).replace(/\.png$/i, '');
+    if (!done.has(name)) {
+      done.add(name);
+      await sharp(source).resize(side, side, { fit: 'inside' }).flatten({ background: '#808080' }).jpeg({ quality: 84, mozjpeg: true }).toFile(join(out, 'textures', `${name}.jpg`));
+    }
+    // الصورة تبقى ملفًا خارجيًا مشتركًا؛ تُقرأ هنا فقط ليعرف المحوّل حجمها / The image stays a shared outside file; read here only so the converter knows its size
+    return doc.createTexture(name).setURI(`textures/${name}.jpg`).setMimeType('image/jpeg').setImage(readFileSync(join(out, 'textures', `${name}.jpg`)));
+  };
+  const baseChars = join(baseDir, 'Base Characters');
+  const hairDir = join(baseDir, 'Hairstyles', 'Rigged to Head Bone', 'glTF (Godot -Unreal)');
+  for (const c of CHARACTERS) {
+    const doc = await readGltf(io, join(outfitDir, 'Exports', 'glTF (Godot-Unreal)', 'Outfits', `${c.outfit}.gltf`));
+    const head = await readGltf(io, join(baseChars, 'Godot - UE', `Superhero_${c.sex}_FullBody.gltf`));
+    // عظام الرأس: الرقبة والرأس وما تحته / Head bones: the neck, the head and everything under it
+    const headBones = new Set(['neck_01']);
+    head.getRoot().listNodes().find((n) => n.getName() === 'Head').traverse((n) => headBones.add(n.getName()));
+    for (const node of head.getRoot().listNodes()) {
+      const mesh = node.getMesh();
+      if (!mesh) continue;
+      for (const prim of mesh.listPrimitives()) if (/Superhero/.test(prim.getMaterial()?.getName() ?? '')) cutHead(prim, node.getSkin().listJoints(), headBones);
+    }
+    mergeDocuments(doc, head);
+    for (const h of c.hair) mergeDocuments(doc, await readGltf(io, join(hairDir, `${h}.gltf`)));
+    unifySkeleton(doc);
+
+    // مواد بسيطة بخامة لون فقط: الشخصيات صغيرة في الكاميرا الاستراتيجية فلا حاجة لخرائط النتوء
+    // Simple materials with a colour texture only: characters are small in the strategy camera, so no bump maps are needed
+    const made = new Map();
+    const material = async (kind) => {
+      if (made.has(kind)) return made.get(kind);
+      const [source, side, rough] = {
+        Peasant: [join(outfitDir, 'Textures', `${CHARACTER_TEXTURES.Peasant[0]}.png`), 1024, 0.9],
+        Ranger: [join(outfitDir, 'Textures', `${CHARACTER_TEXTURES.Ranger[0]}.png`), 1024, 0.85],
+        Skin: [join(outfitDir, 'Textures', 'Base', `T_Regular_${c.sex}_Dark_BaseColor.png`), 512, 0.7],
+        Hair_1: [join(baseDir, 'Hairstyles', 'Textures', 'T_Hair_1_BaseColor.png'), 256, 0.8],
+        Hair_2: [join(baseDir, 'Hairstyles', 'Textures', 'T_Hair_2_BaseColor.png'), 256, 0.8],
+        Eyes: [join(baseChars, 'Textures', 'T_Eye_Brown.png'), 128, 0.3],
+      }[kind];
+      const m = doc.createMaterial(`M_${kind}`).setBaseColorTexture(await texture(doc, source, side)).setMetallicFactor(0).setRoughnessFactor(rough);
+      made.set(kind, m);
+      return m;
+    };
+    for (const prim of doc.getRoot().listMeshes()[0].listPrimitives()) {
+      const name = prim.getMaterial()?.getName() ?? '';
+      const kind = /Peasant/.test(name) ? 'Peasant' : /Ranger/.test(name) ? 'Ranger' : /Hair_1/.test(name) ? 'Hair_1' : /Hair_2/.test(name) ? 'Hair_2' : /Eye/.test(name) ? 'Eyes' : 'Skin';
+      prim.setMaterial(await material(kind));
+      // ألوان الرؤوس وإحداثيات الخامة الثانية غير مستخدمة، ووجودها في بعض القطع فقط يمنع دمجها
+      // Vertex colours and second UVs are unused, and having them on some parts only blocks joining
+      for (const semantic of prim.listSemantics()) if (!CHARACTER_ATTRIBUTES.has(semantic)) prim.setAttribute(semantic, null);
+    }
+    // دمج القطع ذات المادة الواحدة يقلل أوامر الرسم لكل شخص / Joining parts that share a material cuts each person's draw calls
+    // وتبسيط الهندسة الكثيفة (الأحذية وحدها 10 آلاف رأس) بخطأ لا يُرى من الكاميرا / and simplifying dense geometry (the boots alone are 10k vertices) within an error invisible from the camera
+    const mesh = doc.getRoot().listMeshes()[0];
+    for (const m of made.values()) {
+      const group = mesh.listPrimitives().filter((p) => p.getMaterial() === m);
+      if (group.length < 2) continue;
+      for (const p of group) unifyAccessors(doc, p);
+      mesh.addPrimitive(joinPrimitives(group));
+      for (const p of group) p.dispose();
+    }
+    await doc.transform(prune(), weld(), simplify({ simplifier: MeshoptSimplifier, ratio: 0.35, error: 0.006 }), prune());
+    const { json, resources } = await io.writeJSON(doc, { format: Format.GLTF });
+    const bin = Buffer.from(resources[json.buffers[0].uri]);
+    delete json.buffers[0].uri;
+    writeFileSync(join(out, `${c.name}.glb`), glb(json, bin));
+    console.log(`${c.name}: ${json.meshes[0].primitives.length} مادة`);
+  }
+  // الألوان البديلة / The alternate colourways
+  for (const list of Object.values(CHARACTER_TEXTURES)) for (const t of list.slice(1)) await texture(new Document(), join(outfitDir, 'Textures', `${t}.png`), 1024);
 }
 
 /** خامات الأرض بدقة 1k / Ground textures at 1k */
@@ -154,7 +348,8 @@ async function importGround() {
 
 if (args.village) await importPieces(args.village, VILLAGE, 'village', join(dirname(args.village), 'Textures', 'Normals Godot-Unity'));
 if (args.nature) await importPieces(args.nature, NATURE, 'forest');
-if (args.people) await importAnimations(args.people, PEOPLE_ANIMS, join(OUT, 'models', 'people', 'worker.glb'));
+if (args.people) await importAnimations(args.people, PEOPLE_ANIMS, join(OUT, 'models', 'people', 'animations.glb'));
+if (args.characters) await importCharacters(args.characters, args.outfits);
 if (args.ground) await importGround();
 if (args.animals) {
   mkdirSync(join(OUT, 'models', 'animals'), { recursive: true });

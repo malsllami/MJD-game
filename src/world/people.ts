@@ -3,12 +3,17 @@
 // File responsibility: life in the nation — workers moving at operating buildings (farmers, woodcutters, smiths, traders,
 // herders) and passers-by carrying goods on connected roads; all from the real nation state, with no economic effect
 
-import { LoadAssetContainerAsync, PBRMaterial, TransformNode, Vector3, type AbstractMesh, type AnimationGroup, type AssetContainer, type Scene, type ShadowGenerator } from '@babylonjs/core';
+import {
+  Color3, LoadAssetContainerAsync, Texture, TransformNode, Vector3,
+  type AbstractMesh, type AnimationGroup, type AssetContainer, type Material, type Node, type PBRMaterial, type Scene, type ShadowGenerator,
+} from '@babylonjs/core';
 import { buildingStatus, connectedRoads, edgeCorners, tileKey } from '../core/economy';
 import type { GameDefinitions, GameState, World } from '../core/types';
 import { sampleHeight, tileCenter, worldHalfExtents } from '../core/world-gen';
 
-const MODEL = `${import.meta.env.BASE_URL}models/people/worker.glb`;
+const PEOPLE = `${import.meta.env.BASE_URL}models/people/`;
+/** مكتبة الحركات: هيكل بلا مجسم، تُربط حركاته بكل شخصية بأسماء العظام / The motion library: a meshless skeleton whose motions bind to each character by bone name */
+const ANIMATIONS = `${PEOPLE}animations.glb`;
 /** طول الشخص بالنسبة لضلع المربع (أكبر قليلًا من الواقع ليُرى من الكاميرا الاستراتيجية) / Person height vs tile side (a bit larger than life to read from the strategy camera) */
 const HEIGHT_PER_TILE = 0.2;
 /** سرعة المشي بالمربعات في الثانية / Walking speed in tiles per second */
@@ -18,17 +23,28 @@ const RESIDENTS_PER_WALKER = 3;
 /** بعد ظهور الناس عن مركز الكاميرا بالمربعات / How far from the camera centre people show, in tiles */
 const VIEW_TILES = 26;
 
-/** مهنة ظاهرة: حركاتها ولون ملابسها / A visible trade: its animations and clothing colour */
+/** مظهر شخصية: ملف ملابسها، ومادة الملابس، وخامات ألوانها البديلة / A character look: its outfit file, outfit material and alternate colour textures */
+type Look = 'male_peasant' | 'female_peasant' | 'male_ranger' | 'female_ranger';
+const LOOKS: Record<Look, { outfit: string; colors: string[] }> = {
+  male_peasant: { outfit: 'M_Peasant', colors: ['T_Peasant_2_BaseColor'] },
+  female_peasant: { outfit: 'M_Peasant', colors: ['T_Peasant_2_BaseColor'] },
+  male_ranger: { outfit: 'M_Ranger', colors: ['T_Ranger_3_BaseColor'] },
+  female_ranger: { outfit: 'M_Ranger', colors: ['T_Ranger_3_BaseColor'] },
+};
+
+/** ألوان شعر طبيعية تُضرب في خامة الشعر الرمادية / Natural hair colours multiplied into the grey hair texture */
+const HAIR_COLORS = ['#2a1d14', '#3d2a1c', '#5a3b22', '#1a1512', '#6b3a20'];
+
+/** مهنة ظاهرة: حركاتها ومظاهر من يعمل بها / A visible trade: its animations and the looks of those who work it */
 type Role = 'farmer' | 'woodcutter' | 'smith' | 'miner' | 'trader' | 'herder' | 'walker';
-const ROLES: Record<Role, { anims: string[]; color: [number, number, number] }> = {
-  // ألوان ملابس مشبعة داكنة حتى لا تبدو الشخصيات باهتة كالأشباح / Saturated dark clothing so figures never look pale and ghostly
-  farmer: { anims: ['Farm_Harvest', 'Farm_PlantSeed', 'Farm_Watering'], color: [0.42, 0.3, 0.1] },
-  woodcutter: { anims: ['TreeChopping_Loop'], color: [0.4, 0.12, 0.06] },
-  smith: { anims: ['TreeChopping_Loop'], color: [0.1, 0.1, 0.12] },
-  miner: { anims: ['TreeChopping_Loop'], color: [0.26, 0.22, 0.18] },
-  trader: { anims: ['Idle_FoldArms_Loop'], color: [0.1, 0.2, 0.42] },
-  herder: { anims: ['Farm_Watering'], color: [0.18, 0.3, 0.12] },
-  walker: { anims: ['Walk_Carry_Loop'], color: [0.36, 0.24, 0.16] },
+const ROLES: Record<Role, { anims: string[]; looks: Look[] }> = {
+  farmer: { anims: ['Farm_Harvest', 'Farm_PlantSeed', 'Farm_Watering'], looks: ['male_peasant', 'female_peasant'] },
+  woodcutter: { anims: ['TreeChopping_Loop'], looks: ['male_peasant'] },
+  smith: { anims: ['TreeChopping_Loop'], looks: ['male_peasant'] },
+  miner: { anims: ['TreeChopping_Loop'], looks: ['male_peasant'] },
+  trader: { anims: ['Idle_FoldArms_Loop'], looks: ['male_ranger', 'female_ranger'] },
+  herder: { anims: ['Farm_Watering'], looks: ['male_ranger', 'female_peasant'] },
+  walker: { anims: ['Walk_Carry_Loop'], looks: ['male_peasant', 'female_peasant', 'male_ranger', 'female_ranger'] },
 };
 const WALK = 'Walk_Carry_Loop';
 
@@ -53,6 +69,7 @@ interface Job {
 }
 
 interface Actor {
+  look: Look;
   root: TransformNode;
   meshes: AbstractMesh[];
   groups: Map<string, AnimationGroup>;
@@ -68,10 +85,13 @@ interface Actor {
 }
 
 export class People {
-  private container: AssetContainer | null = null;
+  private motions: AssetContainer | null = null;
+  private readonly looks = new Map<Look, AssetContainer>();
+  /** مواد الملابس لكل مظهر: الأصلية ثم البديلة / Outfit materials per look: the original, then the alternates */
+  private readonly outfits = new Map<Look, Material[]>();
+  private readonly hair = new Map<string, Material>();
   private readonly actors: Actor[] = [];
   private links = new Map<string, string[]>();
-  private readonly materials = new Map<Role, PBRMaterial[]>();
 
   constructor(
     private readonly scene: Scene,
@@ -79,10 +99,24 @@ export class People {
     private readonly max: number,
     private readonly shadows: ShadowGenerator | null,
   ) {
-    void LoadAssetContainerAsync(MODEL, scene).then((c) => {
-      for (const m of c.materials) if (m instanceof PBRMaterial) { m.metallic = 0; m.roughness = 0.85; }
-      this.container = c;
-    }).catch((err) => console.warn('تعذّر تحميل الشخصيات', err));
+    const looks = Object.keys(LOOKS) as Look[];
+    void Promise.all([LoadAssetContainerAsync(ANIMATIONS, scene), ...looks.map((l) => LoadAssetContainerAsync(`${PEOPLE}${l}.glb`, scene))])
+      .then(([motions, ...containers]) => {
+        containers.forEach((c, i) => {
+          const look = looks[i];
+          this.looks.set(look, c);
+          const base = c.materials.find((m) => m.name === LOOKS[look].outfit) as PBRMaterial | undefined;
+          if (!base) return;
+          // خامات glTF لا تُقلب رأسيًا / glTF textures are not flipped vertically
+          this.outfits.set(look, [base, ...LOOKS[look].colors.map((t) => {
+            const m = base.clone(`${base.name}-${t}`);
+            m.albedoTexture = new Texture(`${PEOPLE}textures/${t}.jpg`, scene, false, false);
+            return m;
+          })]);
+        });
+        this.motions = motions;
+      })
+      .catch((err) => console.warn('تعذّر تحميل الشخصيات', err));
     scene.onBeforeRenderObservable.add(() => this.step(scene.getEngine().getDeltaTime() / 1000));
   }
 
@@ -91,7 +125,7 @@ export class People {
    * Match people to the state: workers at operating buildings near the camera, passers-by on connected roads by population
    */
   sync(state: GameState, defs: GameDefinitions, now: number, focus: { x: number; z: number }): void {
-    if (!this.container) return;
+    if (!this.motions) return;
     const byId = new Map(defs.buildings.map((b) => [b.id, b]));
     const near = (x: number, z: number) => Math.hypot(x - focus.x, z - focus.z) <= VIEW_TILES;
     const jobs: Job[] = [];
@@ -124,16 +158,29 @@ export class People {
     const taken = new Set(this.actors.filter((a) => a.job).map((a) => a.job!.id));
     for (const job of workers) {
       if (taken.has(job.id)) continue;
-      const actor = this.actors.find((a) => !a.job) ?? this.spawn();
+      const looks = ROLES[job.role].looks;
+      const look = looks[Math.floor(Math.random() * looks.length)];
+      const actor = this.actors.find((a) => !a.job && a.look === look) ?? this.spawn(look);
       if (!actor) break;
       this.assign(actor, job, corners);
     }
   }
 
-  /** شخصية جديدة من القالب، حتى الحد الأقصى / A new character from the template, up to the max */
-  private spawn(): Actor | null {
-    if (!this.container || this.actors.length >= this.max) return null;
-    const entries = this.container.instantiateModelsToScene((n) => n, false, { doNotInstantiate: true });
+  /**
+   * شخصية جديدة بالمظهر المطلوب؛ عند بلوغ الحد يُستبدل بها شخص متفرغ بمظهر آخر
+   * A new character with the wanted look; at the limit it replaces a free person of another look
+   */
+  private spawn(look: Look): Actor | null {
+    const container = this.looks.get(look);
+    if (!container || !this.motions) return null;
+    if (this.actors.length >= this.max) {
+      const idle = this.actors.findIndex((a) => !a.job);
+      if (idle < 0) return null;
+      const [old] = this.actors.splice(idle, 1);
+      for (const g of old.groups.values()) g.dispose();
+      old.root.dispose();
+    }
+    const entries = container.instantiateModelsToScene((n) => n, false, { doNotInstantiate: true });
     // عقدة أم للموضع والاتجاه، فيبقى تصحيح اتجاه glTF في عقدته كما هو / A parent for position and heading, so glTF's own orientation fix stays intact
     const root = new TransformNode('person', this.scene);
     const model = entries.rootNodes[0] as TransformNode;
@@ -144,12 +191,34 @@ export class People {
       m.isPickable = false;
       this.shadows?.addShadowCaster(m);
     }
-    const groups = new Map(entries.animationGroups.map((g) => [g.name.replace(/^Clone of /, ''), g]));
+    // ربط حركات المكتبة بعظام هذه الشخصية بالاسم (الهيكل واحد في كل الحزم) / Bind the library motions to this character's bones by name (one skeleton across the kits)
+    const bones = new Map(model.getDescendants(false).map((n) => [n.name, n]));
+    const groups = new Map(this.motions.animationGroups.map((g) => [g.name, g.clone(g.name, (target: Node) => bones.get(target.name) ?? target)]));
     for (const g of groups.values()) g.stop();
-    const actor: Actor = { root, meshes, groups, playing: '', job: null, spot: Vector3.Zero(), next: null, timer: 0, from: '', to: '', t: 0 };
+    // لون ملابس عشوائي من ألوان المظهر / A random outfit colour from the look's colours
+    const colors = this.outfits.get(look) ?? [];
+    const outfit = colors[Math.floor(Math.random() * colors.length)];
+    for (const m of meshes) if (outfit && m.material?.name === LOOKS[look].outfit) m.material = outfit;
+    // خامة الشعر رمادية تُلوَّن، ولون واحد للشعر والحاجبين / The hair texture is grey and tinted, one colour for hair and brows
+    const hair = Math.floor(Math.random() * HAIR_COLORS.length);
+    for (const m of meshes) if (m.material?.name.startsWith('M_Hair')) m.material = this.hairMaterial(m.material as PBRMaterial, hair);
+    const actor: Actor = { look, root, meshes, groups, playing: '', job: null, spot: Vector3.Zero(), next: null, timer: 0, from: '', to: '', t: 0 };
     root.setEnabled(false);
     this.actors.push(actor);
     return actor;
+  }
+
+  /** مادة شعر بلون معيّن، تُنشأ مرة لكل مادة ولون / A hair material in one colour, created once per material and colour */
+  private hairMaterial(base: PBRMaterial, color: number): Material {
+    const key = `${base.uniqueId}:${color}`;
+    let m = this.hair.get(key);
+    if (!m) {
+      const tinted = base.clone(`${base.name}-${color}`);
+      tinted.albedoColor = Color3.FromHexString(HAIR_COLORS[color]);
+      this.hair.set(key, tinted);
+      m = tinted;
+    }
+    return m;
   }
 
   private release(actor: Actor): void {
@@ -160,12 +229,6 @@ export class People {
 
   private assign(actor: Actor, job: Job, corners: string[]): void {
     actor.job = job;
-    for (const m of actor.meshes) {
-      // لون الملابس حسب المهنة (المادة الرئيسية فقط) / Clothing colour by trade (main material only)
-      if (m.material?.name.startsWith('M_Main')) m.material = this.roleMaterial(job.role, m.material as PBRMaterial);
-      // المفاصل بلون بشرة داكن بدل البنفسجي / Joints in a dark skin tone instead of purple
-      else if (m.material?.name.startsWith('M_Joints')) (m.material as PBRMaterial).albedoColor.set(0.32, 0.2, 0.13);
-    }
     if (job.role === 'walker') {
       actor.from = corners[Math.floor(Math.random() * corners.length)];
       actor.to = this.pickCorner(actor.from, null);
@@ -178,22 +241,6 @@ export class People {
     }
     actor.root.setEnabled(true);
     this.play(actor, job.role === 'walker' ? WALK : this.workAnim(job));
-  }
-
-  /** مادة ملابس المهنة، تُنشأ مرة لكل مهنة / The trade's clothing material, created once per trade */
-  private roleMaterial(role: Role, base: PBRMaterial): PBRMaterial {
-    let list = this.materials.get(role);
-    if (!list) {
-      list = [0, 1, 2].map((i) => {
-        const m = base.clone(`M_Main-${role}-${i}`) as PBRMaterial;
-        const [r, g, b] = ROLES[role].color;
-        const shade = 0.85 + i * 0.12;
-        m.albedoColor.set(r * shade, g * shade, b * shade);
-        return m;
-      });
-      this.materials.set(role, list);
-    }
-    return list[Math.floor(Math.random() * list.length)];
   }
 
   private workAnim(job: Job): string {
