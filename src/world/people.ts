@@ -21,13 +21,14 @@ const VIEW_TILES = 26;
 /** مهنة ظاهرة: حركاتها ولون ملابسها / A visible trade: its animations and clothing colour */
 type Role = 'farmer' | 'woodcutter' | 'smith' | 'miner' | 'trader' | 'herder' | 'walker';
 const ROLES: Record<Role, { anims: string[]; color: [number, number, number] }> = {
-  farmer: { anims: ['Farm_Harvest', 'Farm_PlantSeed', 'Farm_Watering'], color: [0.7, 0.56, 0.3] },
-  woodcutter: { anims: ['TreeChopping_Loop'], color: [0.55, 0.26, 0.16] },
-  smith: { anims: ['TreeChopping_Loop'], color: [0.22, 0.22, 0.25] },
-  miner: { anims: ['TreeChopping_Loop'], color: [0.45, 0.42, 0.38] },
-  trader: { anims: ['Idle_FoldArms_Loop'], color: [0.24, 0.36, 0.62] },
-  herder: { anims: ['Farm_Watering'], color: [0.38, 0.5, 0.3] },
-  walker: { anims: ['Walk_Carry_Loop'], color: [0.6, 0.5, 0.42] },
+  // ألوان ملابس مشبعة داكنة حتى لا تبدو الشخصيات باهتة كالأشباح / Saturated dark clothing so figures never look pale and ghostly
+  farmer: { anims: ['Farm_Harvest', 'Farm_PlantSeed', 'Farm_Watering'], color: [0.42, 0.3, 0.1] },
+  woodcutter: { anims: ['TreeChopping_Loop'], color: [0.4, 0.12, 0.06] },
+  smith: { anims: ['TreeChopping_Loop'], color: [0.1, 0.1, 0.12] },
+  miner: { anims: ['TreeChopping_Loop'], color: [0.26, 0.22, 0.18] },
+  trader: { anims: ['Idle_FoldArms_Loop'], color: [0.1, 0.2, 0.42] },
+  herder: { anims: ['Farm_Watering'], color: [0.18, 0.3, 0.12] },
+  walker: { anims: ['Walk_Carry_Loop'], color: [0.36, 0.24, 0.16] },
 };
 const WALK = 'Walk_Carry_Loop';
 
@@ -162,6 +163,8 @@ export class People {
     for (const m of actor.meshes) {
       // لون الملابس حسب المهنة (المادة الرئيسية فقط) / Clothing colour by trade (main material only)
       if (m.material?.name.startsWith('M_Main')) m.material = this.roleMaterial(job.role, m.material as PBRMaterial);
+      // المفاصل بلون بشرة داكن بدل البنفسجي / Joints in a dark skin tone instead of purple
+      else if (m.material?.name.startsWith('M_Joints')) (m.material as PBRMaterial).albedoColor.set(0.32, 0.2, 0.13);
     }
     if (job.role === 'walker') {
       actor.from = corners[Math.floor(Math.random() * corners.length)];
