@@ -13,7 +13,15 @@ export interface KitPiece {
   yaw?: number;
   /** إن وُجد: يُضبط النموذج على هذا البعد الأفقي بالمتر بدل مقاسه الأصلي (لنماذج من حزم أخرى) / If set: fit to this horizontal extent in metres instead of native size */
   fit?: number;
+  /** لون القرميد إن لم يكن الأحمر الأصلي / The roof-tile colour when not the original red */
+  roof?: RoofColor;
 }
+
+/** ألوان القرميد البديلة (خاماتها تولدها أداة الاستيراد) / Alternate roof-tile colours (their textures come from the import tool) */
+export type RoofColor = 'Green' | 'Slate' | 'Brown' | 'Wine';
+/** اسم مادة القرميد في قطع الحزمة / The roof-tile material name in the kit pieces */
+export const ROOF_MATERIAL = 'MI_RoundTiles';
+export const roofTexture = (color: RoofColor) => `village/textures/T_RoundTiles_${color}.jpg`;
 
 /** مبنى مجمّع: قطعه، وأكبر بعد أفقي له بالمتر، وحجمه كنسبة من ضلع المربع / An assembly: its pieces, extent in metres, and size as a tile fraction */
 export interface Assembly {
@@ -43,6 +51,12 @@ interface HouseSpec {
   w: 4 | 6;
   d: 4 | 6 | 8;
   finish: Finish;
+  /** لون السقف (الأحمر الأصلي إن غاب) / Roof colour (the original red when absent) */
+  roof?: RoofColor;
+  /** عدد الطوابق؛ الطابق الثاني بشرفة أمامية / Storeys; the second has a front balcony */
+  floors?: 1 | 2;
+  /** فناء: زهور عند المدخل ونبتة متسلقة على الجدار / A yard: flowers by the door and a climbing vine on the wall */
+  yard?: boolean;
   /** إضافات حول البيت أو عليه / Extras around or on the house */
   extras?: KitPiece[];
   size: number;
@@ -52,22 +66,59 @@ interface HouseSpec {
  * بيت مستطيل: جدران على الأضلاع الأربعة (الباب في منتصف الواجهة الأمامية +z)، وزوايا، وسقف بنفس المقاس
  * A rectangular house: walls on all four sides (the door mid-front, +z), corners, and a matching roof
  */
-export function house({ w, d, finish, extras = [], size }: HouseSpec): Assembly {
+export function house({ w, d, finish, roof, floors = 1, yard = false, extras = [], size }: HouseSpec): Assembly {
   const kit = WALLS[finish];
   const pieces: KitPiece[] = [];
-  const side = (count: number, place: (i: number, offset: number) => KitPiece) => {
-    for (let i = 0; i < count; i++) pieces.push(place(i, -count + 1 + i * 2));
-  };
   const front = w / 2;
-  side(w / 2, (i, o) => ({ path: i === Math.floor(w / 4) ? kit.door : kit.window, x: o, z: d / 2 }));
-  side(w / 2, (_, o) => ({ path: kit.plain, x: o, z: -d / 2, yaw: Math.PI }));
-  side(d / 2, (i, o) => ({ path: i % 2 ? kit.window : kit.plain, x: front, z: o, yaw: Math.PI / 2 }));
-  side(d / 2, (_, o) => ({ path: kit.plain, x: -front, z: o, yaw: -Math.PI / 2 }));
-  for (const [cx, cz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) pieces.push({ path: kit.corner, x: (cx * w) / 2, z: (cz * d) / 2 });
-  pieces.push({ path: V(`Roof_RoundTiles_${w}x${d}`), x: 0, z: 0, y: WALL_HEIGHT });
+  for (let f = 0; f < floors; f++) {
+    const y = f * WALL_HEIGHT;
+    const side = (count: number, place: (i: number, offset: number) => KitPiece) => {
+      for (let i = 0; i < count; i++) {
+        const wall = { ...place(i, -count + 1 + i * 2), y };
+        pieces.push(wall, ...fittings(wall, kit, finish));
+      }
+    };
+    // الباب في الطابق الأرضي، والنوافذ في الطابق الثاني / The door on the ground floor, windows upstairs
+    side(w / 2, (i, o) => ({ path: !f && i === Math.floor(w / 4) ? kit.door : kit.window, x: o, z: d / 2 }));
+    side(w / 2, (_, o) => ({ path: f ? kit.window : kit.plain, x: o, z: -d / 2, yaw: Math.PI }));
+    side(d / 2, (i, o) => ({ path: i % 2 ? kit.window : kit.plain, x: front, z: o, yaw: Math.PI / 2 }));
+    side(d / 2, (i, o) => ({ path: f && i % 2 ? kit.window : kit.plain, x: -front, z: o, yaw: -Math.PI / 2 }));
+    for (const [cx, cz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) pieces.push({ path: kit.corner, x: (cx * w) / 2, z: (cz * d) / 2, y });
+  }
+  const top = floors * WALL_HEIGHT;
+  if (floors === 2) {
+    // شرفة أمام نافذة الطابق الثاني بدعامتين تحتها / A balcony at the upstairs front window on two braces
+    const bx = Math.floor(w / 4) * 2 - w / 2 + 1;
+    pieces.push({ path: V('Balcony_Simple_Straight'), x: bx, z: d / 2, y: WALL_HEIGHT });
+    for (const dx of [-0.85, 0.85]) pieces.push({ path: V('Prop_Support'), x: bx + dx, z: d / 2, y: WALL_HEIGHT - 2.92 + 0.02 });
+  }
+  pieces.push({ path: V(`Roof_RoundTiles_${w}x${d}`), x: 0, z: 0, y: top, roof });
   // جملون أمامي وخلفي يسد مثلث السقف / Front and back gables close the roof triangle
-  pieces.push({ path: V(`Roof_Front_Brick${w}`), x: 0, z: d / 2, y: WALL_HEIGHT }, { path: V(`Roof_Front_Brick${w}`), x: 0, z: -d / 2, y: WALL_HEIGHT, yaw: Math.PI });
+  pieces.push({ path: V(`Roof_Front_Brick${w}`), x: 0, z: d / 2, y: top }, { path: V(`Roof_Front_Brick${w}`), x: 0, z: -d / 2, y: top, yaw: Math.PI });
+  if (yard) {
+    pieces.push(
+      { path: F('Flower_3_Group'), x: -front + 0.6, z: d / 2 + 1.2, fit: 1.1 }, { path: F('Flower_4_Group'), x: front - 0.6, z: d / 2 + 1.2, fit: 1 },
+      { path: F('Bush_Common_Flowers'), x: front + 1.1, z: d / 2 - 0.6, fit: 1.3 },
+      // نبتة متسلقة تتدلى من أعلى الجدار الجانبي / A vine hanging from the top of the side wall
+      { path: V('Prop_Vine1'), x: -front - 0.1, z: d / 2 - 1, y: WALL_HEIGHT - 0.3, yaw: -Math.PI / 2 },
+    );
+  }
   return { pieces: [...pieces, ...extras], extent: Math.max(w, d) + ROOF_OVERHANG, size };
+}
+
+/**
+ * تجهيزات فتحة الجدار: إطار نافذة بزجاج (ومصاريع مفتوحة في الواجهة)، أو إطار باب وبابه
+ * Fittings for a wall opening: a glazed window frame (with open shutters on the front), or a door frame and its door
+ */
+function fittings(wall: KitPiece, kit: (typeof WALLS)[Finish], finish: Finish): KitPiece[] {
+  const at = { x: wall.x, z: wall.z, y: wall.y, yaw: wall.yaw };
+  // نافذة الجدار الخشبي شبكة بلا فتحة / The timber wall's window is a grid with no opening
+  if (wall.path === kit.window && finish !== 'timber') {
+    return [{ path: V('Window_Wide_Round1'), ...at }, ...(wall.yaw ? [] : [{ path: V('WindowShutters_Wide_Round_Open'), ...at }])];
+  }
+  // الباب في الواجهة الأمامية فقط، ومفصله على يساره / The door is front-only, hinged on its left
+  if (wall.path === kit.door) return [{ path: V('DoorFrame_Round_WoodDark'), ...at }, { path: V('Door_1_Round'), ...at, x: wall.x - 0.55 }];
+  return [];
 }
 
 /** سور خشبي على ضلع بطول n قطع (كل قطعة 2 م) / A wooden fence along a side of n pieces (2 m each) */
@@ -102,17 +153,19 @@ function shelter(x: number, z: number): KitPiece[] {
 
 /** أشكال العصر البدائي لكل نمط / Primitive-era looks per style */
 export const PRIMITIVE_LOOKS: Record<string, Assembly[]> = {
+  // بيوت متنوعة الأسقف بأفنية مزهرة / Houses with varied roofs and flowered yards
   house: [
-    house({ w: 4, d: 4, finish: 'timber', size: 0.6 }),
-    house({ w: 4, d: 6, finish: 'timber', size: 0.66, extras: [{ path: V('Prop_Crate'), x: 3, z: 3.4 }] }),
+    house({ w: 4, d: 4, finish: 'timber', size: 0.6, yard: true }),
+    house({ w: 4, d: 6, finish: 'timber', roof: 'Brown', size: 0.66, extras: [{ path: V('Prop_Crate'), x: 3, z: 3.4 }] }),
+    house({ w: 4, d: 4, finish: 'timber', roof: 'Green', size: 0.6, yard: true }),
   ],
-  civic: [house({ w: 6, d: 6, finish: 'timber', size: 0.74, extras: [{ path: V('Prop_Chimney'), x: 2, z: -1.5, y: 3.6 }] })],
+  civic: [house({ w: 6, d: 6, finish: 'timber', roof: 'Green', size: 0.74, yard: true, extras: [{ path: V('Prop_Chimney'), x: 2, z: -1.5, y: 3.6 }] })],
   industry: [{ pieces: [...shelter(-2.6, -1), ...shelter(2.6, -1), { path: V('Prop_Crate'), x: 3.6, z: 3.2 }, { path: V('Prop_Wagon'), x: -1, z: 3.6, yaw: Math.PI / 2 }], extent: 11, size: 0.8 }],
   sawmill: [{
     pieces: [...shelter(-1, -1.2), { path: V('Prop_Wagon'), x: 3.4, z: 1.2, yaw: -0.4 }, { path: V('Prop_Crate'), x: -2.8, z: 2.8 }, { path: V('Prop_Crate'), x: -1.6, z: 3.2 }, { path: F('DeadTree_1'), x: 3, z: -3, fit: 3 }],
     extent: 9, size: 0.78,
   }],
-  smithy: [house({ w: 4, d: 4, finish: 'brick', size: 0.6, extras: [{ path: V('Prop_Chimney2'), x: 1.2, z: -1.2, y: 2.8 }, { path: V('Prop_Crate'), x: 3, z: 2.6 }] })],
+  smithy: [house({ w: 4, d: 4, finish: 'brick', roof: 'Slate', size: 0.6, extras: [{ path: V('Prop_Chimney2'), x: 1.2, z: -1.2, y: 2.8 }, { path: V('Prop_Crate'), x: 3, z: 2.6 }] })],
   barn: [house({ w: 4, d: 6, finish: 'timber', size: 0.66, extras: fenceRing(6) })],
   // حقل محروث بصفوف قمح وسور خشبي؛ التربة نفسها ترسمها خامة الأرض / A tilled field with wheat rows and a wooden fence; the soil itself is ground texture
   field: [{
@@ -138,16 +191,19 @@ const chimney = (x: number, z: number, tall = false): KitPiece => ({ path: V(tal
  * A distinct look for each kind of housing, store and public building, so a building is known by its shape
  */
 const DISTINCT_LOOKS: Record<string, Assembly[]> = {
-  'house-farmer': [house({ w: 4, d: 4, finish: 'timber', size: 0.62, extras: [wagon(3.4, 1.5, 0.4), { path: F('Plant_1'), x: -3, z: 3, fit: 1.4 }, { path: F('Plant_1'), x: -1.8, z: 3.4, fit: 1.2 }] })],
-  'house-carpenter': [house({ w: 4, d: 6, finish: 'timber', size: 0.66, extras: [{ path: F('DeadTree_1'), x: 3.4, z: -2, fit: 2.6 }, crate(3.2, 2.6), crate(2.2, 3.4)] })],
-  'house-smith': [house({ w: 4, d: 4, finish: 'brick', size: 0.6, extras: [chimney(1.2, -1.2, true), crate(3, 2.6)] })],
+  'house-farmer': [house({ w: 4, d: 4, finish: 'timber', roof: 'Brown', yard: true, size: 0.62, extras: [wagon(3.4, 1.5, 0.4), { path: F('Plant_1'), x: -3, z: 3, fit: 1.4 }, { path: F('Plant_1'), x: -1.8, z: 3.4, fit: 1.2 }] })],
+  'house-carpenter': [house({ w: 4, d: 6, finish: 'timber', roof: 'Green', size: 0.66, extras: [{ path: F('DeadTree_1'), x: 3.4, z: -2, fit: 2.6 }, crate(3.2, 2.6), crate(2.2, 3.4)] })],
+  'house-smith': [house({ w: 4, d: 4, finish: 'brick', roof: 'Slate', size: 0.6, extras: [chimney(1.2, -1.2, true), crate(3, 2.6)] })],
   'house-miner': [house({ w: 4, d: 4, finish: 'plaster', size: 0.6, extras: [{ path: F('Rock_Medium_2'), x: 3.2, z: 2.6, fit: 1.8 }, wagon(-3.4, 1, -0.3)] })],
-  'house-trader': [house({ w: 4, d: 6, finish: 'plaster', size: 0.66, extras: [crate(3.2, 3), crate(3.2, 1.9), crate(2.1, 3.4)] })],
-  'house-herder': [house({ w: 4, d: 4, finish: 'timber', size: 0.7, extras: fenceRing(4) })],
-  'storage-farm': [house({ w: 6, d: 8, finish: 'timber', size: 0.86, extras: [wagon(4.6, 2, 0.2), crate(-4.4, 3.6), crate(-4.4, 2.4)] })],
-  'storage-materials': [house({ w: 6, d: 8, finish: 'brick', size: 0.86, extras: [{ path: F('Rock_Medium_1'), x: 4.6, z: 3, fit: 2 }, crate(-4.4, 3.6), { path: F('DeadTree_1'), x: -4.6, z: -2.8, fit: 2.6 }] })],
-  bank: [house({ w: 6, d: 6, finish: 'brick', size: 0.78, extras: [chimney(2, -1.6), { path: V('Corner_Exterior_Brick'), x: -1.4, z: 3.8 }, { path: V('Corner_Exterior_Brick'), x: 1.4, z: 3.8 }] })],
-  development: [house({ w: 6, d: 6, finish: 'plaster', size: 0.78, extras: [chimney(2, -1.6), chimney(-2, -1.6), crate(3.8, 3.6), crate(-3.8, 3.6)] })],
+  'house-trader': [house({ w: 4, d: 6, finish: 'plaster', roof: 'Wine', yard: true, size: 0.66, extras: [crate(3.2, 3), crate(3.2, 1.9), crate(2.1, 3.4)] })],
+  'house-herder': [house({ w: 4, d: 4, finish: 'timber', roof: 'Brown', size: 0.7, extras: fenceRing(4) })],
+  'storage-farm': [house({ w: 6, d: 8, finish: 'timber', roof: 'Brown', size: 0.86, extras: [wagon(4.6, 2, 0.2), crate(-4.4, 3.6), crate(-4.4, 2.4)] })],
+  'storage-materials': [house({ w: 6, d: 8, finish: 'brick', roof: 'Slate', size: 0.86, extras: [{ path: F('Rock_Medium_1'), x: 4.6, z: 3, fit: 2 }, crate(-4.4, 3.6), { path: F('DeadTree_1'), x: -4.6, z: -2.8, fit: 2.6 }] })],
+  bank: [house({
+    w: 6, d: 6, finish: 'brick', roof: 'Wine', floors: 2, size: 0.8,
+    extras: [{ ...chimney(2, -1.6), y: 6.6 }, { path: V('Prop_MetalFence_Ornament'), x: -2.6, z: 4.6 }, { path: V('Prop_MetalFence_Ornament'), x: 2.6, z: 4.6 }],
+  })],
+  development: [house({ w: 6, d: 6, finish: 'plaster', roof: 'Slate', floors: 2, yard: true, size: 0.8, extras: [{ ...chimney(2, -1.6), y: 6.6 }, crate(3.8, 3.6), crate(-3.8, 3.6)] })],
   pond: [{
     pieces: [
       { path: WATER_SURFACE, x: 0, z: 0, fit: 7.2 },
@@ -169,8 +225,14 @@ Object.assign(PRIMITIVE_LOOKS, DISTINCT_LOOKS);
 
 /** أشكال العصر الانتقالي: بيوت جصية وحجرية أكبر / Transitional-era looks: larger plaster and brick houses */
 export const TRANSITIONAL_LOOKS: Record<string, Assembly[]> = {
-  house: [house({ w: 4, d: 6, finish: 'plaster', size: 0.66, extras: [{ path: V('Prop_Chimney'), x: 1.2, z: -1.5, y: 3.6 }] }), house({ w: 6, d: 6, finish: 'plaster', size: 0.72 })],
-  civic: [house({ w: 6, d: 8, finish: 'brick', size: 0.8 })],
+  // بيوت البلدة بطابقين وألوان أسقف متنوعة / Town houses with two storeys and varied roof colours
+  house: [
+    house({ w: 4, d: 6, finish: 'plaster', yard: true, size: 0.66, extras: [{ path: V('Prop_Chimney'), x: 1.2, z: -1.5, y: 3.6 }] }),
+    house({ w: 6, d: 6, finish: 'timber', roof: 'Green', floors: 2, yard: true, size: 0.74 }),
+    house({ w: 4, d: 6, finish: 'plaster', roof: 'Wine', floors: 2, size: 0.68 }),
+    house({ w: 6, d: 6, finish: 'plaster', roof: 'Brown', floors: 2, yard: true, size: 0.74 }),
+  ],
+  civic: [house({ w: 6, d: 8, finish: 'brick', roof: 'Green', floors: 2, yard: true, size: 0.82 })],
   smithy: PRIMITIVE_LOOKS.smithy,
   sawmill: PRIMITIVE_LOOKS.sawmill,
   barn: PRIMITIVE_LOOKS.barn,
@@ -184,14 +246,14 @@ export const TRANSITIONAL_LOOKS: Record<string, Assembly[]> = {
  * The government building by stage: a timber hall, then a large stone hall (the city uses its modern model)
  */
 export function governmentAssembly(level: number): Assembly | null {
-  if (level <= 1) return house({ w: 6, d: 6, finish: 'timber', size: 0.7, extras: [{ path: V('Prop_Chimney'), x: 2, z: -1.6, y: 3.6 }, ...fenceRing(6).map((p) => ({ ...p, x: p.x * 1.25, z: p.z * 1.25 }))] });
+  if (level <= 1) return house({ w: 6, d: 6, finish: 'timber', roof: 'Green', yard: true, size: 0.7, extras: [{ path: V('Prop_Chimney'), x: 2, z: -1.6, y: 3.6 }, ...fenceRing(6).map((p) => ({ ...p, x: p.x * 1.25, z: p.z * 1.25 }))] });
   // البلدة: قاعة حجرية بسور وبوابة وحديقة / Town: a stone hall with a wall, a gate and a garden
   if (level === 2) {
     // السور والحديقة حول القاعة يوسّعان امتداد المبنى / The wall and garden around the hall widen its extent
     const hall = house({
-      w: 6, d: 8, finish: 'brick', size: 0.86,
+      w: 6, d: 8, finish: 'brick', roof: 'Green', floors: 2, yard: true, size: 0.86,
       extras: [
-        { path: V('Prop_Chimney2'), x: 2, z: -2.5, y: 3.6 },
+        { path: V('Prop_Chimney2'), x: 2, z: -2.5, y: 6.6 },
         ...fenceRing(8).map((p) => ({ ...p, x: p.x * 1.1, z: p.z * 1.1 })),
         { path: V('Wall_Arch'), x: 0, z: 8.8 },
         { path: F('CommonTree_1'), x: -6.5, z: 6, fit: 2.8 }, { path: F('CommonTree_2'), x: 6.5, z: 6, fit: 2.6 },

@@ -27,6 +27,7 @@ const VILLAGE = [
   'WindowShutters_Wide_Round_Open', 'Floor_WoodDark', 'Floor_Brick',
   'Roof_RoundTiles_4x4', 'Roof_RoundTiles_4x6', 'Roof_RoundTiles_6x6', 'Roof_RoundTiles_6x8', 'Roof_Front_Brick4', 'Roof_Front_Brick6',
   'Prop_Chimney', 'Prop_Chimney2', 'Prop_Wagon', 'Prop_Crate', 'Prop_WoodenFence_Single', 'Prop_WoodenFence_Extension1',
+  'Prop_Vine1', 'Balcony_Simple_Straight', 'Prop_MetalFence_Ornament', 'Prop_Support',
 ];
 /** الطبيعة المستخدمة / Nature in use */
 const NATURE = [
@@ -38,6 +39,12 @@ const NATURE = [
 const PEOPLE_ANIMS = ['Farm_Harvest', 'Farm_PlantSeed', 'Farm_Watering', 'TreeChopping_Loop', 'Walk_Carry_Loop', 'Idle_FoldArms_Loop'];
 /** حيوانات الحظائر من حزمة Quaternius للحيوانات / Barn animals from Quaternius's farm animal pack */
 const ANIMALS = ['Cow', 'Sheep', 'Pig', 'Horse'];
+
+/**
+ * ألوان القرميد البديلة: خامة القرميد الأصلية تُحوّل لرمادي ثم تُلوَّن، فتبقى تفاصيلها ويتميز كل نوع مبنى بلون سقفه
+ * Alternate roof-tile colours: the original tile texture greyscaled then tinted, keeping its detail so each building kind has its own roof colour
+ */
+const ROOF_COLORS = { Green: '#2f6b2e', Slate: '#4a5d70', Brown: '#6b3f24', Wine: '#7d1f22' };
 
 /** خامات الأرض من Poly Haven / Ground textures from Poly Haven */
 const GROUND = { grass: 'leafy_grass', dirt: 'dirt', soil: 'farm_furrows' };
@@ -346,7 +353,14 @@ async function importGround() {
   console.log('ground:', Object.keys(GROUND).join(', '));
 }
 
-if (args.village) await importPieces(args.village, VILLAGE, 'village', join(dirname(args.village), 'Textures', 'Normals Godot-Unity'));
+if (args.village) {
+  await importPieces(args.village, VILLAGE, 'village', join(dirname(args.village), 'Textures', 'Normals Godot-Unity'));
+  for (const [name, tint] of Object.entries(ROOF_COLORS)) {
+    const grey = await sharp(join(dirname(args.village), 'Textures', 'T_RoundTiles_BaseColor.png')).resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).greyscale().linear(0.78, 0).toBuffer();
+    await sharp(grey).tint(tint).jpeg({ quality: 82, mozjpeg: true }).toFile(join(OUT, 'models', 'village', 'textures', `T_RoundTiles_${name}.jpg`));
+  }
+  console.log('roofs:', Object.keys(ROOF_COLORS).join(', '));
+}
 if (args.nature) await importPieces(args.nature, NATURE, 'forest');
 if (args.people) await importAnimations(args.people, PEOPLE_ANIMS, join(OUT, 'models', 'people', 'animations.glb'));
 if (args.characters) await importCharacters(args.characters, args.outfits);

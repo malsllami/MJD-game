@@ -3,9 +3,9 @@
 //
 // الطرق تُرسم في road-network وليس هنا. / Roads are drawn by road-network, not here.
 
-import { Color3, MeshBuilder, Scene, StandardMaterial, TransformNode, type AbstractMesh, type Material, type ShadowGenerator } from '@babylonjs/core';
+import { Color3, MeshBuilder, Scene, StandardMaterial, Texture, TransformNode, type AbstractMesh, type Material, type PBRMaterial, type ShadowGenerator } from '@babylonjs/core';
 import { looksFor, styleOf, type Era, type Look } from '../assets/catalog';
-import { WATER_SURFACE } from '../assets/village-kit';
+import { ROOF_MATERIAL, WATER_SURFACE, roofTexture, type RoofColor } from '../assets/village-kit';
 import type { ModelLibrary } from '../assets/model-library';
 import { isRoad, isUnderConstruction } from '../core/economy';
 import type { BuildingDef, GameState, PlacedBuilding, World } from '../core/types';
@@ -45,6 +45,7 @@ export async function spawnParts(library: ModelLibrary, scene: Scene, parent: Tr
         const { root, meshes } = await library.spawn(p.path, { footprint: p.fit, yaw: p.yaw });
         root.parent = kit;
         root.position.set(p.x, p.y ?? 0, p.z);
+        if (p.roof) for (const m of meshes) if (m.material?.name === ROOF_MATERIAL) m.material = roofMaterial(scene, m.material as PBRMaterial, p.roof);
         all.push(...meshes);
       } catch (err) {
         console.warn('تعذّر تحميل القطعة', p.path, err);
@@ -69,6 +70,17 @@ export async function spawnParts(library: ModelLibrary, scene: Scene, parent: Tr
     }
   }));
   return all;
+}
+
+/** مادة قرميد بلون بديل، مشتركة بين كل الأسقف بنفس اللون / A roof-tile material in an alternate colour, shared by every roof of that colour */
+function roofMaterial(scene: Scene, base: PBRMaterial, color: RoofColor): Material {
+  const name = `${ROOF_MATERIAL}-${color}`;
+  const existing = scene.getMaterialByName(name);
+  if (existing) return existing;
+  const m = base.clone(name);
+  // خامات glTF لا تُقلب رأسيًا / glTF textures are not flipped vertically
+  m.albedoTexture = new Texture(`${import.meta.env.BASE_URL}models/${roofTexture(color)}`, scene, false, false);
+  return m;
 }
 
 /** مادة ماء مشتركة للبحيرات والجداول / A shared water material for lakes and streams */
