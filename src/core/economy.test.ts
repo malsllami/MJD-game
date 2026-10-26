@@ -123,10 +123,10 @@ describe('الزمن / time', () => {
   });
 
   it('صافي الإنتاج = الإنتاج ناقص الاستهلاك / net rate is production minus consumption', () => {
-    const state = built(built(s, 'water_desal'), 'houses');
-    expect(netRates(state, defs, T0).water).toBe(building('water_desal').production.water - building('houses').consumption.water);
+    const state = built(built(s, 'well'), 'houses');
+    expect(netRates(state, defs, T0).water).toBe(building('well').production.water - building('houses').consumption.water);
     const { production, consumption } = rateBreakdown(state, defs, T0);
-    expect(production.water).toBe(building('water_desal').production.water);
+    expect(production.water).toBe(building('well').production.water);
     expect(consumption.water).toBe(building('houses').consumption.water);
   });
 
@@ -250,13 +250,20 @@ describe('المكامن / deposits', () => {
     return Infinity;
   };
 
-  it('العالم يوزع كل أنواع المكامن، ولكل مورد معدني سلسلة جبلية / the world spreads every deposit type, each ore on a range', () => {
+  it('العالم يوزع كل أنواع المكامن على اليابسة / the world spreads every deposit type on land', () => {
     const types = new Set(world.deposits.map((d) => d.typeId));
     for (const t of defs.deposits) expect(types.has(t.id)).toBe(true);
-    const mountain = new Set(['mountain', 'peak', 'plateau']);
-    for (const d of world.deposits.filter((x) => defs.deposits.find((t) => t.id === x.typeId)!.place === 'mountain')) {
-      expect(d.tiles.some((k) => mountain.has(tileOf(k).terrainId))).toBe(true);
-    }
+    const water = new Set(defs.terrain.filter((t) => t.isWater).map((t) => t.id));
+    for (const d of world.deposits) expect(d.tiles.every((k) => !water.has(tileOf(k).terrainId))).toBe(true);
+  });
+
+  it('منشأة المكمن تُبنى على مكمنها أيًّا كانت أرضه / a deposit facility is built on its deposit whatever the land', () => {
+    const ore = world.deposits.find((d) => d.resourceId === 'gold')!;
+    const prospector = defs.buildings.find((b) => b.requiresDeposit === 'gold')!;
+    const t = tileOf(ore.tiles[0]);
+    expect(prospector.allowedTerrain).not.toContain(t.terrainId);
+    const state = rich({ ...s, settlement: { x: t.x + 1, z: t.z }, territory: [tileKey(t.x, t.z), tileKey(t.x + 1, t.z)], discovered: [ore.id] });
+    expect(checkPlacement(defs, world, state, prospector, t, T0)).toEqual({ ok: true });
   });
 
   it('تُكتشف المكامن القريبة من الحدود فقط / only deposits near the borders are discovered', () => {

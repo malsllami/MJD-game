@@ -55,6 +55,8 @@ const WORLD_SETTINGS = [
   { key: 'مورد المسح', field: 'surveyResource', type: 'string', description: 'معرف المورد الذي يُدفع لمسح الموارد' },
   { key: 'تكلفة مسح الموارد', field: 'surveyCost', type: 'number', description: 'كمية مورد المسح لكل عملية' },
   { key: 'اسم مبنى الحكم', field: 'governmentName', type: 'string', description: 'اسم أول مبنى في القرية' },
+  // إضافة العالم المستوي (addFlatWorld) / Flat world addition
+  { key: 'نوع العالم', field: 'worldMode', type: 'string', description: 'flat أرض مستوية متصلة بحدود من الغابات، أو continent قارة بجبال وبحيرات وسواحل' },
 ];
 
 /**

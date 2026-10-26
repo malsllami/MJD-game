@@ -48,6 +48,7 @@ const CAPITAL_SCALE = {
   surveyResource: 'gold',
   surveyCost: 200,
   governmentName: 'مبنى الحكم',
+  worldMode: 'flat',
 };
 
 /**
@@ -68,9 +69,10 @@ const SEED_BUILDINGS = [
   ['barracks', 'ثكنة', 'military', 'plain, desert, plateau', 90, '', 'city', 0, 'civic', true, ''],
   ['school', 'مدرسة', 'science', 'plain, coast, plateau', 60, '', 'town', 0, 'civic', true, ''],
   ['research_center', 'مركز أبحاث', 'science', 'plain, coast', 240, 'science_1', 'city', 0, 'civic', true, ''],
-  ['water_desal', 'محطة تحلية', 'utilities', 'coast', 60, '', 'village', 0, 'utility', false, ''],
-  ['power_plant', 'محطة كهرباء', 'utilities', 'plain, desert, coast, plateau', 90, '', 'village', 0, 'utility', false, ''],
-  ['apartments', 'مبانٍ سكنية', 'housing', 'plain, coast, plateau', 60, '', 'village', 40, 'tower', true, ''],
+  // العصر البدائي (applyPrimitiveEra): التحلية والكهرباء والمباني السكنية تُفتح في البلدة / Primitive era: these open in the town
+  ['water_desal', 'محطة تحلية', 'utilities', 'coast', 60, '', 'town', 0, 'utility', false, ''],
+  ['power_plant', 'محطة كهرباء', 'utilities', 'plain, desert, coast, plateau', 90, '', 'town', 0, 'utility', false, ''],
+  ['apartments', 'مبانٍ سكنية', 'housing', 'plain, coast, plateau', 60, '', 'town', 40, 'tower', true, ''],
   ['livestock', 'حظيرة مواشي', 'agriculture', 'plain, plateau', 40, '', 'village', 0, 'barn', false, ''],
   ['market', 'سوق', 'economy', 'plain, coast', 50, '', 'village', 0, 'civic', true, ''],
   ['civil_defense', 'دفاع مدني', 'security', 'plain, coast, desert, plateau', 70, '', 'town', 0, 'civic', true, ''],
@@ -94,7 +96,25 @@ const SEED_BUILDINGS = [
   // إضافة العالم والمكامن / World and deposits addition
   ['copper_prospector', 'منقبو النحاس', 'economy', 'mountain, plateau', 80, '', 'village', 0, 'quarry', false, 'copper'],
   ['silver_prospector', 'منقبو الفضة', 'economy', 'mountain, plateau', 90, '', 'village', 0, 'quarry', false, 'silver'],
+  // إضافة العصر البدائي / Primitive era addition
+  ['well', 'بئر', 'utilities', 'plain, coast, plateau, desert', 20, '', 'village', 0, 'well', false, ''],
+  ['tent', 'خيمة', 'housing', 'plain, coast, plateau, desert', 10, '', 'village', 4, 'tent', false, ''],
 ];
+
+/** صفوف إضافة العصر البدائي: [المبنى، المورد، الكمية] / Rows of the primitive era addition */
+const SEED_PRIMITIVE_IDS = ['well', 'tent'];
+const SEED_PRIMITIVE_COSTS = [['well', 'wood', 40], ['well', 'stone', 30], ['tent', 'wood', 20]];
+const SEED_PRIMITIVE_PRODUCTION = [['well', 'water', 8]];
+const SEED_PRIMITIVE_CONSUMPTION = [['tent', 'food', 1]];
+
+/**
+ * تعديل العصر البدائي على قاعدة قائمة: مبانٍ تُنقل إلى البلدة، ووصف القرية الجديد
+ * The primitive era edit on an existing database: buildings moved to the town, and the new village description
+ */
+const PRIMITIVE_ERA = {
+  buildingStages: { water_desal: 'town', power_plant: 'town', apartments: 'town' },
+  villageDescription: 'بداية الدولة: الخيام والأكواخ والطرق الترابية والآبار والزراعة والسوق',
+};
 
 /** صفوف إضافة العالم والمكامن: [المبنى، المورد، الكمية] / Rows of the world and deposits addition */
 const SEED_DEPOSIT_COSTS = [['copper_prospector', 'wood', 150], ['copper_prospector', 'iron', 30], ['silver_prospector', 'wood', 180], ['silver_prospector', 'iron', 40]];
@@ -175,22 +195,22 @@ const SEED_ROWS = {
     ['military_base', 'stone', 1500], ['military_base', 'iron', 600], ['military_base', 'gold', 800],
     ['development_center', 'stone', 200], ['development_center', 'wood', 150], ['development_center', 'gold', 200],
     ['military_command', 'stone', 600], ['military_command', 'iron', 200], ['military_command', 'gold', 400],
-  ].concat(SEED_RESOURCE_COSTS, SEED_DEPOSIT_COSTS)),
+  ].concat(SEED_RESOURCE_COSTS, SEED_DEPOSIT_COSTS, SEED_PRIMITIVE_COSTS)),
   buildingProduction: amounts_('الكمية في الدقيقة', [
     ['farm', 'food', 30], ['lumber_camp', 'wood', 24], ['mine', 'stone', 18], ['mine', 'iron', 8], ['oil_field', 'oil', 6],
     ['port', 'gold', 30], ['port', 'food', 10], ['water_desal', 'water', 25], ['power_plant', 'power', 25],
     ['livestock', 'food', 25], ['market', 'gold', 30], ['finance_center', 'gold', 60], ['factory', 'gold', 70],
-  ].concat(SEED_RESOURCE_PRODUCTION, SEED_DEPOSIT_PRODUCTION)),
+  ].concat(SEED_RESOURCE_PRODUCTION, SEED_DEPOSIT_PRODUCTION, SEED_PRIMITIVE_PRODUCTION)),
   buildingConsumption: amounts_('الكمية في الدقيقة', [
     ['houses', 'food', 2], ['houses', 'water', 1], ['apartments', 'water', 3], ['apartments', 'power', 3], ['apartments', 'food', 4],
     ['livestock', 'water', 2], ['market', 'food', 8], ['civil_defense', 'power', 1], ['hospital', 'water', 2], ['hospital', 'power', 3],
     ['park', 'water', 1], ['finance_center', 'power', 3], ['factory', 'power', 6], ['factory', 'iron', 2],
-  ].concat(SEED_RESOURCE_CONSUMPTION)),
+  ].concat(SEED_RESOURCE_CONSUMPTION, SEED_PRIMITIVE_CONSUMPTION)),
   depositTypes: SEED_DEPOSIT_TYPES.map(function (d) {
     return { 'المعرف': d[0], 'الاسم': d[1], 'معرف المورد': d[2], 'المكان': d[3], 'العدد في العالم': d[4], 'الأيقونة': d[5], 'اللون': d[6] };
   }),
   stages: [
-    ['village', 'قرية', 0, CAPITAL_SCALE.stageRadius.village, 'بداية الدولة: المنازل والطرق والماء والكهرباء والزراعة والسوق'],
+    ['village', 'قرية', 0, CAPITAL_SCALE.stageRadius.village, PRIMITIVE_ERA.villageDescription],
     ['town', 'بلدة', 150, CAPITAL_SCALE.stageRadius.town, 'الخدمات العامة والأمن وتطوير الطرق ومركز القرية'],
     ['city', 'مدينة', 600, CAPITAL_SCALE.stageRadius.city, 'الحكومة والصناعة والميناء والمطار والقطار والقواعد العسكرية'],
   ].map(function (s, i) {

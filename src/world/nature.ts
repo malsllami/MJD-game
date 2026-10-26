@@ -6,11 +6,11 @@
 
 import { Matrix, Quaternion, Vector3, type Mesh, type ShadowGenerator } from '@babylonjs/core';
 import type { ModelLibrary } from '../assets/model-library';
-import { NATURE_BY_TERRAIN } from '../assets/catalog';
+import { NATURE_BY_TERRAIN, OUTCROP_NATURE } from '../assets/catalog';
 import { createNoise } from '../core/noise';
 import { tileKey } from '../core/economy';
 import type { World } from '../core/types';
-import { sampleHeight, tileCenter } from '../core/world-gen';
+import { edgeDistance, FLAT_EDGE_FOREST, sampleHeight, tileCenter } from '../core/world-gen';
 
 interface Kind {
   meshes: Mesh[];
@@ -35,19 +35,28 @@ export class Nature {
 
     // مكامن الخشب غابات كثيفة، وأرض العاصمة المسطحة مفتوحة للبناء / Wood deposits are dense forests; the flat capital land stays open
     const forestTiles = new Set(this.world.deposits.filter((d) => d.resourceId === 'wood').flatMap((d) => d.tiles));
+    // المعادن والحجر على السهل تظهر نتوءات صخرية / Ores and stone on the plain show as rock outcrops
+    const outcrops = this.world.settings.worldMode === 'flat'
+      ? new Set(this.world.deposits.filter((d) => d.resourceId !== 'wood' && d.resourceId !== 'oil').flatMap((d) => d.tiles))
+      : new Set<string>();
+    // في العالم المستوي: حزام غابة كثيفة يرسم حدود العالم / In a flat world: a dense forest belt marks the world's borders
+    const edgeForest = (x: number, z: number) => this.world.settings.worldMode === 'flat' && edgeDistance(this.world.settings, x, z) < FLAT_EDGE_FOREST;
     const flat = this.world.settings.flatZoneRadius;
     const inBasin = (x: number, z: number) => this.world.basins.some((b) => Math.max(Math.abs(x - b.x), Math.abs(z - b.z)) <= flat);
     for (const tile of this.world.tiles) {
-      const options = NATURE_BY_TERRAIN[tile.terrainId];
+      const options = outcrops.has(tileKey(tile.x, tile.z)) ? OUTCROP_NATURE : NATURE_BY_TERRAIN[tile.terrainId];
       if (!options) continue;
       // الغابات بقع متفرقة تتخللها مروج مفتوحة / Forests are scattered patches between open meadows
       let patch = Math.max(0.1, forest(tile.x * 0.11, tile.z * 0.11) * 2.6 - 0.75);
-      if (forestTiles.has(tileKey(tile.x, tile.z))) patch = 3.2;
+      const sparse = this.world.settings.worldMode === 'flat' ? 0.3 : 1;
+      if (forestTiles.has(tileKey(tile.x, tile.z)) || edgeForest(tile.x, tile.z)) patch = 3.2;
       else if (inBasin(tile.x, tile.z)) patch *= 0.25;
+      // العالم المستوي كله يابسة، فالأشجار المتفرقة خارج الغابات أخف للحفاظ على الأداء / A flat world is all land, so stray trees are lighter for performance
+      else patch *= sparse;
       const c = tileCenter(this.world, tile.x, tile.z);
       options.forEach(([path, size, perTile], k) => {
         const isTree = path.includes('tree');
-        const wanted = perTile * this.density * (isTree ? patch : 1);
+        const wanted = perTile * this.density * (isTree ? patch : sparse);
         let count = Math.floor(wanted);
         if (jitter(tile.x * 7.1 + k * 13.3, tile.z * 5.7) < wanted - count) count++;
         for (let i = 0; i < count; i++) {

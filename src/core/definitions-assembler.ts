@@ -62,7 +62,18 @@ const BACKWARD_COMPATIBLE: Partial<WorldSettings> = {
   surveyResource: '',
   surveyCost: 0,
   governmentName: '',
+  worldMode: 'continent',
 };
+
+/**
+ * إعدادات العالم مع قيم التوافق للخوادم القديمة؛ نوع عالم غير معروف يُعامل كقارة
+ * World settings with backward-compatible defaults; an unknown world mode is treated as a continent
+ */
+function worldSettings(raw: Partial<WorldSettings>): WorldSettings {
+  const world = { ...BACKWARD_COMPATIBLE, ...raw } as WorldSettings;
+  const mode = String(world.worldMode ?? '').trim().toLowerCase();
+  return { ...world, worldMode: mode === 'flat' ? 'flat' : 'continent' };
+}
 
 /** جمع صفوف (مبنى، مورد، كمية) في قاموس لكل مبنى / Sum (building, resource, amount) rows per building */
 function perBuilding<T extends { buildingId: string; resourceId: string }>(rows: T[], amount: (r: T) => number | null) {
@@ -98,7 +109,7 @@ export function assembleDefinitions(raw: RawTables, version: string): GameDefini
 
   return {
     version,
-    world: { ...BACKWARD_COMPATIBLE, ...raw.world } as WorldSettings,
+    world: worldSettings(raw.world),
     terrain: raw.terrain.map(({ id, name, color, priority, minElevation, maxElevation, minMoisture, maxMoisture, isWater, requiresWaterNeighbor }) => ({
       id, name, color, priority, minElevation, maxElevation, minMoisture, maxMoisture, isWater, requiresWaterNeighbor,
     })),

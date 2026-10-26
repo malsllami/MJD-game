@@ -51,6 +51,9 @@ export const STYLE_MODELS: Record<string, StyleVariants> = {
   sawmill: [[{ path: 'industrial/building-c.glb', x: -0.15, z: -0.12, size: 0.6 }, { path: 'nature/log_stackLarge.glb', x: 0.3, z: 0.25, size: 0.32 }, { path: 'nature/log_stack.glb', x: -0.3, z: 0.32, size: 0.22 }, { path: 'nature/stump_round.glb', x: 0.32, z: -0.3, size: 0.12 }]],
   smithy: [[{ path: 'industrial/building-d.glb', size: 0.7 }, { path: 'industrial/chimney-medium.glb', x: 0.3, z: 0.3, size: 0.18 }]],
   'oil-rig': [[{ path: 'industrial/detail-tank.glb', x: -0.2, z: 0.15, size: 0.35 }, { path: 'industrial/chimney-small.glb', x: 0.22, z: -0.15, size: 0.2 }, { path: 'industrial/detail-tank.glb', x: 0.2, z: 0.28, size: 0.25 }]],
+  // مؤقتان حتى تصل نماذج القرية الوسيطية (المرحلة ج) / Interim until the medieval village models arrive (phase C)
+  well: [[{ path: 'nature/stone_largeA.glb', size: 0.32 }, { path: 'nature/rock_smallA.glb', x: 0.25, z: 0.2, size: 0.14 }, { path: 'nature/log_stack.glb', x: -0.28, z: -0.25, size: 0.2 }]],
+  tent: [[{ path: 'nature/log_stackLarge.glb', size: 0.42 }, { path: 'nature/stump_round.glb', x: 0.3, z: 0.28, size: 0.12 }]],
   quarry: [[{ path: 'nature/rock_largeA.glb', x: -0.2, z: -0.15, size: 0.45 }, { path: 'nature/rock_largeC.glb', x: 0.25, z: 0.1, size: 0.35 }, { path: 'nature/stone_tallA.glb', x: -0.25, z: 0.3, size: 0.2 }, { path: 'nature/log_stack.glb', x: 0.25, z: -0.3, size: 0.2 }]],
 };
 
@@ -78,6 +81,11 @@ export const NATURE_BY_TERRAIN: Record<string, [string, number, number][]> = {
   mountain: [['nature/tree_pineTallA.glb', 0.34, 0.7], ['nature/tree_pineRoundA.glb', 0.3, 0.5], ['nature/rock_largeA.glb', 0.28, 0.5], ['nature/rock_largeC.glb', 0.24, 0.4]],
   peak: [['nature/rock_largeB.glb', 0.24, 0.3], ['nature/stone_tallA.glb', 0.16, 0.2]],
 };
+
+/** نتوءات صخرية تعلّم مكامن المعادن والحجر على السهل / Rock outcrops marking ore and stone deposits on the plain */
+export const OUTCROP_NATURE: [string, number, number][] = [
+  ['nature/rock_largeA.glb', 0.4, 0.8], ['nature/rock_largeC.glb', 0.34, 0.7], ['nature/rock_largeB.glb', 0.22, 0.6], ['nature/stone_largeA.glb', 0.2, 0.8],
+];
 
 /**
  * إعادة تلوين مواد الطبيعة: أوراق Kenney وأعشابها فيروزية في الأصل، فتُستبدل بدرجات خضراء طبيعية

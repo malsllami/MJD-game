@@ -18,8 +18,8 @@ interface SaveFile {
  * World signature: changing generation settings moves terrain, so an older save no longer fits
  */
 export function worldSignature(w: WorldSettings): string {
-  // gen2: مولّد القارة المنبسطة بالأحواض والسلاسل والبحيرات / gen2: the flat-continent generator with basins, ranges and lakes
-  return ['gen2', w.seed, w.tilesX, w.tilesZ, w.vertsPerTile, w.seaLevel, w.heightScale, w.noiseScale, w.moistureScale, w.islandFalloff,
+  // gen3: نوع العالم (مستوٍ أو قاري) مع مولّد الأحواض والسلاسل والبحيرات / gen3: the world mode (flat or continent) with the basin, range and lake generator
+  return ['gen3', w.worldMode, w.seed, w.tilesX, w.tilesZ, w.vertsPerTile, w.seaLevel, w.heightScale, w.noiseScale, w.moistureScale, w.islandFalloff,
     w.flatZoneRadius, w.massifCount, w.massifRadius, w.lakeCount, w.lakeRadius].join('|');
 }
 

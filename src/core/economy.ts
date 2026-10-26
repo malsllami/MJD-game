@@ -374,7 +374,9 @@ export function checkPlacement(defs: GameDefinitions, world: World, state: GameS
   if (!state.territory.includes(tileKey(tile.x, tile.z))) return { ok: false, reason: 'المربع خارج حدود الدولة؛ ضمّه للدولة أولًا' };
   const occupant = buildingAt(state, tile.x, tile.z);
   if (occupant && occupant.uid !== opts.ignoreUid) return { ok: false, reason: 'يوجد مبنى في هذا المربع' };
-  if (!building.allowedTerrain.includes(tile.terrainId)) {
+  // منشأة المكمن تُبنى على مكمنها أيًّا كانت أرضه (في العالم المستوي تقع المعادن على السهل)
+  // A deposit facility is built on its deposit whatever the land (ores lie on the plain in a flat world)
+  if (!building.requiresDeposit && !building.allowedTerrain.includes(tile.terrainId)) {
     const names = building.allowedTerrain.map((id) => defs.terrain.find((t) => t.id === id)?.name ?? id).join('، ');
     return { ok: false, reason: `${building.name} يُبنى على: ${names}` };
   }

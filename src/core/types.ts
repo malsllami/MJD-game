@@ -49,7 +49,11 @@ export interface WorldSettings {
   surveyResource: string;
   surveyCost: number;
   governmentName: string;
+  /** شكل العالم: أرض مستوية متصلة، أو قارة بجبال وبحيرات / World shape: connected flat land, or a continent with ranges and lakes */
+  worldMode: WorldMode;
 }
+
+export type WorldMode = 'flat' | 'continent';
 
 /** مكان المكمن في العالم / Where a deposit forms */
 export type DepositPlace = 'mountain' | 'forest' | 'desert';

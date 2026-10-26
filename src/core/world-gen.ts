@@ -1,13 +1,22 @@
-// مسؤولية الملف: توليد العالم كمنطق نقي قابل للاختبار — قارة منبسطة، أحواض مسطحة للعاصمة، سلاسل جبلية،
-// بحيرات، ومكامن موارد موزعة (معدن لكل سلسلة، غابات، حقول نفط)
-// File responsibility: pure, testable world generation — a flat continent, flat capital basins, mountain ranges,
-// lakes, and scattered resource deposits (one ore per range, forests, oil fields)
+// مسؤولية الملف: توليد العالم كمنطق نقي قابل للاختبار — إما أرض مستوية متصلة تحيط بها الغابات، أو قارة بأحواض مسطحة
+// للعاصمة وسلاسل جبلية وبحيرات؛ مع مكامن موارد موزعة في الحالتين
+// File responsibility: pure, testable world generation — either connected flat land ringed by forest, or a continent with
+// flat capital basins, mountain ranges and lakes; with scattered resource deposits in both
 
 import { createNoise } from './noise';
 import type { Deposit, DepositType, TerrainType, Tile, World, WorldSettings } from './types';
 
 /** ارتفاع السهول المنبسطة على مقياس 0..1 / Flat plain elevation on the 0..1 scale */
 const PLAIN_LEVEL = 0.48;
+/** رطوبة العالم المستوي: سهل أخضر / Flat-world moisture: a green plain */
+const FLAT_MOISTURE = 0.75;
+/** عرض حزام الغابة على أطراف العالم المستوي بعدد المربعات / Width of the forest belt on the flat world's edges, in tiles */
+export const FLAT_EDGE_FOREST = 6;
+
+/** بعد المربع عن أقرب طرف للعالم / A tile's distance to the nearest world edge */
+export function edgeDistance(settings: WorldSettings, x: number, z: number): number {
+  return Math.min(x, z, settings.tilesX - 1 - x, settings.tilesZ - 1 - z);
+}
 
 interface Feature {
   x: number;
@@ -52,21 +61,28 @@ export function generateWorld(settings: WorldSettings, terrain: TerrainType[], d
     return Math.sqrt(nx * nx + nz * nz) * 2 + (coastNoise(tx * 0.03, tz * 0.03) - 0.5) * 0.3;
   };
   const onContinent = (x: number, z: number, limit: number): boolean => coastDistance(x, z) < limit;
+  const flatWorld = settings.worldMode === 'flat';
+  const inside = (margin: number) => (x: number, z: number): boolean => edgeDistance(settings, x, z) >= margin;
 
-  // 1) الأحواض المسطحة لمواقع العاصمة قرب الساحل (لمحطة التحلية والميناء)، ثم السلاسل والبحيرات بعيدًا عنها
-  // 1) Flat capital basins near the coast (for desalination and the port), then ranges and lakes kept away from them
+  // 1) مواقع العاصمة المسطحة (قرب الساحل في القارة)، ثم السلاسل والبحيرات بعيدًا عنها
+  // 1) Flat capital sites (near the coast on a continent), then ranges and lakes kept away from them
   const flat = settings.flatZoneRadius;
   const nearCoast = (x: number, z: number): boolean => coastDistance(x, z) > 0.5 && coastDistance(x, z) < 0.6;
-  const basins = place(rng, settings.startSiteCount, flat > 0 ? flat : 0, [], tilesX, tilesZ, nearCoast, flat * 2 + 4);
+  const basins = place(rng, settings.startSiteCount, flat > 0 ? flat : 0, [], tilesX, tilesZ, flatWorld ? inside(flat + FLAT_EDGE_FOREST + 2) : nearCoast, flat * 2 + 4);
   const keepOut = basins.map((b) => ({ ...b, radius: flat + 6 }));
-  const massifs = place(rng, settings.massifCount, settings.massifRadius, keepOut, tilesX, tilesZ, (x, z) => onContinent(x, z, 0.72), settings.massifRadius * 1.4);
-  const lakes = place(rng, settings.lakeCount, settings.lakeRadius, [...keepOut, ...massifs], tilesX, tilesZ, (x, z) => onContinent(x, z, 0.62), settings.lakeRadius * 2);
+  // العالم المستوي بلا جبال: مواقع المعادن نتوءات صخرية صغيرة على السهل / A flat world has no ranges: ore sites are small rock outcrops on the plain
+  const oreCount = depositTypes.filter((t) => t.place === 'mountain').reduce((n, t) => n + t.count, 0);
+  const massifs = flatWorld
+    ? place(rng, oreCount, 3, keepOut, tilesX, tilesZ, inside(FLAT_EDGE_FOREST + 3), 14)
+    : place(rng, settings.massifCount, settings.massifRadius, keepOut, tilesX, tilesZ, (x, z) => onContinent(x, z, 0.72), settings.massifRadius * 1.4);
+  const lakes = flatWorld ? [] : place(rng, settings.lakeCount, settings.lakeRadius, [...keepOut, ...massifs], tilesX, tilesZ, (x, z) => onContinent(x, z, 0.62), settings.lakeRadius * 2);
 
   /**
    * الارتفاع على مقياس 0..1 (حدود التضاريس في الشيت على نفس المقياس)
    * Elevation on the 0..1 scale (terrain thresholds in the sheet use the same scale)
    */
   const elevationAt = (tx: number, tz: number): number => {
+    if (flatWorld) return PLAIN_LEVEL + 0.02;
     let e = PLAIN_LEVEL + (base(tx * ns, tz * ns) - 0.5) * 0.24;
     e -= smoothstep(1 - settings.islandFalloff * 1.7, 1, coastDistance(tx, tz)) * 0.42;
     for (const m of massifs) {
@@ -106,10 +122,10 @@ export function generateWorld(settings: WorldSettings, terrain: TerrainType[], d
   for (let z = 0; z < tilesZ; z++) {
     for (let x = 0; x < tilesX; x++) {
       elevations[z * tilesX + x] = elevationAt(x + 0.5, z + 0.5);
-      moistures[z * tilesX + x] = moistureNoise((x + 0.5) * settings.moistureScale, (z + 0.5) * settings.moistureScale);
+      moistures[z * tilesX + x] = flatWorld ? FLAT_MOISTURE : moistureNoise((x + 0.5) * settings.moistureScale, (z + 0.5) * settings.moistureScale);
     }
   }
-  normaliseInPlace(moistures);
+  if (!flatWorld) normaliseInPlace(moistures);
   // الأحواض سهول خضراء لا صحراء / Basins are green plains, not desert
   for (const b of basins) {
     for (let z = Math.max(0, b.z - flat); z <= Math.min(tilesZ - 1, b.z + flat); z++) {
@@ -132,7 +148,7 @@ export function generateWorld(settings: WorldSettings, terrain: TerrainType[], d
     }
   }
 
-  const deposits = placeDeposits(rng, depositTypes, terrain, tiles, settings, basins, massifs);
+  const deposits = placeDeposits(rng, depositTypes, terrain, tiles, settings, basins, massifs, flatWorld);
   return { settings, vertsX, vertsZ, heights, tiles, basins: basins.map(({ x, z }) => ({ x, z })), deposits };
 }
 
@@ -162,7 +178,7 @@ function place(
  */
 function placeDeposits(
   rng: () => number, types: DepositType[], terrain: TerrainType[], tiles: Tile[], s: WorldSettings,
-  basins: Feature[], massifs: Feature[],
+  basins: Feature[], massifs: Feature[], flatWorld: boolean,
 ): Deposit[] {
   const water = new Set(terrain.filter((t) => t.isWater).map((t) => t.id));
   const tileAt = (x: number, z: number) => (x >= 0 && z >= 0 && x < s.tilesX && z < s.tilesZ ? tiles[z * s.tilesX + x] : undefined);
@@ -215,7 +231,7 @@ function placeDeposits(
       add(type, fx, fz, disc(fx, fz, 5, land));
       left--;
     }
-    const plains = tiles.filter((t) => t.terrainId === 'plain' && land(t));
+    const plains = tiles.filter((t) => t.terrainId === 'plain' && land(t) && (!flatWorld || edgeDistance(s, t.x, t.z) >= FLAT_EDGE_FOREST + 3));
     for (let tries = 0; left > 0 && plains.length && tries < 400; tries++) {
       const t = plains[Math.floor(rng() * plains.length)];
       if (deposits.some((d) => Math.hypot(d.x - t.x, d.z - t.z) < 14)) continue;
@@ -224,14 +240,15 @@ function placeDeposits(
     }
   }
 
-  // النفط في الصحاري بعيدًا عن الأحواض / Oil in deserts away from the basins
+  // النفط في الصحاري بعيدًا عن الأحواض؛ والعالم المستوي بلا صحارى فيكون على السهل / Oil in deserts away from basins; on the plain in a flat world
+  const sandy = (t: Tile) => (flatWorld ? !water.has(t.terrainId) && edgeDistance(s, t.x, t.z) >= FLAT_EDGE_FOREST + 3 : t.terrainId === 'desert');
   for (const type of types.filter((t) => t.place === 'desert')) {
-    const sands = tiles.filter((t) => t.terrainId === 'desert' && !inBasin(t.x, t.z));
+    const sands = tiles.filter((t) => sandy(t) && !inBasin(t.x, t.z));
     let left = type.count;
     for (let tries = 0; left > 0 && sands.length && tries < 400; tries++) {
       const t = sands[Math.floor(rng() * sands.length)];
       if (deposits.some((d) => Math.hypot(d.x - t.x, d.z - t.z) < 14)) continue;
-      add(type, t.x, t.z, disc(t.x, t.z, 3, (u) => u.terrainId === 'desert'));
+      add(type, t.x, t.z, disc(t.x, t.z, flatWorld ? 2 : 3, sandy));
       left--;
     }
   }

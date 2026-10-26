@@ -78,7 +78,8 @@ export function loadGas(ss = new FakeSpreadsheet()) {
   runInContext(`${source}
 ;globalThis.__gas = { TABLES, SEED_ROWS, SEED_WORLD, WORLD_SETTINGS, SEED_BUILDING_COMMANDS, readTable_, convert_, getDefinitionsDelta_,
   cachedJson_, invalidateCache_, getChunked_, resetRequestMemo_, setupDatabase, addVillageProgression, addResourceBuildings,
-  SEED_RESOURCE_PRODUCTION, setStartAmountsForTesting, TEST_START_AMOUNT, addWorldAndDeposits, applyCapitalScale, CAPITAL_SCALE };`, ctx);
+  SEED_RESOURCE_PRODUCTION, setStartAmountsForTesting, TEST_START_AMOUNT, addWorldAndDeposits, applyCapitalScale, CAPITAL_SCALE,
+  addFlatWorld, addPrimitiveEra, applyPrimitiveEra, PRIMITIVE_ERA, SEED_PRIMITIVE_IDS };`, ctx);
   return { gas: (ctx as unknown as { __gas: any }).__gas, ss };
 }
 

@@ -104,6 +104,9 @@ describe('Apps Script: إضافة تطور القرية على قاعدة بيا
     gas.addResourceBuildings();
     gas.addWorldAndDeposits();
     gas.applyCapitalScale();
+    gas.addFlatWorld();
+    gas.addPrimitiveEra();
+    gas.applyPrimitiveEra();
     const defs = definitionsFrom(gas);
     expect(defs.buildings.find((b) => b.id === 'farm')!.name).toBe('مزرعة القمح');
     const normalise = (d: typeof defs) => ({ ...d, buildings: d.buildings.map((b) => ({ ...b, name: b.id === 'farm' ? '' : b.name })) });
@@ -224,6 +227,64 @@ describe('Apps Script: إضافة العالم والمكامن ومقياس ا�
     const sizes = [...ss.sheets.values()].map((s) => s.values.length);
     gas.addWorldAndDeposits();
     expect([...ss.sheets.values()].map((s) => s.values.length)).toEqual(sizes);
+  });
+});
+
+describe('Apps Script: العالم المستوي والعصر البدائي / flat world and primitive era', () => {
+  const fresh = seedDefinitions();
+  const rowsOf = (ss: FakeSpreadsheet, name: string) => ss.sheets.get(name)!;
+  const col = (ss: FakeSpreadsheet, name: string, column: string) => rowsOf(ss, name).values[0].indexOf(column);
+
+  /** قاعدة بيانات قبل الإضافتين: بلا نوع العالم ولا البئر والخيمة، والمباني الحديثة في القرية / The DB before both additions */
+  function before() {
+    const { gas, ss } = loadGas();
+    gas.setupDatabase();
+    const world = rowsOf(ss, 'إعدادات العالم');
+    world.values = world.values.filter((row) => row[0] !== 'نوع العالم');
+    for (const name of ['المباني', 'تكاليف المباني', 'إنتاج المباني', 'استهلاك المباني']) {
+      const sheet = rowsOf(ss, name);
+      const c = sheet.values[0].indexOf(name === 'المباني' ? 'المعرف' : 'معرف المبنى');
+      sheet.values = sheet.values.filter((row, i) => i === 0 || !gas.SEED_PRIMITIVE_IDS.includes(row[c] as string));
+    }
+    const buildings = rowsOf(ss, 'المباني');
+    const idCol = col(ss, 'المباني', 'المعرف');
+    const stageCol = col(ss, 'المباني', 'المرحلة المطلوبة');
+    buildings.values.slice(1).forEach((row) => { if (gas.PRIMITIVE_ERA.buildingStages[row[idCol] as string]) row[stageCol] = 'village'; });
+    const stages = rowsOf(ss, 'مراحل التطور');
+    stages.values[1][col(ss, 'مراحل التطور', 'الوصف')] = 'بداية الدولة: المنازل والطرق والماء والكهرباء والزراعة والسوق';
+    return { gas: loadGas(ss).gas, ss };
+  }
+
+  it('الخادم القديم يُعامل كقارة، والإضافة تجعل العالم مستويًا / an old server is a continent; the addition makes it flat', () => {
+    const { gas } = before();
+    expect(definitionsFrom(gas).world.worldMode).toBe('continent');
+    gas.addFlatWorld();
+    expect(definitionsFrom(gas).world.worldMode).toBe('flat');
+  });
+
+  it('إضافة البئر والخيمة لا تنقل أي مبنى / adding the well and tent moves no building', () => {
+    const { gas } = before();
+    gas.addPrimitiveEra();
+    const defs = definitionsFrom(gas);
+    expect(defs.buildings.map((b) => b.id)).toEqual(expect.arrayContaining(['well', 'tent']));
+    expect(defs.buildings.find((b) => b.id === 'power_plant')!.stage).toBe('village');
+  });
+
+  it('الإضافتان ثم التعديل تطابق قاعدة بيانات جديدة / both additions then the edit match a fresh database', () => {
+    const { gas } = before();
+    gas.addFlatWorld();
+    gas.addPrimitiveEra();
+    gas.applyPrimitiveEra();
+    expect(definitionsFrom(gas)).toEqual(fresh);
+  });
+
+  it('تشغيل الكل مرتين لا يكرر ولا يغير شيئًا / running everything twice duplicates or changes nothing', () => {
+    const { gas, ss } = before();
+    const runAll = () => { gas.addFlatWorld(); gas.addPrimitiveEra(); gas.applyPrimitiveEra(); };
+    runAll();
+    const snapshot = JSON.stringify([...ss.sheets.values()].map((s) => s.values));
+    runAll();
+    expect(JSON.stringify([...ss.sheets.values()].map((s) => s.values))).toBe(snapshot);
   });
 });
 
