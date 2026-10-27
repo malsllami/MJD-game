@@ -8,6 +8,7 @@
 import { buildingStatus, capacityAt, isRoad, isUnderConstruction, netRates, stageById, staffingAt, unlockGaps, type Check, richnessOf, movePercent } from '../core/economy';
 import { checkTrade, CURRENCY, hasMarket, type Side } from '../core/market';
 import { factorsOf, governmentLevel, housingAt, isUpgradable, isUpgrading, levelOf, levelRow } from '../core/levels';
+import { expansionQuota } from '../core/frontier';
 import { buildingUpgradeCost, checkBuildingUpgrade, upgradeRequirements } from '../core/progression';
 import type { BuildingDef, PlacedBuilding } from '../core/types';
 import { residentsByProfession } from '../core/workforce';
@@ -178,6 +179,10 @@ export class BuildingPanel {
       ['المرحلة', stageById(defs, state.stage).name],
       ['مستوى الحكم', governmentLevel(defs, state).name],
       ['أقصى مستوى للمباني', formatNumber(governmentLevel(defs, state).maxBuildingLevel)],
+      ...(() => {
+        const quota = expansionQuota(defs, state, now);
+        return quota.allowed === null ? [] : [['قطع التوسع', `${formatNumber(quota.used)} من ${formatNumber(quota.allowed)}`] as [string, string]];
+      })(),
       ['السكان', formatNumber(Math.floor(state.population))],
       ['المباني المكتملة', formatNumber(done.length)],
       ['المزارع والحظائر', formatNumber(count((d) => d.workers > 0 && (d.profession === 'farmer' || d.profession === 'herder')))],

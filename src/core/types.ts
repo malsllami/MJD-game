@@ -82,7 +82,7 @@ export type PlacementZone = 'residential' | 'administrative' | 'industrial' | 'a
 export type WorldMode = 'flat' | 'continent';
 
 /** مكان المكمن في العالم / Where a deposit forms */
-export type DepositPlace = 'mountain' | 'forest' | 'desert';
+export type DepositPlace = 'mountain' | 'forest' | 'desert' | 'plain';
 
 /** نوع مكمن: معدن في سلسلة جبلية، أو غابة، أو حقل نفط / Deposit type: ore in a range, a forest, or an oil field */
 export interface DepositType {
@@ -126,6 +126,8 @@ export interface Clearing {
   tiles: string[];
   startedAt: number;
   completesAt: number;
+  /** ما سيكشفه القطع، يُسحب عند بدئه ويُحفظ (null أرض فارغة؛ يغيب في حفظ أقدم) / What it reveals, drawn at its start and kept (null empty land; absent in older saves) */
+  result?: Deposit | null;
 }
 
 /** نوع تضاريس وشروط تصنيف المربع إليه / Terrain type and the rule that assigns tiles to it */
@@ -209,6 +211,8 @@ export interface GovernmentLevel {
   /** طراز سور القرية، أو null بلا سور / The village wall look, or null for no wall */
   wallStyle: WallStyle | null;
   description: string;
+  /** مجموع قطع الغابة المسموح بقطعها حتى هذا المستوى، أو null بلا حد / The total forest parcels clearable up to this level, or null for no limit */
+  expansionParcels: number | null;
 }
 
 /** طراز شكل المبنى حسب مستواه / A building's look by its level */
@@ -390,6 +394,8 @@ export interface GameState {
   /** قطع الغابة الجارية، والمكامن التي كشفها القطع (تغيب في حفظ أقدم) / Running forest clearings, and the deposits clearing revealed (absent in older saves) */
   clearings?: Clearing[];
   foundDeposits?: Deposit[];
+  /** عدد قطع الغابة المكتملة (لحصة التوسع) / The number of completed forest parcels (for the expansion quota) */
+  clearedParcels?: number;
   /** الشعلات في نقاط حرة (تغيب في حفظ أقدم) / Torches at free points (absent in older saves) */
   torches?: PlacedTorch[];
   /** آخر وقت حُسب عنده الإنتاج / Last time production was applied */

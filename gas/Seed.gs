@@ -127,6 +127,8 @@ const OPEN_WALLS = ['wooden_wall', 'gate'];
 const SEED_FRONTIER_RESOURCES = [
   ['gold_ore', 10, 1, 0.5, 1.4], ['silver_ore', 8, 1, 0.5, 1.4], ['stone_quarry', 14, 1, 0.7, 1.5], ['iron_ore', 12, 1, 0.6, 1.5],
   ['copper_ore', 10, 6, 0.6, 1.5], ['oil_field', 8, 10, 0.6, 1.6],
+  // بقعة زراعية: المزرعة والحظيرة عليها تنتجان أكثر / An agricultural spot: a farm or barn on it produces more
+  ['fertile_land', 16, 1, 1.2, 1.8],
 ];
 
 
@@ -291,9 +293,15 @@ const SEED_GOVERNMENT_LEVELS = [
   [3, 'قرية عامرة', 'village', 40, '', 'gold:500, wood:350, stone:150', 3, 'palisade', 'سور أوتاد أعلى بأبراج مراقبة'],
   [4, 'قرية مزدهرة', 'village', 70, 'market', 'gold:800, wood:500, stone:250', 4, 'palisade', 'المباني تُرقّى إلى المستوى الرابع'],
   [5, 'قرية كبرى', 'village', 110, 'development_center', 'gold:1200, wood:550, stone:400, iron:100', 5, 'palisade', 'آخر مستويات العصر الخشبي'],
-  [6, 'بلدة', 'town', 150, SEED_STAGE_UPGRADE.town[0], SEED_STAGE_UPGRADE.town[1], 6, 'stone', 'العصر الحجري: مبانٍ حجرية وسور حجري وحدود أوسع'],
+  [6, 'بلدة', 'town', 150, SEED_STAGE_UPGRADE.town[0], SEED_STAGE_UPGRADE.town[1], 6, 'stone', 'العصر الحجري: مبانٍ حجرية وسور حجري'],
   [7, 'مدينة', 'city', 600, SEED_STAGE_UPGRADE.city[0], SEED_STAGE_UPGRADE.city[1], 7, 'stone', 'المدينة: الحكومة والصناعة والميناء'],
 ];
+
+/**
+ * حصة التوسع لكل مستوى حكم: مجموع قطع الغابة 3 × 3 المسموح بقطعها حتى بلوغه — 16 في المستويات 1–3، ثم 4 قطع لكل مستوى بعدها
+ * The expansion quota per government level: the total 3 × 3 forest parcels clearable by then — 16 in levels 1–3, then 4 per level after
+ */
+const SEED_EXPANSION_PARCELS = { 1: 16, 2: 16, 3: 16, 4: 20, 5: 24, 6: 28, 7: 32 };
 
 /**
  * مستويات المباني: [المستوى، مضاعف الإنتاج، مضاعف السكان والعمال، نسبة تكلفة الترقية من تكلفة البناء، نسبة مدتها من مدة البناء، الطراز]
@@ -341,6 +349,8 @@ const SEED_DEPOSIT_TYPES = [
   ['stone_quarry', 'محجر', 'stone', 'mountain', 3, 'stone', '#b9b3a8'],
   ['oil_field', 'حقل نفط', 'oil', 'desert', 3, 'oil', '#8494a6'],
   ['forest', 'غابة', 'wood', 'forest', 8, 'wood', '#5f9445'],
+  // الأرض الخصبة لا يولّدها العالم، بل تكشفها قطع الغابة فقط / Fertile land is never generated; only forest clearing reveals it
+  ['fertile_land', 'أرض خصبة', 'food', 'plain', 0, 'food', '#8fbf6a'],
 ];
 
 /** صفوف إضافة مباني الموارد: [المبنى، المورد، الكمية] / Rows of the resource buildings addition */
@@ -436,7 +446,7 @@ const SEED_ROWS = {
   governmentLevels: SEED_GOVERNMENT_LEVELS.map(function (l) {
     return {
       'المستوى': l[0], 'الاسم': l[1], 'المرحلة': l[2], 'السكان المطلوبون': l[3], 'المباني المطلوبة': l[4], 'تكلفة الترقية': l[5],
-      'أقصى مستوى للمباني': l[6], 'طراز السور': l[7], 'الوصف': l[8],
+      'أقصى مستوى للمباني': l[6], 'طراز السور': l[7], 'الوصف': l[8], 'قطع التوسع': SEED_EXPANSION_PARCELS[l[0]],
     };
   }),
   buildingLevels: SEED_BUILDING_LEVELS.map(function (l) {

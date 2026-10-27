@@ -70,7 +70,8 @@ describe('العالم المستوي / flat world', () => {
   });
 
   it('كل أنواع المكامن موزعة خارج مواقع العاصمة / every deposit type is spread outside the capital sites', () => {
-    expect(new Set(world.deposits.map((d) => d.typeId))).toEqual(new Set(defs.deposits.map((t) => t.id)));
+    // الأنواع التي يولّدها العالم (عددها فوق الصفر)؛ الأرض الخصبة يكشفها قطع الغابة فقط / The types the world generates (count above zero); fertile land comes only from clearing
+    expect(new Set(world.deposits.map((d) => d.typeId))).toEqual(new Set(defs.deposits.filter((t) => t.count > 0).map((t) => t.id)));
     for (const d of world.deposits.filter((x) => x.resourceId !== 'wood' && nearest(x) > reach)) {
       for (const b of world.basins) expect(Math.max(Math.abs(d.x - b.x), Math.abs(d.z - b.z))).toBeGreaterThan(settings.flatZoneRadius);
       expect(edgeDistance(settings, d.x, d.z)).toBeGreaterThanOrEqual(FLAT_EDGE_FOREST);

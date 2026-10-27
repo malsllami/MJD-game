@@ -276,6 +276,9 @@ const TABLES = [
       { name: 'طراز السور', field: 'wallStyle', type: 'string' },
       { name: 'الوصف', field: 'description', type: 'string' },
       DISABLED_COLUMN,
+      // إضافة حصة التوسع (addExpansionQuota): مجموع قطع الغابة المسموح بقطعها حتى هذا المستوى
+      // Expansion quota addition: the total forest parcels that may be cleared up to this level
+      { name: 'قطع التوسع', field: 'expansionParcels', type: 'number' },
     ],
   },
   {

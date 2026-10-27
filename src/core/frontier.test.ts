@@ -2,8 +2,8 @@
 // Surrounding forest tests: a first village fitting its facilities, clearing for a time, a cost and wood, and the random resources it reveals by level
 import { describe, expect, it } from 'vitest';
 import { seedDefinitions } from '../test/gas-harness';
-import { advance, annexCost, checkTorch, createInitialState, demolishRoads, depositAt, innerWalls, moveTorch, placeTorch, removeTorch, swapWall, tileKey, torchNear, wallLine, wallNear } from './economy';
-import { checkClearing, clearingParcel, drawDeposit, isForestMode, startClearing } from './frontier';
+import { advance, annexCost, richnessOf, checkTorch, createInitialState, demolishRoads, depositAt, innerWalls, moveTorch, placeTorch, removeTorch, swapWall, tileKey, torchNear, wallLine, wallNear } from './economy';
+import { checkClearing, clearingParcel, drawDeposit, expansionQuota, isForestMode, startClearing } from './frontier';
 import { suggestStartSites } from './start-sites';
 import type { GameState, Tile } from './types';
 import { generateWorld } from './world-gen';
@@ -79,6 +79,33 @@ describe('الغابة المحيطة / the surrounding forest', () => {
     expect(done.territory).toHaveLength(start.territory.length + 9);
     expect(done.clearings).toEqual([]);
     expect(done.territory).toContain(tileKey(outside.x, outside.z));
+  });
+
+  it('حصة التوسع: 16 قطعة في المستويات 1–3 ثم 4 لكل مستوى / the quota: 16 parcels in levels 1–3, then 4 per level', () => {
+    expect(defs.governmentLevels.map((l) => l.expansionParcels)).toEqual([16, 16, 16, 20, 24, 28, 32]);
+    const full = { ...start, clearedParcels: 16 };
+    expect(expansionQuota(defs, full, T0)).toEqual({ used: 16, allowed: 16 });
+    const refused = checkClearing(defs, world, full, outside, T0);
+    expect(!refused.ok && refused.reason).toContain('حد التوسع');
+    expect(checkClearing(defs, world, { ...full, governmentLevel: 4 }, outside, T0)).toEqual({ ok: true });
+  });
+
+  it('نتيجة البقعة تُسحب عند بدء القطع وتُحفظ / the spot result is drawn when clearing starts and kept', () => {
+    const cut = startClearing(start, defs, world, outside, T0, 'c3');
+    const kept = cut.clearings![0].result;
+    expect(kept).toBeDefined();
+    // ترقية الحكم أثناء القطع لا تغير ما سيُكشف / Upgrading the government meanwhile changes nothing
+    const done = advance({ ...cut, governmentLevel: 7 }, defs, world, T0 + defs.world.clearingSeconds * 1000);
+    expect(done.foundDeposits ?? []).toEqual(kept ? [kept] : []);
+    expect(done.clearedParcels).toBe(1);
+  });
+
+  it('المزرعة على أرض خصبة تنتج بقدر غناها / a farm on fertile land produces by its richness', () => {
+    const farm = defs.buildings.find((b) => b.id === 'farm')!;
+    const fertile = { id: 'found-f', typeId: 'fertile_land', resourceId: 'food', x: 3, z: 3, tiles: ['3,3'], richness: 1.5 };
+    const placed = { uid: 'f', buildingId: 'farm', x: 3, z: 3, startedAt: 0, completesAt: 0 };
+    expect(richnessOf({ ...start, foundDeposits: [fertile] }, placed, farm)).toBe(1.5);
+    expect(richnessOf(start, placed, farm)).toBe(1);
   });
 
   it('الموارد تتفاوت بين القطع، وقد تكون القطعة فارغة / resources differ between parcels, and a parcel may be empty', () => {

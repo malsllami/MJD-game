@@ -11,7 +11,7 @@ import {
   buildingAt, buildingStatus, checkMove, checkPlacement, cornerPath, costShare, depositAt, edgeTiles, housingCapacity, isRoad,
   autoRoadPath, capacityAt, isSettlementTile, isUnderConstruction, isWall, netRates, placeWallPath, wallAt, nextStage, pathEdges, placeRoadPath, roadAt, stageById, surveyCost, tileKey, annexCost, knownDeposits, isTorch, movePercent, checkTorch, torchNear, torchPoint, wallNear, wallLine, innerWalls,
 } from '../core/economy';
-import { checkClearing, clearingParcel, isForestMode, runningClearings } from '../core/frontier';
+import { checkClearing, clearingParcel, expansionQuota, isForestMode, runningClearings } from '../core/frontier';
 import { governmentLevel, governmentLevelOf, levelOf, levelRow } from '../core/levels';
 import { placementAdvice, zoneTest } from '../core/placement-guide';
 import type { BuildingDef, ContextCommand, EntityType, GameDefinitions, Tile, World } from '../core/types';
@@ -587,7 +587,9 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     if (forest && !owned) {
       // الغابة خارج الحدود: القطع بمدته وتكلفته وما يعطيه، بلا بناء ولا طرق / The forest past the border: clearing with its time, cost and yield; no building or roads
       const check = checkClearing(defs, world, state, tile, Date.now());
-      const offer = `قطعة 3 × 3 · ${formatDuration(defs.world.clearingSeconds)} · ${costText(annexCost(defs))} · تعطي ${formatNumber(defs.world.clearingWood)} خشب`;
+      const quota = expansionQuota(defs, state, Date.now());
+      const left = quota.allowed === null ? '' : ` · المتبقي ${formatNumber(Math.max(0, quota.allowed - quota.used))} من ${formatNumber(quota.allowed)}`;
+      const offer = `قطعة 3 × 3 · ${formatDuration(defs.world.clearingSeconds)} · ${costText(annexCost(defs))} · تعطي ${formatNumber(defs.world.clearingWood)} خشب${left}`;
       return { title: 'غابة', subtitle: check.ok ? offer : check.reason, commands: all.filter((c) => c.id !== 'build' && c.id !== 'road' && c.id !== 'roads') };
     }
     const title = deposit ? (depositTypeById.get(deposit.typeId)?.name ?? '') : (terrain?.name ?? '');

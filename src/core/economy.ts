@@ -194,9 +194,11 @@ export function knownDeposits(world: World, state: GameState): Deposit[] {
  * The facility's deposit richness: multiplies its output; world and starter deposits are 1, those revealed by clearing vary
  */
 export function richnessOf(state: GameState, placed: PlacedBuilding, def: BuildingDef | undefined): number {
-  if (!def?.requiresDeposit) return 1;
+  // منشأة المكمن تأخذ غنى مكمنها، والمزرعة والحظيرة غنى الأرض الخصبة تحتها / A deposit facility takes its deposit's richness; a farm or barn the fertile land's under it
+  const resource = def?.requiresDeposit ?? (def?.zone === 'agricultural' ? 'food' : null);
+  if (!resource) return 1;
   const key = tileKey(placed.x, placed.z);
-  return state.foundDeposits?.find((d) => d.resourceId === def.requiresDeposit && d.tiles.includes(key))?.richness ?? 1;
+  return state.foundDeposits?.find((d) => d.resourceId === resource && d.tiles.includes(key))?.richness ?? 1;
 }
 
 /** تكلفة مسح الموارد / Survey cost */

@@ -39,7 +39,7 @@ export interface RawTables {
   /** اختيارية: لا يرسلها خادم أقدم من إضافة مستويات القرية / Optional: absent from servers older than the village levels addition */
   governmentLevels?: {
     level: number | null; name: string; stage: string; population: number | null; requiredBuildings?: string[]; upgradeCost?: string[];
-    maxBuildingLevel: number | null; wallStyle: string; description: string;
+    maxBuildingLevel: number | null; wallStyle: string; description: string; expansionParcels?: number | null;
   }[];
   buildingLevels?: { level: number | null; productionFactor: number | null; populationFactor: number | null; costPercent: number | null; timePercent: number | null; style: string }[];
   startBuildings?: ({ buildingId: string } & Ordered)[];
@@ -124,12 +124,13 @@ function governmentLevels(raw: RawTables['governmentLevels'], stages: Stage[]): 
   if (!rows.length) {
     return stages.map((s, i) => ({
       level: i + 1, name: s.name, stage: s.id, population: s.population, requiredBuildings: s.requiredBuildings, upgradeCost: s.upgradeCost,
-      maxBuildingLevel: 1, wallStyle: null, description: s.description,
+      maxBuildingLevel: 1, wallStyle: null, description: s.description, expansionParcels: null,
     }));
   }
   return rows.map((r, i) => ({
     level: i + 1, name: r.name, stage: r.stage, population: r.population ?? 0, requiredBuildings: (r.requiredBuildings ?? []).filter(Boolean),
     upgradeCost: parseAmounts(r.upgradeCost), maxBuildingLevel: Math.max(1, r.maxBuildingLevel ?? 1), wallStyle: known(WALL_STYLES, r.wallStyle), description: r.description,
+    expansionParcels: typeof r.expansionParcels === 'number' ? r.expansionParcels : null,
   }));
 }
 

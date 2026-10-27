@@ -356,7 +356,7 @@ describe('المكامن / deposits', () => {
 
   it('العالم يوزع كل أنواع المكامن على اليابسة / the world spreads every deposit type on land', () => {
     const types = new Set(world.deposits.map((d) => d.typeId));
-    for (const t of defs.deposits) expect(types.has(t.id)).toBe(true);
+    for (const t of defs.deposits.filter((x) => x.count > 0)) expect(types.has(t.id)).toBe(true);
     const water = new Set(defs.terrain.filter((t) => t.isWater).map((t) => t.id));
     for (const d of world.deposits) expect(d.tiles.every((k) => !water.has(tileOf(k).terrainId))).toBe(true);
   });

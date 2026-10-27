@@ -7,7 +7,7 @@
 import {
   annexCost, capacityAt, discoverNearTerritory, isUnderConstruction, missingResources, pay, tileKey, type Check,
 } from './economy';
-import { governmentLevelOf, isUpgrading } from './levels';
+import { governmentLevel, governmentLevelOf, isUpgrading } from './levels';
 import { addCapped } from './workforce';
 import type { Deposit, GameDefinitions, GameState, Tile, World } from './types';
 
@@ -52,6 +52,14 @@ function freshTiles(defs: GameDefinitions, world: World, state: GameState, tile:
   return clearingParcel(defs, world, state, tile).filter((t) => !owned.has(tileKey(t.x, t.z)));
 }
 
+/**
+ * حصة التوسع: ما قُطع (المكتمل والجاري) من المسموح حتى مستوى الحكم الحالي؛ allowed قيمتها null بلا حد
+ * The expansion quota: what was cleared (done and running) out of what the current government level allows; allowed is null for no limit
+ */
+export function expansionQuota(defs: GameDefinitions, state: GameState, now: number): { used: number; allowed: number | null } {
+  return { used: (state.clearedParcels ?? 0) + runningClearings(state, now).length, allowed: governmentLevel(defs, state).expansionParcels };
+}
+
 /** هل يمكن بدء قطع قطعة الغابة التي فيها المربع؟ / Can clearing the tile's forest parcel start? */
 export function checkClearing(defs: GameDefinitions, world: World, state: GameState, tile: Tile, now: number): Check {
   if (defs.terrain.find((t) => t.id === tile.terrainId)?.isWater) return { ok: false, reason: 'لا يمكن قطع مربع مائي' };
@@ -61,6 +69,10 @@ export function checkClearing(defs: GameDefinitions, world: World, state: GameSt
   const owned = new Set(state.territory);
   const touches = fresh.some((t) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => owned.has(tileKey(t.x + dx, t.z + dz))));
   if (!touches) return { ok: false, reason: 'تُقطع الغابة المجاورة لحدود الدولة فقط' };
+  const quota = expansionQuota(defs, state, now);
+  if (quota.allowed !== null && quota.used >= quota.allowed) {
+    return { ok: false, reason: `بلغت حد التوسع (${quota.allowed} قطعة) لمستوى «${governmentLevel(defs, state).name}»؛ رقِّ مبنى الحكم لتتوسع أكثر` };
+  }
   if (activeWorks(state, now) >= defs.world.maxConcurrentBuilds) {
     return { ok: false, reason: `وصلت للحد الأقصى من الأعمال المتزامنة (${defs.world.maxConcurrentBuilds})؛ انتظر اكتمال عمل` };
   }
@@ -72,10 +84,13 @@ export function checkClearing(defs: GameDefinitions, world: World, state: GameSt
 /** بدء القطع: دفع التكلفة وبدء المدة (بعد نجاح checkClearing) / Start clearing: pay and start the timer (after checkClearing) */
 export function startClearing(state: GameState, defs: GameDefinitions, world: World, tile: Tile, now: number, uid: string): GameState {
   const tiles = freshTiles(defs, world, state, tile).map((t) => tileKey(t.x, t.z));
+  // نتيجة البقعة تُسحب الآن وتُحفظ، فلا يغيرها انتظار ترقية ولا إعادة تحميل / The spot's result is drawn now and kept, so neither waiting for an upgrade nor reloading changes it
+  const taken = [...(state.foundDeposits ?? []), ...(state.clearings ?? []).flatMap((c) => (c.result ? [c.result] : []))];
+  const result = drawDeposit(defs, world, tiles, governmentLevelOf(defs, state), taken);
   return {
     ...state,
     resources: pay(state.resources, annexCost(defs)),
-    clearings: [...(state.clearings ?? []), { uid, tiles, startedAt: now, completesAt: now + defs.world.clearingSeconds * 1000 }],
+    clearings: [...(state.clearings ?? []), { uid, tiles, startedAt: now, completesAt: now + defs.world.clearingSeconds * 1000, result }],
   };
 }
 
@@ -94,7 +109,8 @@ export function settleClearings(state: GameState, defs: GameDefinitions, world: 
   for (const c of done) {
     for (const k of c.tiles) territory.add(k);
     resources.wood = addCapped(resources.wood ?? 0, defs.world.clearingWood, woodCap);
-    const deposit = drawDeposit(defs, world, c.tiles, level, found);
+    // حفظ أقدم بلا نتيجة محفوظة يُسحب له الآن / An older save without a kept result draws it now
+    const deposit = c.result !== undefined ? c.result : drawDeposit(defs, world, c.tiles, level, found);
     if (deposit) found.push(deposit);
   }
   const next: GameState = {
@@ -103,6 +119,7 @@ export function settleClearings(state: GameState, defs: GameDefinitions, world: 
     territory: [...territory],
     clearings: (state.clearings ?? []).filter((c) => now < c.completesAt),
     foundDeposits: found,
+    clearedParcels: (state.clearedParcels ?? 0) + done.length,
   };
   return discoverNearTerritory(next, defs, world);
 }
