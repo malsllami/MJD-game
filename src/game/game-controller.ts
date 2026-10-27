@@ -11,7 +11,7 @@ import {
   buildingAt, buildingStatus, checkMove, checkPlacement, cornerPath, costShare, depositAt, edgeTiles, housingCapacity, isRoad,
   autoRoadPath, capacityAt, isSettlementTile, isUnderConstruction, isWall, netRates, placeWallPath, wallAt, nextStage, pathEdges, placeRoadPath, roadAt, stageById, surveyCost, tileKey, annexCost, knownDeposits, isTorch, movePercent, placeTorches,
 } from '../core/economy';
-import { isForestMode, runningClearings } from '../core/frontier';
+import { checkClearing, clearingParcel, isForestMode, runningClearings } from '../core/frontier';
 import { governmentLevel, governmentLevelOf, levelOf, levelRow } from '../core/levels';
 import { placementAdvice, zoneTest } from '../core/placement-guide';
 import type { BuildingDef, ContextCommand, EntityType, GameDefinitions, Tile, World } from '../core/types';
@@ -81,6 +81,8 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const allowed = new TileSetOutline(game.scene, world, new Color3(0.45, 0.95, 0.6), 0.45);
   // إطار ذهبي حول قطع الغابة الجاري / A gold outline around the forest being cleared
   const clearingOutline = new TileSetOutline(game.scene, world, new Color3(1, 0.82, 0.4), 0.5);
+  // القطعة التي سيقطعها الأمر، تظهر عند الضغط على الغابة خارج الحدود / The parcel the command would clear, shown when tapping the forest past the border
+  const parcelPreview = new TileSetOutline(game.scene, world, new Color3(1, 0.95, 0.7), 0.55);
   const forest = isForestMode(defs);
   const firstRadius = defs.stages[0]?.territoryRadius ?? 0;
   let seenClearings = new Set<string>();
@@ -187,6 +189,8 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     p.y += world.settings.tileSize * lift;
     return p;
   };
+  /** الغنى نسبةً مئوية: 1.25 ← ١٢٥٪ / Richness as a percentage: 1.25 → 125% */
+  const richText = (r: number) => `${formatNumber(Math.round(r * 100))}٪`;
   const costText = (cost: Record<string, number>) => Object.entries(cost).map(([id, n]) => `${formatNumber(n)} ${resourceName(id)}`).join('، ');
 
   // ===== مبنى الحكم: أول مبنى في القرية، يكبر مع كل مرحلة / Government building: the village's first building, growing each stage =====
@@ -439,6 +443,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     if (mode.kind === 'road' || mode.kind === 'bulldoze') return;
     selected = tile;
     game.highlight(tile);
+    parcelPreview.clear();
     // الضغط على مبنى يدخل إليه: تقترب الكاميرا وتفتح لوحته؛ والمربع الفارغ يفتح القائمة الدائرية
     // Tapping a building enters it: the camera closes in and its panel opens; an empty tile opens the radial menu
     const placed = buildingAt(session.state, tile.x, tile.z);
@@ -451,6 +456,10 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
       return;
     }
     panel.close();
+    // خارج الحدود مع الغابة المحيطة: إطار القطعة 3 × 3 التي ستُقطع / Past the border with the surrounding forest: the 3 × 3 parcel to be cleared
+    if (forest && !session.state.territory.includes(tileKey(tile.x, tile.z))) {
+      parcelPreview.show(clearingParcel(defs, world, session.state, tile).map((t) => tileKey(t.x, t.z)).filter((k) => !session.state.territory.includes(k)));
+    }
     radial.open(game.tileAnchor(tile), describe(tile), (cmd) => runCommand(cmd, tile));
   });
 
@@ -476,6 +485,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
 
   function closeSelection(): void {
     selected = null;
+    parcelPreview.clear();
     radial.close();
     panel.close();
     game.highlight(null);
@@ -499,9 +509,17 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     const deposit = depositAt(world, state, tile.x, tile.z);
     // القائمة الدائرية للمربعات الفارغة فقط؛ المباني تفتح لوحتها / The radial menu is for empty tiles only; buildings open their panel
     const entity: EntityType | null = terrain?.isWater ? null : 'empty_tile';
+    const all = entity ? (defs.contextMenus.find((m) => m.entityType === entity)?.commands ?? []) : [];
+    if (forest && !owned) {
+      // الغابة خارج الحدود: القطع بمدته وتكلفته وما يعطيه، بلا بناء ولا طرق / The forest past the border: clearing with its time, cost and yield; no building or roads
+      const check = checkClearing(defs, world, state, tile, Date.now());
+      const offer = `قطعة 3 × 3 · ${formatDuration(defs.world.clearingSeconds)} · ${costText(annexCost(defs))} · تعطي ${formatNumber(defs.world.clearingWood)} خشب`;
+      return { title: 'غابة', subtitle: check.ok ? offer : check.reason, commands: all.filter((c) => c.id !== 'build' && c.id !== 'road' && c.id !== 'roads') };
+    }
     const title = deposit ? (depositTypeById.get(deposit.typeId)?.name ?? '') : (terrain?.name ?? '');
     const subtitle = `${coords} · ${owned ? 'داخل الدولة' : 'خارج الدولة'}`;
-    const commands = entity ? (defs.contextMenus.find((m) => m.entityType === entity)?.commands ?? []) : [];
+    // داخل الدولة لا معنى لقطع الغابة / Inside the nation clearing makes no sense
+    const commands = forest ? all.filter((c) => c.id !== 'annex') : all;
     return { title, subtitle, commands };
   }
 
@@ -543,6 +561,8 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
       }
       case 'annex': {
         if (forest) {
+          parcelPreview.clear();
+          radial.close();
           const cut = session.clear(tile, now);
           toast.show(cut.ok
             ? `بدأ قطع الغابة · ${formatDuration(defs.world.clearingSeconds)} · ${costText(annexCost(defs))}؛ تنضم القطعة مع ${formatNumber(defs.world.clearingWood)} خشب وقد تكشف موردًا`
@@ -642,7 +662,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     for (const d of knownDeposits(world, state)) {
       if (!showDeposits(now)) continue;
       keep.add(`d-${d.id}`);
-      const rich = d.richness && d.richness !== 1 ? ` · غنى ${formatNumber(d.richness)}` : '';
+      const rich = d.richness && d.richness !== 1 ? ` · غنى ${richText(d.richness)}` : '';
       labels.set(`d-${d.id}`, `${depositTypeById.get(d.typeId)?.name ?? d.typeId}${rich}`, labelAbove(d.x, d.z, 1.4), 'pin-deposit');
     }
     // قطع الغابة الجاري: إطار وعدّاد، وإشعار عند اكتماله بما كشفه / Running clearings: an outline and a timer, and a notice of what each revealed
@@ -658,7 +678,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     seenClearings = ids;
     const found = state.foundDeposits ?? [];
     if (found.length > seenFound) {
-      const fresh = found.slice(seenFound).map((d) => `${depositTypeById.get(d.typeId)?.name ?? d.typeId} (غنى ${formatNumber(d.richness ?? 1)})`).join('، ');
+      const fresh = found.slice(seenFound).map((d) => `${depositTypeById.get(d.typeId)?.name ?? d.typeId} (غنى ${richText(d.richness ?? 1)})`).join('، ');
       depositsUntil = now + SURVEY_LABELS_MS;
       toast.show(`اكتمل قطع الغابة وكشف: ${fresh}`, 7000);
     } else if (finished) {

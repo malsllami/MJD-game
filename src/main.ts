@@ -1,5 +1,5 @@
-// مسؤولية الملف: نقطة البداية — تحميل التعريفات، توليد العالم، بناء المشهد، متابعة الحفظ أو اختيار موقع الانطلاق، ثم تشغيل اللعبة
-// File responsibility: entry point — load definitions, generate the world, build the scene, resume a save or pick a start site, then run
+// مسؤولية الملف: نقطة البداية — تحميل التعريفات، توليد العالم، بناء المشهد، متابعة الحفظ أو بدء دولة جديدة في موقع الانطلاق، ثم تشغيل اللعبة
+// File responsibility: entry point — load definitions, generate the world, build the scene, resume a save or start a new nation at the start site, then run
 
 import '@fontsource/ibm-plex-sans-arabic/400.css';
 import '@fontsource/ibm-plex-sans-arabic/700.css';
@@ -13,7 +13,6 @@ import { GameSession } from './game/game-session';
 import { createDefinitionsSource } from './services/definitions-service';
 import { SaveService, worldSignature } from './services/save-service';
 import { mountRotateHint } from './ui/rotate-hint';
-import { chooseStartSite } from './ui/start-picker';
 import { createGameScene } from './world/game-scene';
 import { resolveQuality } from './world/quality';
 
@@ -38,7 +37,8 @@ async function bootstrap(): Promise<void> {
   if (saved.kind === 'loaded') {
     session = GameSession.resume(defs, world, saves, saved.state, Date.now());
   } else {
-    const site = await chooseStartSite(hudRoot, defs, world, game, suggestStartSites(world, defs));
+    // المواقع المقترحة متماثلة في العالم المستوي، فتبدأ الدولة في أولها مباشرة / The suggested sites are alike in the flat world, so the nation starts at the first
+    const site = suggestStartSites(world, defs)[0];
     session = GameSession.create(defs, world, saves, site, Date.now());
   }
   startGame(hudRoot, defs, world, game, session, saved.kind === 'world-changed');
