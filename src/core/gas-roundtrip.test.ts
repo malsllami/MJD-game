@@ -109,6 +109,7 @@ describe('Apps Script: إضافة تطور القرية على قاعدة بيا
     gas.applyPrimitiveEra();
     gas.applyCompactVillage();
     gas.applyForestFrontier();
+    gas.applyMenuLayout();
     const defs = definitionsFrom(gas);
     expect(defs.buildings.find((b) => b.id === 'farm')!.name).toBe('مزرعة القمح');
     const normalise = (d: typeof defs) => ({ ...d, buildings: d.buildings.map((b) => ({ ...b, name: b.id === 'farm' ? '' : b.name })) });
@@ -213,6 +214,7 @@ describe('Apps Script: إضافة العالم والمكامن ومقياس ا�
     gas.applyCapitalScale();
     gas.applyCompactVillage();
     gas.applyForestFrontier();
+    gas.applyMenuLayout();
     expect(definitionsFrom(gas)).toEqual(fresh);
   });
 

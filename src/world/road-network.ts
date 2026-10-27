@@ -25,8 +25,6 @@ const DASH = new Color3(0.95, 0.88, 0.55);
 const LAMP_LIGHT = new Color3(1, 0.82, 0.45);
 const TORCH_LIGHT = new Color3(1, 0.5, 0.12);
 const TORCH_POST = new Color3(0.36, 0.24, 0.14);
-/** مشعل على كل قطعتين من الطريق الترابي / A torch every second dirt-road piece */
-const TORCH_EVERY = 2;
 
 /** هندسة تُجمع ثم تتحول إلى مجسم واحد / Geometry gathered then turned into one mesh */
 class Builder {
@@ -112,11 +110,12 @@ export class RoadNetwork {
     return out;
   }
 
-  /** إعادة الرسم عند تغيّر الطرق فقط / Redraw only when roads change */
-  sync(state: GameState): void {
+  /** إعادة الرسم عند تغيّر الطرق أو الشعلات المكتملة فقط / Redraw only when roads or finished torches change */
+  sync(state: GameState, now: number): void {
     const all = this.edgesByStyle(state);
     const styles = new Map([...all].filter(([style]) => !this.painted.has(style)));
-    const signature = [...all].map(([s, set]) => `${s}:${[...set].sort().join(';')}`).join('|');
+    const torchCorners = (state.torches ?? []).filter((t) => t.completesAt <= now).map((t) => t.corner).sort();
+    const signature = [...all].map(([s, set]) => `${s}:${[...set].sort().join(';')}`).join('|') + `|t:${torchCorners.join(';')}`;
     if (signature === this.signature) return;
     this.signature = signature;
     for (const m of this.meshes) m.dispose();
@@ -165,31 +164,26 @@ export class RoadNetwork {
       if (mesh) this.meshes.push(mesh);
     }
     if (lamps.length) this.meshes.push(...this.buildLamps(lamps, this.postMat, this.lampMat));
-    // الطرق المرسومة على الأرض تُنار بمشاعل على جانبها / Ground-painted roads are lit by torches at their side
-    const torches: [number, number][] = [];
-    for (const style of this.painted) {
-      [...(all.get(style) ?? [])].sort().forEach((edge, i) => {
-        if (i % TORCH_EVERY) return;
-        const [[ax, az], [bx, bz]] = edgeCorners(edge).map(([x, z]) => at(x, z));
-        const side = s * 0.24;
-        torches.push([(ax + bx) / 2 + (bz !== az ? side : 0), (az + bz) / 2 + (bx !== ax ? side : 0)]);
-      });
-    }
-    if (torches.length) this.meshes.push(...this.buildLamps(torches, this.torchPostMat, this.torchMat));
+    // الشعلات التي يضعها اللاعب على زوايا الشبكة / The torches the player places on grid corners
+    const torches = torchCorners.map((k) => {
+      const [x, z] = k.split(',').map(Number);
+      return at(x, z);
+    });
+    if (torches.length) this.meshes.push(...this.buildLamps(torches, this.torchPostMat, this.torchMat, 1.6));
   }
 
   /** عمود برأس مضيء في كل موضع (مصباح أو مشعل) / A post with a glowing head at each spot (a lamp or a torch) */
-  private buildLamps(spots: [number, number][], postMat: StandardMaterial, headMat: StandardMaterial): Mesh[] {
+  private buildLamps(spots: [number, number][], postMat: StandardMaterial, headMat: StandardMaterial, scale = 1): Mesh[] {
     const s = this.world.settings.tileSize;
     const posts: Mesh[] = [];
     const heads: Mesh[] = [];
     for (const [px, pz] of spots) {
       const ground = Math.max(0, sampleHeight(this.world, px, pz));
-      const h = s * 0.2;
-      const post = MeshBuilder.CreateCylinder('post', { diameter: s * 0.016, height: h, tessellation: 5 }, this.scene);
+      const h = s * 0.2 * scale;
+      const post = MeshBuilder.CreateCylinder('post', { diameter: s * 0.016 * scale, height: h, tessellation: 5 }, this.scene);
       post.position.set(px, ground + h / 2, pz);
       posts.push(post);
-      const head = MeshBuilder.CreateSphere('lamp', { diameter: s * 0.045, segments: 4 }, this.scene);
+      const head = MeshBuilder.CreateSphere('lamp', { diameter: s * 0.045 * scale, segments: 4 }, this.scene);
       head.position.set(px, ground + h, pz);
       heads.push(head);
     }

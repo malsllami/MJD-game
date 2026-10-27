@@ -72,6 +72,9 @@ const WORLD_SETTINGS = [
   { key: 'خشب قطع الغابة', field: 'clearingWood', type: 'number', description: 'الخشب الذي يضاف للمخزون عند اكتمال قطع كل قطعة' },
   { key: 'عمق الغابة المحيطة', field: 'frontierDepth', type: 'number', description: 'عرض الغابة الكثيفة حول القرية الأولى بعدد المربعات' },
   { key: 'المسافة بين القرية والغابة', field: 'frontierGap', type: 'number', description: 'مربعات فارغة بين حدود القرية الأولى والغابة حتى تتضح معالمها' },
+  // إضافة ترتيب القوائم (applyMenuLayout) / Menu layout addition
+  { key: 'مبنى الهندسة', field: 'engineeringBuilding', type: 'string', description: 'معرف المبنى الذي يتيح إعادة ترتيب القرية بتكلفة نقل مخفضة' },
+  { key: 'نسبة تكلفة النقل مع مبنى الهندسة', field: 'engineeringMoveCostPercent', type: 'number', description: 'تكلفة نقل المباني كنسبة من تكلفة بنائها حين يعمل مبنى الهندسة' },
 ];
 
 /**

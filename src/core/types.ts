@@ -71,6 +71,9 @@ export interface WorldSettings {
   frontierDepth: number;
   /** مربعات فارغة بين القرية الأولى والغابة / Empty tiles between the first village and the forest */
   frontierGap: number;
+  /** مبنى الهندسة ونسبة تكلفة النقل حين يعمل / The engineering building and the move cost percentage while it runs */
+  engineeringBuilding: string;
+  engineeringMoveCostPercent: number;
 }
 
 /** المنطقة المقترحة للمبنى / A building's suggested zone */
@@ -355,6 +358,15 @@ export interface PlacedRoad {
   completesAt: number;
 }
 
+/** شعلة على زاوية من زوايا الشبكة "x,z" / A torch on a grid corner "x,z" */
+export interface PlacedTorch {
+  uid: string;
+  buildingId: string;
+  corner: string;
+  startedAt: number;
+  completesAt: number;
+}
+
 /** حالة الدولة أثناء اللعب / Nation state during play */
 export interface GameState {
   /** موقع القرية الأولى الذي اختاره اللاعب / The first village site chosen by the player */
@@ -378,6 +390,8 @@ export interface GameState {
   /** قطع الغابة الجارية، والمكامن التي كشفها القطع (تغيب في حفظ أقدم) / Running forest clearings, and the deposits clearing revealed (absent in older saves) */
   clearings?: Clearing[];
   foundDeposits?: Deposit[];
+  /** الشعلات على زوايا الشبكة (تغيب في حفظ أقدم) / Torches on grid corners (absent in older saves) */
+  torches?: PlacedTorch[];
   /** آخر وقت حُسب عنده الإنتاج / Last time production was applied */
   lastTick: number;
 }

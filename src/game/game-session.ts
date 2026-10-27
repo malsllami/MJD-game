@@ -3,7 +3,7 @@
 
 import {
   advance, annexTile, checkAnnex, checkMove, checkPlacement, createInitialState, demolishBuilding, demolishRoads, moveBuilding,
-  placeBuilding, placeRoadPath, placeWallPath, resumeAfterAbsence, surveyTile, type Check, type Resume, type RoadPathResult,
+  placeBuilding, placeRoadPath, placeTorches, placeWallPath, resumeAfterAbsence, surveyTile, type Check, type Resume, type RoadPathResult,
 } from '../core/economy';
 import { checkClearing, startClearing } from '../core/frontier';
 import { checkTrade, trade, type Side } from '../core/market';
@@ -65,10 +65,10 @@ export class GameSession {
     return result;
   }
 
-  /** هدم الطرق على حواف / Remove the roads on edges */
-  demolishRoads(edges: string[], now: number): number {
+  /** هدم الطرق والأسوار على حواف والشعلات على زوايا / Remove the roads and walls on edges and the torches on corners */
+  demolishRoads(edges: string[], now: number, corners: string[] = []): number {
     this.tick(now);
-    const { state, removed } = demolishRoads(this.current, this.defs, edges);
+    const { state, removed } = demolishRoads(this.current, this.defs, edges, corners);
     this.current = state;
     if (removed) this.persist();
     return removed;
@@ -96,7 +96,7 @@ export class GameSession {
     this.tick(now);
     const check = checkMove(this.defs, this.world, this.current, uid, tile, now);
     if (check.ok) {
-      this.current = moveBuilding(this.current, this.defs, uid, tile);
+      this.current = moveBuilding(this.current, this.defs, uid, tile, now);
       this.persist();
     }
     return check;
@@ -122,6 +122,16 @@ export class GameSession {
       this.persist();
     }
     return check;
+  }
+
+  /** وضع شعلات على زوايا الشبكة / Place torches on grid corners */
+  placeTorches(torch: BuildingDef, corners: string[], now: number): RoadPathResult {
+    this.tick(now);
+    let n = 0;
+    const result = placeTorches(this.current, this.defs, torch, corners, now, () => `t${now.toString(36)}-${n++}`);
+    this.current = result.state;
+    if (result.placed) this.persist();
+    return result;
   }
 
   /** ترقية مبنى مستوى واحدًا / Upgrade a building one level */

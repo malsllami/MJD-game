@@ -2,7 +2,7 @@
 // Surrounding forest tests: a first village fitting its facilities, clearing for a time, a cost and wood, and the random resources it reveals by level
 import { describe, expect, it } from 'vitest';
 import { seedDefinitions } from '../test/gas-harness';
-import { advance, annexCost, createInitialState, depositAt, tileKey } from './economy';
+import { advance, annexCost, checkTorch, createInitialState, demolishRoads, depositAt, placeTorches, tileKey } from './economy';
 import { checkClearing, clearingParcel, drawDeposit, isForestMode, startClearing } from './frontier';
 import { suggestStartSites } from './start-sites';
 import type { GameState, Tile } from './types';
@@ -94,5 +94,31 @@ describe('الغابة المحيطة / the surrounding forest', () => {
     expect(found!.richness).toBeLessThanOrEqual(rule.maxRichness);
     s = { ...start, foundDeposits: [found!] };
     expect(depositAt(world, s, found!.x, found!.z, found!.resourceId)).toEqual(found);
+  });
+});
+
+describe('الشعلات والقوائم / torches and menus', () => {
+  const torch = defs.buildings.find((b) => b.model === 'torch')!;
+
+  it('الشعلة على زاوية داخل الدولة، مرة واحدة لكل زاوية، وتُهدم فتعود قيمتها / one torch per corner inside the nation, removable with a refund', () => {
+    const corner = tileKey(site.x + 3, site.z + 3);
+    expect(checkTorch(defs, start, torch, corner, T0)).toEqual({ ok: true });
+    expect(checkTorch(defs, start, torch, tileKey(site.x, site.z), T0).ok).toBe(false);
+    expect(checkTorch(defs, start, torch, tileKey(site.x + R + 4, site.z), T0).ok).toBe(false);
+    const lit = placeTorches(start, defs, torch, [corner, tileKey(site.x + 3, site.z + 4)], T0, () => 'x');
+    expect(lit.placed).toBe(2);
+    expect(checkTorch(defs, lit.state, torch, corner, T0).ok).toBe(false);
+    const gone = demolishRoads(lit.state, defs, [], [corner]);
+    expect(gone.removed).toBe(1);
+    expect(gone.state.torches).toHaveLength(1);
+  });
+
+  it('القوائم الست بالترتيب، وكل مبنى في فئته / the six menus in order, each building in its own', () => {
+    expect(defs.buildingCategories.slice(0, 6).map((c) => c.name)).toEqual(['الصناعة', 'المرافق', 'النقل', 'السكن', 'الاقتصاد', 'الحكم']);
+    const cat = (id: string) => defs.buildings.find((b) => b.id === id)!.category;
+    expect(['farm', 'well', 'blacksmith'].map(cat)).toEqual(['industry', 'industry', 'industry']);
+    expect(['torch', 'wooden_wall', 'paving_stone', 'pond'].map(cat)).toEqual(['utilities', 'utilities', 'utilities', 'utilities']);
+    expect(['market', 'bank'].map(cat)).toEqual(['economy', 'economy']);
+    expect(['hospital', 'engineering_office', 'barracks'].map(cat)).toEqual(['government', 'government', 'government']);
   });
 });

@@ -80,7 +80,40 @@ const FOREST_FRONTIER = {
   clearingWood: 120,
   frontierDepth: 10,
   frontierGap: 1,
+  engineeringBuilding: 'engineering_office',
+  engineeringMoveCostPercent: 0,
 };
+
+/**
+ * ترتيب قوائم البناء: [المعرف، الاسم] بالترتيب الظاهر؛ والفئات الأخرى تبقى في الشيت وتختفي من القائمة إذ لا مباني فيها
+ * The build menus: [id, name] in display order; the other categories stay in the sheet and vanish from the menu having no buildings
+ */
+const MENU_ORDER = [
+  ['industry', 'الصناعة'], ['utilities', 'المرافق'], ['transport', 'النقل'], ['housing', 'السكن'], ['economy', 'الاقتصاد'], ['government', 'الحكم'],
+];
+/** فئة كل مبنى في القوائم / Each building's menu category */
+const MENU_CATEGORIES = {
+  industry: ['farm', 'livestock', 'lumber_camp', 'sawmill', 'blacksmith', 'mine', 'oil_field', 'oil_prospector', 'gold_prospector', 'stone_prospector',
+    'copper_prospector', 'silver_prospector', 'well', 'water_desal', 'power_plant', 'factory'],
+  utilities: ['torch', 'wooden_wall', 'gate', 'village_garden', 'park', 'paving_stone', 'paving_sand', 'pond', 'stream'],
+  transport: ['road', 'paved_road', 'port', 'airport', 'train_station'],
+  housing: ['houses', 'tent', 'apartments', 'farmers_house', 'carpenters_house', 'smiths_house', 'miners_house', 'traders_house', 'herders_house'],
+  economy: ['market', 'bank', 'farm_storage', 'materials_storage'],
+  government: ['development_center', 'engineering_office', 'village_center', 'governor_palace', 'finance_center', 'police', 'civil_defense', 'hospital',
+    'school', 'research_center', 'barracks', 'military_base', 'military_command', 'foreign_ministry', 'alliance_house'],
+};
+/** فئة المبنى في القوائم، أو فئته الأصلية / A building's menu category, or its original one */
+function menuCategory_(id, fallback) {
+  const found = Object.keys(MENU_CATEGORIES).filter(function (c) { return MENU_CATEGORIES[c].indexOf(id) >= 0; })[0];
+  return found || fallback;
+}
+
+/** مباني إضافة ترتيب القوائم / Buildings of the menu layout addition */
+const SEED_MENU_IDS = ['torch', 'paving_stone', 'paving_sand', 'engineering_office', 'foreign_ministry', 'alliance_house'];
+const SEED_MENU_COSTS = [
+  ['torch', 'wood', 5], ['paving_stone', 'stone', 10], ['paving_sand', 'stone', 3], ['engineering_office', 'stone', 400], ['engineering_office', 'wood', 200],
+  ['engineering_office', 'gold', 300], ['foreign_ministry', 'stone', 500], ['foreign_ministry', 'gold', 500], ['alliance_house', 'stone', 400], ['alliance_house', 'gold', 400],
+];
 
 /** السور والبوابة مفتوحان من البداية فيبني اللاعب سوره بنفسه / The wall and gate are open from the start so the player builds the wall himself */
 const OPEN_WALLS = ['wooden_wall', 'gate'];
@@ -160,6 +193,13 @@ const SEED_BUILDINGS = [
   ['gate', 'بوابة', 'security', 'plain, coast, plateau, desert', 15, '', 'village', 0, 'gate', false, ''],
   ['pond', 'بحيرة', 'utilities', 'plain, coast, plateau', 30, '', 'village', 0, 'pond', false, ''],
   ['stream', 'جدول', 'utilities', 'plain, coast, plateau', 6, '', 'village', 0, 'stream', false, ''],
+  // إضافة ترتيب القوائم: الشعلات والبلاط، ومباني الحكم بعد المستوى الخامس / Menu layout: torches and paving, and government buildings after level five
+  ['torch', 'شعلة', 'utilities', 'plain, coast, plateau, desert', 3, '', 'village', 0, 'torch', false, ''],
+  ['paving_stone', 'بلاط حجري', 'utilities', 'plain, coast, plateau, desert', 4, '', 'village', 0, 'paving-stone', false, ''],
+  ['paving_sand', 'بلاط رملي', 'utilities', 'plain, coast, plateau, desert', 3, '', 'village', 0, 'paving-sand', false, ''],
+  ['engineering_office', 'المكتب الهندسي', 'government', 'plain, coast, plateau', 120, '', 'town', 0, 'civic', true, ''],
+  ['foreign_ministry', 'الخارجية', 'government', 'plain, coast, plateau', 150, '', 'town', 0, 'civic', true, ''],
+  ['alliance_house', 'دار التحالف', 'government', 'plain, coast, plateau', 150, '', 'town', 0, 'civic', true, ''],
 ];
 
 /** المهن: [المعرف، الاسم، الأيقونة، اللون] / Trades: [id, name, icon, colour] */
@@ -188,6 +228,8 @@ const SEED_JOBS = {
   farm_storage: ['', 0, 0, 'farm'], materials_storage: ['', 0, 10, ''], bank: ['', 0, 40, 'market'],
   village_garden: ['', 0, 25, ''], wooden_wall: ['', 0, 0, ''], gate: ['', 0, 0, ''],
   pond: ['', 0, 10, ''], stream: ['', 0, 10, ''],
+  torch: ['', 0, 0, ''], paving_stone: ['', 0, 0, ''], paving_sand: ['', 0, 0, ''],
+  engineering_office: ['', 0, 0, ''], foreign_ministry: ['', 0, 0, ''], alliance_house: ['', 0, 0, ''],
 };
 
 /**
@@ -203,6 +245,7 @@ const SEED_ZONES = {
   police: 'administrative', civil_defense: 'administrative', school: 'administrative', hospital: 'administrative', military_command: 'administrative',
   market: 'industrial', farm_storage: 'industrial', materials_storage: 'industrial', bank: 'industrial', factory: 'industrial', power_plant: 'industrial',
   farm: 'agricultural', livestock: 'agricultural',
+  engineering_office: 'administrative', foreign_ministry: 'administrative', alliance_house: 'administrative',
 };
 
 /** مباني إضافة الاقتصاد الحي / Buildings of the living economy addition */
@@ -336,13 +379,11 @@ const SEED_ROWS = {
   ].map(function (r, i) {
     return { 'المعرف': r[0], 'الاسم': r[1], 'الأيقونة': r[2], 'اللون': r[3], 'الكمية الابتدائية': r[4], 'الترتيب': i + 1, 'السعة الأساسية': SEED_BASE_CAPACITY[r[0]] };
   }),
-  buildingCategories: [
-    ['economy', 'الاقتصاد'], ['housing', 'الإسكان'], ['transport', 'النقل'], ['security', 'الأمن'], ['military', 'الجيش'], ['science', 'العلوم'],
-    ['utilities', 'المرافق'], ['agriculture', 'الزراعة'], ['services', 'الخدمات'], ['government', 'الحكومة'], ['industry', 'الصناعة'],
-  ].map(function (c, i) { return { 'المعرف': c[0], 'الاسم': c[1], 'الترتيب': i + 1 }; }),
+  buildingCategories: MENU_ORDER.concat([['security', 'الأمن'], ['military', 'الجيش'], ['science', 'العلوم'], ['agriculture', 'الزراعة'], ['services', 'الخدمات']])
+    .map(function (c, i) { return { 'المعرف': c[0], 'الاسم': c[1], 'الترتيب': i + 1 }; }),
   buildings: SEED_BUILDINGS.map(function (b, i) {
     return {
-      'المعرف': b[0], 'الاسم': b[1], 'الفئة': b[2], 'التضاريس المسموحة': b[3], 'مدة البناء بالثواني': b[4], 'التقنية المطلوبة': b[5],
+      'المعرف': b[0], 'الاسم': b[1], 'الفئة': menuCategory_(b[0], b[2]), 'التضاريس المسموحة': b[3], 'مدة البناء بالثواني': b[4], 'التقنية المطلوبة': b[5],
       'الترتيب': i + 1, 'المرحلة المطلوبة': b[6], 'السكان المضافون': b[7], 'النموذج': b[8], 'يتطلب طريق': b[9], 'يتطلب مكمن': b[10] || '',
       'المهنة': (SEED_JOBS[b[0]] || [''])[0], 'عدد العمال': (SEED_JOBS[b[0]] || ['', 0])[1],
       'السكان المطلوبون': (SEED_JOBS[b[0]] || ['', 0, 0])[2], 'المباني المطلوبة': (SEED_JOBS[b[0]] || ['', 0, 0, ''])[3],
@@ -365,7 +406,7 @@ const SEED_ROWS = {
     ['military_base', 'stone', 1500], ['military_base', 'iron', 600], ['military_base', 'gold', 800],
     ['development_center', 'stone', 200], ['development_center', 'wood', 150], ['development_center', 'gold', 200],
     ['military_command', 'stone', 600], ['military_command', 'iron', 200], ['military_command', 'gold', 400],
-  ].concat(SEED_RESOURCE_COSTS, SEED_DEPOSIT_COSTS, SEED_PRIMITIVE_COSTS, SEED_ECONOMY_COSTS)),
+  ].concat(SEED_RESOURCE_COSTS, SEED_DEPOSIT_COSTS, SEED_PRIMITIVE_COSTS, SEED_ECONOMY_COSTS, SEED_MENU_COSTS)),
   buildingProduction: amounts_('الكمية في الدقيقة', [
     ['farm', 'food', 30], ['lumber_camp', 'wood', 24], ['mine', 'stone', 18], ['mine', 'iron', 8], ['oil_field', 'oil', 6],
     ['port', 'gold', 30], ['port', 'food', 10], ['water_desal', 'water', 25], ['power_plant', 'power', 25],

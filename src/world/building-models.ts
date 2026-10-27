@@ -10,7 +10,7 @@ import { Color3, Mesh, MeshBuilder, Scene, StandardMaterial, Texture, TransformN
 import { looksFor, styleOf, type Era, type Look } from '../assets/catalog';
 import { FLAG_POLE, LOW_WALL, ROOF_MATERIAL, WATER_SURFACE, roofTexture, type RoofColor } from '../assets/village-kit';
 import type { ModelLibrary } from '../assets/model-library';
-import { isRoad, isUnderConstruction } from '../core/economy';
+import { isRoad, isUnderConstruction, PAVING_MODELS } from '../core/economy';
 import { isUpgrading } from '../core/levels';
 import type { BuildingDef, GameState, PlacedBuilding, World } from '../core/types';
 import { sampleHeight, tileCenter } from '../core/world-gen';
@@ -199,7 +199,8 @@ export class BuildingModels {
     const alive = new Set<string>();
     for (const placed of state.buildings) {
       const def = this.defs.get(placed.buildingId);
-      if (!def || isRoad(def)) continue;
+      // البلاط تلوّنه الأرض فلا مجسم له / Paving is painted by the ground, so it has no model
+      if (!def || isRoad(def) || PAVING_MODELS.has(def.model)) continue;
       alive.add(placed.uid);
       let model = this.models.get(placed.uid);
       const era = eraOf(placed);

@@ -15,8 +15,7 @@
     "@babylonjs/core": "9.32.0",
     "@babylonjs/loaders": "9.32.0",
     "@babylonjs/materials": "9.32.0",
-    "@fontsource/ibm-plex-sans-arabic": "5.3.0",
-    "@fontsource/reem-kufi": "5.3.0"
+    "@fontsource/ibm-plex-sans-arabic": "5.3.0"
   },
   "devDependencies": {
     "@gltf-transform/core": "4.5.1",

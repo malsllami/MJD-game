@@ -35,7 +35,7 @@ const VILLAGE = [
 const NATURE = [
   'CommonTree_1', 'CommonTree_2', 'CommonTree_3', 'CommonTree_4', 'CommonTree_5', 'Pine_1', 'Pine_2', 'Pine_3', 'Pine_5',
   'Bush_Common_Flowers', 'Flower_3_Group', 'Flower_4_Group',
-  'Rock_Medium_1', 'Rock_Medium_2', 'Rock_Medium_3', 'Pebble_Round_1', 'Plant_1', 'Plant_1_Big', 'DeadTree_1',
+  'Rock_Medium_1', 'Rock_Medium_2', 'Rock_Medium_3', 'Pebble_Round_1', 'Plant_1', 'Plant_1_Big', 'DeadTree_1', 'RockPath_Square_Wide',
 ];
 /** الحركات المستخدمة من مكتبة الحركات 2 (هيكلها واحد، فلا تحتاج نقلًا بين هياكل) / Animations kept from library 2 (one skeleton, no retargeting) */
 const PEOPLE_ANIMS = ['Farm_Harvest', 'Farm_PlantSeed', 'Farm_Watering', 'TreeChopping_Loop', 'Walk_Carry_Loop', 'Idle_FoldArms_Loop', 'Yes', 'Chest_Open', 'Consume'];

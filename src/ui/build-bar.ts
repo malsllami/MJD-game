@@ -2,7 +2,7 @@
 // File responsibility: build bar — an "all" tab and categories, picture cards for unlocked buildings only with their state (available or short), and the queue
 
 import { styleOf } from '../assets/catalog';
-import { isRoad, isUnderConstruction, isUnlocked, isWall, missingResources } from '../core/economy';
+import { isRoad, isTorch, isUnderConstruction, isUnlocked, isWall, missingResources, PAVING_MODELS } from '../core/economy';
 import type { BuildingDef, GameDefinitions, GameState } from '../core/types';
 import { formatDuration, formatNumber } from '../utils/format';
 import { esc } from '../utils/html';
@@ -119,7 +119,9 @@ export class BuildBar {
         ].filter(Boolean);
         // التفاصيل الكاملة في التلميح، وأهم أثر تحت الاسم / Full details in the tooltip, the main effect under the name
         const info = [`يُبنى على: ${where}`, formatDuration(b.buildSeconds), ...effects].join('\n');
-        const picture = isRoad(b) || isWall(b) ? `<span class="thumb road">${icon(isWall(b) ? 'shield' : 'road')}</span>` : `<span class="thumb"><img data-thumb="${esc(styleOf(b))}" alt="" hidden></span>`;
+        // ما يُرسم على الحواف أو الزوايا أو الأرض بأيقونة بدل صورة / What is drawn on edges, corners or the ground gets an icon instead of a picture
+        const glyph = b.model === 'stream' ? 'water' : isWall(b) ? 'shield' : isTorch(b) ? 'fire' : PAVING_MODELS.has(b.model) ? 'map' : isRoad(b) ? 'road' : '';
+        const picture = glyph ? `<span class="thumb road">${icon(glyph)}</span>` : `<span class="thumb"><img data-thumb="${esc(styleOf(b))}" alt="" hidden></span>`;
         return `<button type="button" class="card" data-building="${esc(b.id)}" aria-pressed="${this.armed === b.id}" data-info="${esc(info)}">
           ${picture}
           <b>${esc(b.name)}</b>

@@ -5,7 +5,7 @@
 // government (nation, upgrade, army), housing (residents and trade), work buildings (workers and output), the development centre
 // (tasks), the market (buying and selling), stores (amounts and capacity), plus a "building" tab to move and demolish
 
-import { buildingStatus, capacityAt, isRoad, isUnderConstruction, netRates, stageById, staffingAt, unlockGaps, type Check, richnessOf } from '../core/economy';
+import { buildingStatus, capacityAt, isRoad, isUnderConstruction, netRates, stageById, staffingAt, unlockGaps, type Check, richnessOf, movePercent } from '../core/economy';
 import { checkTrade, CURRENCY, hasMarket, type Side } from '../core/market';
 import { factorsOf, governmentLevel, housingAt, isUpgradable, isUpgrading, levelOf, levelRow } from '../core/levels';
 import { buildingUpgradeCost, checkBuildingUpgrade, upgradeRequirements } from '../core/progression';
@@ -321,7 +321,7 @@ export class BuildingPanel {
     const { defs } = this.context();
     const refund = Object.entries(def.cost).map(([id, n]) => `${formatNumber(Math.floor((n * defs.world.demolishRefundPercent) / 100))} ${defs.resources.find((r) => r.id === id)?.name ?? id}`).join('، ');
     const confirming = this.pendingDemolish > Date.now();
-    return `<p class="panel-note">النقل يكلّف ${formatNumber(defs.world.moveCostPercent)}٪ من تكلفة البناء، والهدم يسترد ${formatNumber(defs.world.demolishRefundPercent)}٪ (${esc(refund || 'لا شيء')}).</p>
+    return `<p class="panel-note">النقل يكلّف ${formatNumber(movePercent(defs, this.context().state, this.context().now))}٪ من تكلفة البناء، والهدم يسترد ${formatNumber(defs.world.demolishRefundPercent)}٪ (${esc(refund || 'لا شيء')}).</p>
       <div class="bp-pair">
         <button type="button" class="text-btn ok" data-act="move">نقل</button>
         <button type="button" class="text-btn sell" data-act="demolish">${confirming ? 'اضغط مرة أخرى للتأكيد' : 'هدم'}</button>

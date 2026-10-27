@@ -9,7 +9,7 @@ import { COMPOUND_ENTRANCE_X, compoundPlaza, TILE_METRES } from '../assets/villa
 import { APP_CONFIG } from '../config/app.config';
 import {
   buildingAt, buildingStatus, checkMove, checkPlacement, cornerPath, costShare, depositAt, edgeTiles, housingCapacity, isRoad,
-  autoRoadPath, capacityAt, isSettlementTile, isUnderConstruction, isWall, netRates, placeWallPath, wallAt, nextStage, pathEdges, placeRoadPath, roadAt, stageById, surveyCost, tileKey, annexCost, knownDeposits,
+  autoRoadPath, capacityAt, isSettlementTile, isUnderConstruction, isWall, netRates, placeWallPath, wallAt, nextStage, pathEdges, placeRoadPath, roadAt, stageById, surveyCost, tileKey, annexCost, knownDeposits, isTorch, movePercent, placeTorches,
 } from '../core/economy';
 import { isForestMode, runningClearings } from '../core/frontier';
 import { governmentLevel, governmentLevelOf, levelOf, levelRow } from '../core/levels';
@@ -150,7 +150,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
       move: (uid) => {
         const def = byId.get(session.state.buildings.find((b) => b.uid === uid)?.buildingId ?? '');
         if (!def) return;
-        const price = costText(costShare(def.cost, defs.world.moveCostPercent));
+        const price = costText(costShare(def.cost, movePercent(defs, session.state, Date.now())));
         setMode({ kind: 'move', uid });
         toast.show(`اختر موقعًا جديدًا لـ${def.name} من المربعات الخضراء${price ? ` · تكلفة النقل ${price}` : ''}`, 5000);
       },
@@ -295,6 +295,11 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   function pickBuilding(b: BuildingDef): void {
     if ((mode.kind === 'place' || mode.kind === 'road') && mode.building.id === b.id) return setMode({ kind: 'idle' });
     closeSelection();
+    if (isTorch(b)) {
+      setMode({ kind: 'road', building: b });
+      toast.show(`اضغط على زاوية من زوايا الشبكة لوضع ${b.name}، أو اسحب لوضع شعلة عند كل زاوية في المسار، ثم أكّد بعلامة ✓`, 6000);
+      return;
+    }
     if (isRoad(b) || isWall(b)) {
       setMode({ kind: 'road', building: b });
       toast.show(`اسحب على خطوط الشبكة لتخطيط ${b.name} من حول ${governmentName} أو من طريق قائم، ثم أكّد بعلامة ✓`, 6000);
@@ -356,6 +361,9 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     let corners: { x: number; z: number }[] = [];
     // السور والبوابة يُرسمان بنفس الأداة لكن بقواعدهما / Walls and gates use the same tool with their own rules
     const wall = !!road && isWall(road);
+    const torch = !!road && isTorch(road);
+    const cornerKeys = () => corners.map((c) => tileKey(c.x, c.z));
+    const torchesOn = () => cornerKeys().filter((k) => (session.state.torches ?? []).some((t) => t.corner === k));
     const edges = () => {
       const all = pathEdges(corners);
       return road ? all : all.filter((e) => roadAt(session.state, e) || wallAt(session.state, e));
@@ -391,22 +399,29 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
         if (!corners.length) return;
         const hint = 'اسحب من طرف المسار لتعديله، أو ارسم مسارًا جديدًا';
         if (!road) {
-          return confirm.show(null, 'هدم الطرق', list.length ? `${formatNumber(list.length)} قطعة طريق` : 'لا طرق في هذا المسار', list.length > 0, () => {
-            const removed = session.demolishRoads(list, Date.now());
-            toast.show(`أُزيلت ${formatNumber(removed)} قطعة طريق واسترددت ${formatNumber(defs.world.demolishRefundPercent)}٪ من تكلفتها`);
+          // الجرافة تزيل الطرق والأسوار على الحواف والشعلات على زوايا المسار / The bulldozer removes edge roads and walls and the path's corner torches
+          const lights = torchesOn();
+          const parts = [list.length ? `${formatNumber(list.length)} قطعة طريق أو سور` : '', lights.length ? `${formatNumber(lights.length)} شعلة` : ''].filter(Boolean).join(' و');
+          return confirm.show(null, 'هدم', parts || 'لا شيء يُهدم في هذا المسار', !!parts, () => {
+            const removed = session.demolishRoads(list, Date.now(), lights);
+            toast.show(`أُزيلت ${formatNumber(removed)} قطعة واسترددت ${formatNumber(defs.world.demolishRefundPercent)}٪ من تكلفتها`);
             reset();
             refresh(true);
           }, reset, hint);
         }
-        const dry = wall
-          ? placeWallPath(session.state, defs, world, road, list, Date.now(), () => 'preview')
-          : placeRoadPath(session.state, defs, world, road, list, Date.now(), () => 'preview');
+        const dry = torch
+          ? placeTorches(session.state, defs, road, cornerKeys(), Date.now(), () => 'preview')
+          : wall
+            ? placeWallPath(session.state, defs, world, road, list, Date.now(), () => 'preview')
+            : placeRoadPath(session.state, defs, world, road, list, Date.now(), () => 'preview');
         const total = Object.fromEntries(Object.entries(road.cost).map(([id, n]) => [id, n * dry.placed]));
         const detail = dry.placed
           ? `${formatNumber(dry.placed)} قطعة · ${costText(total)}${dry.stoppedBy ? ` · يتوقف: ${dry.stoppedBy}` : ''}`
           : (dry.stoppedBy ?? 'لا قطع جديدة في هذا المسار');
         confirm.show(null, road.name, detail, dry.placed > 0, () => {
-          const result = wall ? session.placeWall(road, list, Date.now()) : session.placeRoad(road, list, Date.now());
+          const result = torch
+            ? session.placeTorches(road, cornerKeys(), Date.now())
+            : wall ? session.placeWall(road, list, Date.now()) : session.placeRoad(road, list, Date.now());
           if (result.placed) toast.show(`بدأ بناء ${formatNumber(result.placed)} قطعة ${road.name}`);
           else if (result.stoppedBy) toast.show(result.stoppedBy);
           reset();
@@ -448,7 +463,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     const advice = check.ok ? placementAdvice(defs, session.state, def, tile, Date.now(), formatNumber) : null;
     ghost.show(partsFor(styleOf(def), uid, levelEra(levelOf(placed, Date.now()))), tile, !check.ok ? 'bad' : advice ? 'warn' : 'ok');
     if (advice) toast.show(advice, 6000);
-    const detail = check.ok ? `تكلفة النقل ${costText(costShare(def.cost, defs.world.moveCostPercent)) || 'مجانًا'}` : check.reason;
+    const detail = check.ok ? `تكلفة النقل ${costText(costShare(def.cost, movePercent(defs, session.state, Date.now()))) || 'مجانًا'}` : check.reason;
     confirm.show(labelAbove(tile.x, tile.z, 0.6), `نقل ${def.name}`, detail, check.ok, () => {
       const result = session.move(uid, tile, Date.now());
       toast.show(result.ok ? 'نُقل المبنى إلى موقعه الجديد' : result.reason);
@@ -600,17 +615,19 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     }
     nature.hide(cleared);
     // تراب تحت الطرق والمباني، وتربة محروثة تحت الحقول / Dirt under roads and buildings, tilled soil under fields
-    const isField = (id: string) => byId.get(id)?.model === 'field';
+    // البلاط الحجري يُرصف، والرملي ترابٌ رملي، وغيرهما تراب تحت المبنى / Stone paving is paved, sand paving is sandy dirt, others dirt under the building
+    const model = (id: string) => byId.get(id)?.model;
+    const stone = state.buildings.filter((b) => model(b.buildingId) === 'paving-stone');
     game.ground?.paint({
-      dirt: [...(compoundTiles > 1 ? [] : [state.settlement]), ...state.buildings.filter((b) => !isField(b.buildingId)).map((b) => ({ x: b.x, z: b.z }))],
-      soil: state.buildings.filter((b) => isField(b.buildingId)).map((b) => ({ x: b.x, z: b.z })),
+      dirt: [...(compoundTiles > 1 ? [] : [state.settlement]), ...state.buildings.filter((b) => model(b.buildingId) !== 'field' && model(b.buildingId) !== 'paving-stone').map((b) => ({ x: b.x, z: b.z }))],
+      soil: state.buildings.filter((b) => model(b.buildingId) === 'field').map((b) => ({ x: b.x, z: b.z })),
       roads: state.roads.map((r) => r.edge),
-      ...compoundGround,
+      paving: [...(compoundGround.paving ?? []), ...stone.map((b) => ({ x0: b.x + 0.04, z0: b.z + 0.04, x1: b.x + 0.96, z1: b.z + 0.96 }))],
     });
     syncSettlement();
     models.sync(state, now, (placed) => levelEra(levelOf(placed, now)));
     villageWall.sync(state, now, governmentLevel(defs, state).wallStyle);
-    roads.sync(state);
+    roads.sync(state, now);
     walls.sync(state, now);
     animals.sync(state, defs, now);
     traffic.sync(roads.edgesByStyle(state).get('paved-road') ?? new Set(), state.population);

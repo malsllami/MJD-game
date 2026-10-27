@@ -230,6 +230,23 @@ const DISTINCT_LOOKS: Record<string, Assembly[]> = {
       ...fenceRing(4).map((p) => ({ ...p, x: p.x * 1.05, z: p.z * 1.05 })),
     ],
     extent: 9, size: 0.85,
+  }, {
+    // حديقة زهور بممر حجري وسطها / A flower garden with a stone path through it
+    pieces: [
+      ...[-3, -1, 1, 3].map((z) => ({ path: F('RockPath_Square_Wide'), x: 0, z, fit: 2 })),
+      ...[-2.6, 2.6].flatMap((x) => [-3, -1, 1, 3].map((z, i) => ({ path: F(i % 2 ? 'Flower_3_Group' : 'Flower_4_Group'), x, z, fit: 1.3 }))),
+      { path: F('Bush_Common_Flowers'), x: -3.8, z: -3.6, fit: 1.6 }, { path: F('Bush_Common_Flowers'), x: 3.8, z: 3.6, fit: 1.6 },
+      { path: F('CommonTree_3'), x: 3.6, z: -3.4, fit: 2.8 },
+    ],
+    extent: 9, size: 0.85,
+  }, {
+    // بستان أشجار بمقعد حجري من الصخور / An orchard of trees with a stone seat
+    pieces: [
+      { path: F('CommonTree_4'), x: -2.8, z: -2.8, fit: 3 }, { path: F('CommonTree_5'), x: 2.8, z: -2.6, fit: 3 }, { path: F('CommonTree_1'), x: -2.6, z: 2.8, fit: 2.8 },
+      { path: F('CommonTree_2'), x: 2.8, z: 2.6, fit: 2.8 }, { path: F('Rock_Medium_2'), x: 0, z: 0, fit: 1.4 }, { path: F('Bush_Common_Flowers'), x: 0, z: -3.6, fit: 1.4 },
+      { path: F('Flower_3_Group'), x: -0.4, z: 1.8, fit: 1.1 }, { path: F('Flower_4_Group'), x: 1.2, z: 0.6, fit: 1 },
+    ],
+    extent: 9, size: 0.85,
   }],
 };
 Object.assign(PRIMITIVE_LOOKS, DISTINCT_LOOKS);

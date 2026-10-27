@@ -103,6 +103,9 @@ const BACKWARD_COMPATIBLE: Partial<WorldSettings> = {
   clearingWood: 0,
   frontierDepth: 0,
   frontierGap: 0,
+  // بلا مبنى هندسة / No engineering building
+  engineeringBuilding: '',
+  engineeringMoveCostPercent: 0,
 };
 
 const WALL_STYLES: WallStyle[] = ['stakes', 'palisade', 'stone'];

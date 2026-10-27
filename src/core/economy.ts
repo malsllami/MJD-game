@@ -40,6 +40,12 @@ export const WALL_MODELS = new Set(['wall', 'gate', 'stream']);
 
 export const isWall = (def: BuildingDef | undefined): boolean => !!def && WALL_MODELS.has(def.model);
 
+/** الشعلة توضع على زاوية من زوايا الشبكة لا على مربع / A torch goes on a grid corner, not on a tile */
+export const isTorch = (def: BuildingDef | undefined): boolean => !!def && def.model === 'torch';
+
+/** البلاط يُرسم على الأرض بلا مجسم / Paving is painted on the ground with no model */
+export const PAVING_MODELS = new Set(['paving-stone', 'paving-sand']);
+
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 const MINUTE_MS = 60_000;
@@ -458,18 +464,65 @@ export function placeRoadPath(state: GameState, defs: GameDefinitions, world: Wo
   return { state: current, placed, stoppedBy: null };
 }
 
-/** إزالة طرق وأسوار الحواف واسترداد نسبة من تكلفتها / Remove edge roads and walls, refunding part of their cost */
-export function demolishRoads(state: GameState, defs: GameDefinitions, edges: string[]): { state: GameState; removed: number } {
+/**
+ * إزالة طرق وأسوار الحواف، والشعلات على زوايا المسار، واسترداد نسبة من تكلفتها
+ * Remove edge roads and walls, and the torches on the path's corners, refunding part of their cost
+ */
+export function demolishRoads(state: GameState, defs: GameDefinitions, edges: string[], corners: string[] = []): { state: GameState; removed: number } {
   const drop = new Set(edges);
+  const dropCorners = new Set(corners);
   const resources = { ...state.resources };
   let removed = 0;
-  for (const r of [...state.roads, ...state.walls]) {
-    if (!drop.has(r.edge)) continue;
-    const def = defs.buildings.find((b) => b.id === r.buildingId);
+  const refund = (buildingId: string) => {
+    const def = defs.buildings.find((b) => b.id === buildingId);
     for (const [id, n] of Object.entries(costShare(def?.cost ?? {}, defs.world.demolishRefundPercent))) resources[id] = (resources[id] ?? 0) + n;
     removed++;
+  };
+  for (const r of [...state.roads, ...state.walls]) if (drop.has(r.edge)) refund(r.buildingId);
+  for (const t of state.torches ?? []) if (dropCorners.has(t.corner)) refund(t.buildingId);
+  return {
+    state: {
+      ...state, resources, roads: state.roads.filter((r) => !drop.has(r.edge)), walls: state.walls.filter((w) => !drop.has(w.edge)),
+      torches: (state.torches ?? []).filter((t) => !dropCorners.has(t.corner)),
+    },
+    removed,
+  };
+}
+
+/**
+ * هل توضع الشعلة على هذه الزاوية؟ مفتوحة، وأحد المربعات الأربعة حولها في الدولة، وليست داخل مجمع الحكم، ولا شعلة فيها، والموارد كافية
+ * Can the torch go on this corner? Unlocked, one of its four tiles in the nation, not inside the compound, no torch there, and affordable
+ */
+export function checkTorch(defs: GameDefinitions, state: GameState, torch: BuildingDef, corner: string, now: number): Check {
+  const gaps = unlockGaps(torch, state, defs, now);
+  if (gaps.length) return { ok: false, reason: `${torch.name} مقفلة؛ تحتاج: ${gaps.join('، ')}` };
+  const [x, z] = corner.split(',').map(Number);
+  const around = [[x - 1, z - 1], [x, z - 1], [x - 1, z], [x, z]];
+  const owned = new Set(state.territory);
+  if (!around.some(([tx, tz]) => owned.has(tileKey(tx, tz)))) return { ok: false, reason: `${torch.name} خارج حدود الدولة` };
+  if (around.every(([tx, tz]) => isSettlementTile(state, tx, tz))) return { ok: false, reason: 'هذه الزاوية داخل مجمع الحكم' };
+  if ((state.torches ?? []).some((t) => t.corner === corner)) return { ok: false, reason: 'توجد شعلة على هذه الزاوية' };
+  const shortage = missingResources(defs, state, torch.cost);
+  if (shortage) return { ok: false, reason: `الموارد غير كافية؛ ينقص ${shortage}` };
+  return { ok: true };
+}
+
+/** وضع شعلات على زوايا، والتوقف عند أول زاوية مرفوضة (عدا ما فيه شعلة) / Place torches on corners, stopping at the first refused one (skipping taken ones) */
+export function placeTorches(state: GameState, defs: GameDefinitions, torch: BuildingDef, corners: string[], now: number, uid: () => string): RoadPathResult {
+  let current = state;
+  let placed = 0;
+  for (const corner of corners) {
+    if ((current.torches ?? []).some((t) => t.corner === corner)) continue;
+    const check = checkTorch(defs, current, torch, corner, now);
+    if (!check.ok) return { state: current, placed, stoppedBy: check.reason };
+    current = {
+      ...current,
+      resources: pay(current.resources, torch.cost),
+      torches: [...(current.torches ?? []), { uid: uid(), buildingId: torch.id, corner, startedAt: now, completesAt: now + torch.buildSeconds * 1000 }],
+    };
+    placed++;
   }
-  return { state: { ...state, resources, roads: state.roads.filter((r) => !drop.has(r.edge)), walls: state.walls.filter((w) => !drop.has(w.edge)) }, removed };
+  return { state: current, placed, stoppedBy: null };
 }
 
 // ===== المباني / Buildings =====
@@ -541,6 +594,7 @@ interface PlacementOptions {
  */
 export function checkPlacement(defs: GameDefinitions, world: World, state: GameState, building: BuildingDef, tile: Tile, now: number, opts: PlacementOptions = {}): Check {
   if (isRoad(building) || isWall(building)) return { ok: false, reason: `${building.name} يُرسم على حدود المربعات بالسحب` };
+  if (isTorch(building)) return { ok: false, reason: `${building.name} توضع على زوايا الشبكة` };
   if (!opts.alreadyBuilt) {
     const gaps = unlockGaps(building, state, defs, now);
     if (gaps.length) return { ok: false, reason: `${building.name} مقفل؛ يحتاج: ${gaps.join('، ')}` };
@@ -609,21 +663,31 @@ export function demolishBuilding(state: GameState, defs: GameDefinitions, uid: s
 }
 
 /** هل يمكن نقل المبنى إلى هذا المربع؟ / Can the building move to this tile? */
+/**
+ * نسبة تكلفة النقل الآن: أقل حين يعمل مبنى الهندسة الذي يعيد ترتيب القرية
+ * The move cost percentage now: lower while the engineering building, which rearranges the village, is running
+ */
+export function movePercent(defs: GameDefinitions, state: GameState, now: number): number {
+  const id = defs.world.engineeringBuilding;
+  const running = !!id && state.buildings.some((b) => b.buildingId === id && buildingStatus(b, state, defs, now).kind === 'operating');
+  return running ? defs.world.engineeringMoveCostPercent : defs.world.moveCostPercent;
+}
+
 export function checkMove(defs: GameDefinitions, world: World, state: GameState, uid: string, tile: Tile, now: number): Check {
   const placed = state.buildings.find((b) => b.uid === uid);
   const def = placed && defs.buildings.find((b) => b.id === placed.buildingId);
   if (!placed || !def) return { ok: false, reason: 'المبنى غير موجود' };
   if (placed.x === tile.x && placed.z === tile.z) return { ok: false, reason: 'اختر مربعًا آخر غير موقع المبنى الحالي' };
-  return checkPlacement(defs, world, state, def, tile, now, { ignoreUid: uid, alreadyBuilt: true, cost: costShare(def.cost, defs.world.moveCostPercent) });
+  return checkPlacement(defs, world, state, def, tile, now, { ignoreUid: uid, alreadyBuilt: true, cost: costShare(def.cost, movePercent(defs, state, now)) });
 }
 
 /** نقل المبنى ودفع تكلفة النقل؛ يبقى تقدم إنشائه كما هو (بعد نجاح checkMove) / Move and pay; construction progress is kept */
-export function moveBuilding(state: GameState, defs: GameDefinitions, uid: string, tile: Tile): GameState {
+export function moveBuilding(state: GameState, defs: GameDefinitions, uid: string, tile: Tile, now: number): GameState {
   const placed = state.buildings.find((b) => b.uid === uid)!;
   const def = defs.buildings.find((b) => b.id === placed.buildingId)!;
   return {
     ...state,
-    resources: pay(state.resources, costShare(def.cost, defs.world.moveCostPercent)),
+    resources: pay(state.resources, costShare(def.cost, movePercent(defs, state, now))),
     buildings: state.buildings.map((b) => (b.uid === uid ? { ...b, x: tile.x, z: tile.z } : b)),
   };
 }

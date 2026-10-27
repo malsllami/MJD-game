@@ -339,7 +339,7 @@ describe('الهدم والنقل / demolition and moving', () => {
     const placed = placeBuilding(s, farm, spotFor(s, farm), T0, 'f1');
     const target = spotFor(placed, farm);
     expect(checkMove(defs, world, placed, 'f1', target, T0)).toEqual({ ok: true });
-    const moved = moveBuilding(placed, defs, 'f1', target);
+    const moved = moveBuilding(placed, defs, 'f1', target, T0);
     expect(moved.buildings[0]).toMatchObject({ x: target.x, z: target.z, completesAt: placed.buildings[0].completesAt });
     expect(moved.resources.wood).toBe(placed.resources.wood - Math.floor((farm.cost.wood * defs.world.moveCostPercent) / 100));
   });
