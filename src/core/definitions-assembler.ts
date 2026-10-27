@@ -111,6 +111,8 @@ const BACKWARD_COMPATIBLE: Partial<WorldSettings> = {
   frontierPonds: 0,
   fertileWaterDistance: 0,
   fertileAwayPercent: 100,
+  // بلا ري / No irrigation
+  irrigationSpeedPercent: 100,
 };
 
 const WALL_STYLES: WallStyle[] = ['stakes', 'palisade', 'stone'];

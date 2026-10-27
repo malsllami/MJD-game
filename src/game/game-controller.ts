@@ -12,6 +12,7 @@ import {
   autoRoadPath, capacityAt, isSettlementTile, isUnderConstruction, isWall, netRates, placeWallPath, wallAt, nextStage, pathEdges, placeRoadPath, roadAt, stageById, surveyCost, tileKey, annexCost, knownDeposits, isTorch, movePercent, checkTorch, torchNear, torchPoint, wallNear, wallLine, innerWalls,
 } from '../core/economy';
 import { checkClearing, clearingParcel, expansionQuota, isForestMode, runningClearings } from '../core/frontier';
+import { canalNetwork, isCanal } from '../core/irrigation';
 import { governmentLevel, governmentLevelOf, levelOf, levelRow } from '../core/levels';
 import { placementAdvice, zoneTest } from '../core/placement-guide';
 import type { BuildingDef, ContextCommand, EntityType, GameDefinitions, Tile, World } from '../core/types';
@@ -40,7 +41,7 @@ import { TileSetFill } from '../world/tile-set-fill';
 import { TileSetOutline } from '../world/tile-set-outline';
 import { Traffic } from '../world/traffic';
 import { VillageWall } from '../world/village-wall';
-import { drawPonds } from '../world/ponds';
+import { drawWater } from '../world/ponds';
 import type { GameSession } from './game-session';
 
 const TICK_MS = 250;
@@ -104,7 +105,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const traffic = new Traffic(game.scene, world, game.library);
   const walls = new WallNetwork(game.scene, world, byId);
   const villageWall = new VillageWall(game.scene, world, byId, game.dayNight.lights, game.shadows);
-  drawPonds(game.scene, world);
+  drawWater(game.scene, world, game.library, game.shadows);
   const animals = new Animals(game.scene, world, game.library, game.shadows);
   const models = new BuildingModels(
     game.scene, world, game.library, byId, game.shadows,
@@ -312,6 +313,11 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
       toast.show(`اضغط على أي موضع داخل القرية لوضع ${b.name}، ثم أكّد بعلامة ✓؛ والضغط على شعلة قائمة ينقلها أو يزيلها`, 6000);
       return;
     }
+    if (isCanal(b)) {
+      setMode({ kind: 'road', building: b });
+      toast.show(`اسحب على خطوط الشبكة من البئر نحو المزارع لشق ${b.name}؛ المزرعة التي تمسها قناة متصلة بالماء تُنتج أسرع`, 7000);
+      return;
+    }
     if (isRoad(b) || isWall(b)) {
       setMode({ kind: 'road', building: b });
       toast.show(`اسحب على خطوط الشبكة لتخطيط ${b.name} من حول ${governmentName} أو من طريق قائم، ثم أكّد بعلامة ✓`, 6000);
@@ -499,13 +505,13 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     const def = piece && byId.get(piece.buildingId);
     if (!piece || !def) return;
     const line = wallLine(session.state, edge);
-    const other = defs.buildings.find((b) => b.model === (def.model === 'gate' ? 'wall' : 'gate'));
+    const other = def.model === 'canal' ? undefined : defs.buildings.find((b) => b.model === (def.model === 'gate' ? 'wall' : 'gate'));
     const commands: ContextCommand[] = [
       { id: 'wall-remove', name: 'إزالة القطعة', icon: 'demolish' },
       ...(line.length > 1 ? [{ id: 'wall-line', name: `إزالة الخط (${formatNumber(line.length)})`, icon: 'demolish' }] : []),
       ...(other ? [{ id: 'wall-swap', name: `تحويل إلى ${other.name}`, icon: other.model === 'gate' ? 'shield' : 'build' }] : []),
     ];
-    const subtitle = `الإزالة تسترد ${formatNumber(defs.world.demolishRefundPercent)}٪ · ارسم سورًا جديدًا من قائمة المرافق`;
+    const subtitle = `الإزالة تسترد ${formatNumber(defs.world.demolishRefundPercent)}٪ · ارسم ${def.model === 'canal' ? 'قناة' : 'سورًا'} جديدًا من قائمة المرافق`;
     radial.open(pointAbove(at, 0.1), { title: def.name, subtitle, commands }, (cmd) => {
       radial.close();
       if (cmd.id === 'wall-swap' && other) {
@@ -717,16 +723,17 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     const model = (id: string) => byId.get(id)?.model;
     const stone = state.buildings.filter((b) => model(b.buildingId) === 'paving-stone');
     game.ground?.paint({
-      dirt: [...world.ponds.map((k) => { const [x, z] = k.split(',').map(Number); return { x, z }; }), ...(compoundTiles > 1 ? [] : [state.settlement]), ...state.buildings.filter((b) => model(b.buildingId) !== 'field' && model(b.buildingId) !== 'paving-stone').map((b) => ({ x: b.x, z: b.z }))],
+      dirt: [...[...world.ponds, ...world.springs].map((k) => { const [x, z] = k.split(',').map(Number); return { x, z }; }), ...(compoundTiles > 1 ? [] : [state.settlement]), ...state.buildings.filter((b) => model(b.buildingId) !== 'field' && model(b.buildingId) !== 'paving-stone').map((b) => ({ x: b.x, z: b.z }))],
       soil: state.buildings.filter((b) => model(b.buildingId) === 'field').map((b) => ({ x: b.x, z: b.z })),
       roads: state.roads.map((r) => r.edge),
+      canals: state.walls.filter((w) => isCanal(byId.get(w.buildingId))).map((w) => w.edge),
       paving: [...(compoundGround.paving ?? []), ...stone.map((b) => ({ x0: b.x + 0.04, z0: b.z + 0.04, x1: b.x + 0.96, z1: b.z + 0.96 }))],
     });
     syncSettlement();
     models.sync(state, now, (placed) => levelEra(levelOf(placed, now)));
     villageWall.sync(state, now, governmentLevel(defs, state).wallStyle);
     roads.sync(state, now);
-    walls.sync(state, now);
+    walls.sync(state, now, canalNetwork(state, defs, now).edges);
     animals.sync(state, defs, now);
     traffic.sync(roads.edgesByStyle(state).get('paved-road') ?? new Set(), state.population);
     borders.show(state.territory);

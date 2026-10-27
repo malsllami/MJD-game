@@ -5,10 +5,11 @@
 // government (nation, upgrade, army), housing (residents and trade), work buildings (workers and output), the development centre
 // (tasks), the market (buying and selling), stores (amounts and capacity), plus a "building" tab to move and demolish
 
-import { buildingStatus, capacityAt, isRoad, isUnderConstruction, netRates, stageById, staffingAt, unlockGaps, type Check, richnessOf, movePercent } from '../core/economy';
+import { buildingStatus, capacityAt, isRoad, isUnderConstruction, netRates, stageById, staffingAt, unlockGaps, type Check, richnessOf, movePercent, isFertile } from '../core/economy';
 import { checkTrade, CURRENCY, hasMarket, type Side } from '../core/market';
 import { factorsOf, governmentLevel, housingAt, isUpgradable, isUpgrading, levelOf, levelRow } from '../core/levels';
 import { expansionQuota } from '../core/frontier';
+import { canalNetwork, irrigationFactor, isIrrigated } from '../core/irrigation';
 import { buildingUpgradeCost, checkBuildingUpgrade, upgradeRequirements } from '../core/progression';
 import type { BuildingDef, PlacedBuilding } from '../core/types';
 import { residentsByProfession } from '../core/workforce';
@@ -243,7 +244,7 @@ export class BuildingPanel {
     const crew = staffingAt(state, defs, now).get(placed.uid);
     const efficiency = buildingStatus(placed, state, defs, now).kind === 'operating' ? crew?.efficiency ?? 1 : 0;
     // كامل الطاقة يشمل مضاعف مستوى المبنى / Full capacity includes the building's level factor
-    const factor = factorsOf(defs, placed, now).production * richnessOf(state, placed, def, defs);
+    const factor = factorsOf(defs, placed, now).production * richnessOf(state, placed, def, defs) * irrigationFactor(defs, placed, def, canalNetwork(state, defs, now).edges);
     const resource = (id: string) => defs.resources.find((r) => r.id === id);
     const flows = [
       ...Object.entries(def.production).map(([id, n]) => [`${icon(resource(id)?.icon ?? id)} ${esc(resource(id)?.name ?? id)}`, signed(n * factor * efficiency), formatNumber(n * factor)]),
@@ -253,7 +254,12 @@ export class BuildingPanel {
     const workers = crew && crew.needed
       ? `<div><dt>العمال (${esc(profession ?? '')})</dt><dd>${formatNumber(crew.assigned)} من ${formatNumber(crew.needed)}</dd></div>`
       : '<div><dt>العمال</dt><dd>لا يحتاج عمالًا</dd></div>';
-    return `<dl class="stats">${workers}<div><dt>الكفاءة</dt><dd>${formatNumber(Math.round(efficiency * 100))}٪</dd></div></dl>
+    // المزرعة: خصوبة الأرض للكمية، والري للسرعة / A farm: the land's fertility for the amount, irrigation for the speed
+    const farmInfo = def.model === 'field'
+      ? `<div><dt>الأرض</dt><dd>${isFertile(state, placed.x, placed.z) ? 'خصبة' : 'عادية'} · ${formatNumber(Math.round(richnessOf(state, placed, def, defs) * 100))}٪</dd></div>
+         <div><dt>الري</dt><dd>${isIrrigated(placed, canalNetwork(state, defs, now).edges) ? `مروية · سرعة ${formatNumber(defs.world.irrigationSpeedPercent)}٪` : 'غير مروية'}</dd></div>`
+      : '';
+    return `<dl class="stats">${workers}<div><dt>الكفاءة</dt><dd>${formatNumber(Math.round(efficiency * 100))}٪</dd></div>${farmInfo}</dl>
       ${flows.length ? table(['المورد', 'الآن في الدقيقة', 'بكامل الطاقة'], flows) : '<p class="panel-note">لا ينتج ولا يستهلك موارد.</p>'}`;
   }
 

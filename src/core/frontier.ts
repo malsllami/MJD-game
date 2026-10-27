@@ -69,11 +69,11 @@ export function expansionQuota(defs: GameDefinitions, state: GameState, now: num
 }
 
 /**
- * مربعات الماء: البرك الطبيعية، والبحيرات والجداول التي بناها اللاعب
- * Water tiles: the natural ponds, and the lakes and streams the player built
+ * مربعات الماء: البرك الطبيعية وبئر القرية، والبحيرات والجداول التي بناها اللاعب
+ * Water tiles: the natural ponds and the village well, and the lakes and streams the player built
  */
 export function waterTiles(defs: GameDefinitions, world: World, state: GameState): Set<string> {
-  const out = new Set(world.ponds);
+  const out = new Set([...world.ponds, ...world.springs]);
   const model = (id: string) => defs.buildings.find((b) => b.id === id)?.model;
   for (const b of state.buildings) if (model(b.buildingId) === 'pond') out.add(tileKey(b.x, b.z));
   for (const w of state.walls) if (model(w.buildingId) === 'stream') for (const [x, z] of edgeTiles(w.edge)) out.add(tileKey(x, z));

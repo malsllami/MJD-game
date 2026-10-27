@@ -80,6 +80,8 @@ const WORLD_SETTINGS = [
   { key: 'عدد البرك حول القرية', field: 'frontierPonds', type: 'number', description: 'برك ماء طبيعية في الغابة المحيطة بالقرية الأولى' },
   { key: 'بعد الخصوبة عن الماء', field: 'fertileWaterDistance', type: 'number', description: 'أبعد مسافة بالمربعات بين قطعة الغابة والماء حتى تُعد قريبة منه' },
   { key: 'احتمال الخصوبة بعيدا عن الماء', field: 'fertileAwayPercent', type: 'number', description: 'احتمال الأرض الخصبة في قطعة بعيدة عن الماء كنسبة مئوية من احتمالها قرب الماء' },
+  // إضافة الري (addIrrigation) / Irrigation addition
+  { key: 'سرعة الإنتاج مع الري', field: 'irrigationSpeedPercent', type: 'number', description: 'سرعة إنتاج المزرعة المتصلة بقناة ري من البئر كنسبة مئوية من سرعتها بلا ري' },
 ];
 
 /**

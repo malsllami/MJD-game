@@ -120,7 +120,7 @@ export class BuildBar {
         // التفاصيل الكاملة في التلميح، وأهم أثر تحت الاسم / Full details in the tooltip, the main effect under the name
         const info = [`يُبنى على: ${where}`, formatDuration(b.buildSeconds), ...effects].join('\n');
         // ما يُرسم على الحواف أو الزوايا أو الأرض بأيقونة بدل صورة / What is drawn on edges, corners or the ground gets an icon instead of a picture
-        const glyph = b.model === 'stream' ? 'water' : isWall(b) ? 'shield' : isTorch(b) ? 'fire' : PAVING_MODELS.has(b.model) ? 'map' : isRoad(b) ? 'road' : '';
+        const glyph = b.model === 'stream' || b.model === 'canal' ? 'water' : isWall(b) ? 'shield' : isTorch(b) ? 'fire' : PAVING_MODELS.has(b.model) ? 'map' : isRoad(b) ? 'road' : '';
         const picture = glyph ? `<span class="thumb road">${icon(glyph)}</span>` : `<span class="thumb"><img data-thumb="${esc(styleOf(b))}" alt="" hidden></span>`;
         return `<button type="button" class="card" data-building="${esc(b.id)}" aria-pressed="${this.armed === b.id}" data-info="${esc(info)}">
           ${picture}

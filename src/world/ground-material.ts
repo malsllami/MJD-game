@@ -23,6 +23,8 @@ const SOIL_REPEAT_TILES = 1;
 const PAVING_REPEAT_TILES = 0.5;
 /** عرض الطريق الترابي كنسبة من المربع / Dirt road width as a tile fraction */
 const ROAD_WIDTH = 0.24;
+/** عرض مجرى قناة الري: ضيق لا يستهلك مساحة / The irrigation canal bed's width: narrow, using little space */
+const CANAL_WIDTH = 0.11;
 /** خفض سطوع الأرض كلها حتى لا يطغى العشب على المباني / Dims the whole ground so the grass never outshines the buildings */
 const GROUND_TINT = new Color3(0.72, 0.75, 0.7);
 /** عدد عينات الضوضاء لكل مربع في خريطة البقع / Noise samples per tile in the patch map */
@@ -40,6 +42,8 @@ export interface GroundMarks {
   roads: string[];
   /** مستطيلات البلاط الحجري بإحداثيات المربعات / Paving rectangles in tile coordinates */
   paving?: Rect[];
+  /** حواف قنوات الري: مجرى ضيق من التربة / Irrigation canal edges: a narrow bed of soil */
+  canals?: string[];
 }
 
 /** مستطيل بإحداثيات المربعات (قد تكون كسرية) / A rectangle in tile coordinates (may be fractional) */
@@ -150,8 +154,17 @@ export class GroundPainter {
       ctx.stroke();
     });
     ctx.fillStyle = soil;
+    ctx.strokeStyle = soil;
     faded((grow) => {
       for (const t of marks.soil) roundSquare(ctx, t.x * px + px * 0.06 - grow, t.z * px + px * 0.06 - grow, px * 0.88 + grow * 2, px * 0.1 + grow);
+      ctx.lineWidth = px * CANAL_WIDTH + grow * 1.2;
+      ctx.beginPath();
+      for (const edge of marks.canals ?? []) {
+        const [[ax, az], [bx, bz]] = edgeCorners(edge);
+        ctx.moveTo(ax * px, az * px);
+        ctx.lineTo(bx * px, bz * px);
+      }
+      ctx.stroke();
     });
   }
 }

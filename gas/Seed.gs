@@ -86,6 +86,7 @@ const FOREST_FRONTIER = {
   frontierPonds: 3,
   fertileWaterDistance: 2,
   fertileAwayPercent: 25,
+  irrigationSpeedPercent: 125,
 };
 
 /**
@@ -99,7 +100,7 @@ const MENU_ORDER = [
 const MENU_CATEGORIES = {
   industry: ['farm', 'livestock', 'lumber_camp', 'sawmill', 'blacksmith', 'mine', 'oil_field', 'oil_prospector', 'gold_prospector', 'stone_prospector',
     'copper_prospector', 'silver_prospector', 'well', 'water_desal', 'power_plant', 'factory'],
-  utilities: ['torch', 'wooden_wall', 'gate', 'village_garden', 'park', 'paving_stone', 'paving_sand', 'pond', 'stream'],
+  utilities: ['torch', 'wooden_wall', 'gate', 'irrigation_canal', 'village_garden', 'park', 'paving_stone', 'paving_sand', 'pond', 'stream'],
   transport: ['road', 'paved_road', 'port', 'airport', 'train_station'],
   housing: ['houses', 'tent', 'apartments', 'farmers_house', 'carpenters_house', 'smiths_house', 'miners_house', 'traders_house', 'herders_house'],
   economy: ['market', 'bank', 'farm_storage', 'materials_storage'],
@@ -206,7 +207,13 @@ const SEED_BUILDINGS = [
   ['engineering_office', 'المكتب الهندسي', 'government', 'plain, coast, plateau', 120, '', 'town', 0, 'civic', true, ''],
   ['foreign_ministry', 'الخارجية', 'government', 'plain, coast, plateau', 150, '', 'town', 0, 'civic', true, ''],
   ['alliance_house', 'دار التحالف', 'government', 'plain, coast, plateau', 150, '', 'town', 0, 'civic', true, ''],
+  // إضافة الري: قناة ضيقة على حواف المربعات من البئر إلى المزارع / Irrigation: a narrow channel on tile edges from the well to the farms
+  ['irrigation_canal', 'قناة ري', 'utilities', 'plain, coast, plateau, desert', 3, '', 'village', 0, 'canal', false, ''],
 ];
+
+/** مباني إضافة الري وتكاليفها / The irrigation addition's buildings and costs */
+const SEED_IRRIGATION_IDS = ['irrigation_canal'];
+const SEED_IRRIGATION_COSTS = [['irrigation_canal', 'wood', 4], ['irrigation_canal', 'stone', 2]];
 
 /** المهن: [المعرف، الاسم، الأيقونة، اللون] / Trades: [id, name, icon, colour] */
 const SEED_PROFESSIONS = [
@@ -234,7 +241,7 @@ const SEED_JOBS = {
   farm_storage: ['', 0, 0, 'farm'], materials_storage: ['', 0, 10, ''], bank: ['', 0, 40, 'market'],
   village_garden: ['', 0, 25, ''], wooden_wall: ['', 0, 0, ''], gate: ['', 0, 0, ''],
   pond: ['', 0, 10, ''], stream: ['', 0, 10, ''],
-  torch: ['', 0, 0, ''], paving_stone: ['', 0, 0, ''], paving_sand: ['', 0, 0, ''],
+  torch: ['', 0, 0, ''], paving_stone: ['', 0, 0, ''], paving_sand: ['', 0, 0, ''], irrigation_canal: ['', 0, 0, ''],
   engineering_office: ['', 0, 0, ''], foreign_ministry: ['', 0, 0, ''], alliance_house: ['', 0, 0, ''],
 };
 
@@ -422,7 +429,7 @@ const SEED_ROWS = {
     ['military_base', 'stone', 1500], ['military_base', 'iron', 600], ['military_base', 'gold', 800],
     ['development_center', 'stone', 200], ['development_center', 'wood', 150], ['development_center', 'gold', 200],
     ['military_command', 'stone', 600], ['military_command', 'iron', 200], ['military_command', 'gold', 400],
-  ].concat(SEED_RESOURCE_COSTS, SEED_DEPOSIT_COSTS, SEED_PRIMITIVE_COSTS, SEED_ECONOMY_COSTS, SEED_MENU_COSTS)),
+  ].concat(SEED_RESOURCE_COSTS, SEED_DEPOSIT_COSTS, SEED_PRIMITIVE_COSTS, SEED_ECONOMY_COSTS, SEED_MENU_COSTS, SEED_IRRIGATION_COSTS)),
   buildingProduction: amounts_('الكمية في الدقيقة', [
     ['farm', 'food', 30], ['lumber_camp', 'wood', 24], ['mine', 'stone', 18], ['mine', 'iron', 8], ['oil_field', 'oil', 6],
     ['port', 'gold', 30], ['port', 'food', 10], ['water_desal', 'water', 25], ['power_plant', 'power', 25],

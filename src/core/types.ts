@@ -81,6 +81,8 @@ export interface WorldSettings {
   fertileWaterDistance: number;
   /** احتمال الأرض الخصبة بعيدًا عن الماء بالمئة من احتمالها قربه / Fertile land's chance away from water, as a percent of its chance near it */
   fertileAwayPercent: number;
+  /** سرعة إنتاج المزرعة المروية بالمئة / An irrigated farm's output speed, in percent */
+  irrigationSpeedPercent: number;
 }
 
 /** المنطقة المقترحة للمبنى / A building's suggested zone */
@@ -347,6 +349,8 @@ export interface World {
   deposits: Deposit[];
   /** مربعات البرك الطبيعية "x,z" (لا يُبنى عليها) / Natural pond tiles "x,z" (nothing is built on them) */
   ponds: string[];
+  /** آبار القرى الأولى "x,z": مصدر ماء دائم للري، ومربعها محجوز / The first villages' wells "x,z": a lasting water source for irrigation, their tile reserved */
+  springs: string[];
 }
 
 /** مبنى موضوع على مربع / A building placed on a tile */
@@ -413,6 +417,8 @@ export interface GameState {
   clearedParcels?: number;
   /** قطع الغابة المكتملة لكل حصة توسع / Completed forest parcels per expansion pool */
   clearedByPool?: Record<string, number>;
+  /** آبار القرية الدائمة من العالم، تُنسخ عند التأسيس فيعمل الري بلا العالم (تغيب في حفظ أقدم) / The village's lasting wells from the world, copied at founding so irrigation works without the world (absent in older saves) */
+  springs?: string[];
   /** الشعلات في نقاط حرة (تغيب في حفظ أقدم) / Torches at free points (absent in older saves) */
   torches?: PlacedTorch[];
   /** آخر وقت حُسب عنده الإنتاج / Last time production was applied */

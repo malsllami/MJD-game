@@ -9,6 +9,7 @@
 import type { BuildingDef, Deposit, GameDefinitions, GameState, PlacedBuilding, PlacedRoad, PlacedTorch, Stage, Tile, World } from './types';
 import { foundVillage } from './founding';
 import { activeWorks, isForestMode, settleClearings } from './frontier';
+import { canalNetwork, irrigationFactor, isCanal } from './irrigation';
 import { factorsOf, housingAt } from './levels';
 import { addCapped, capacities, seedResidents, settle, staffing } from './workforce';
 
@@ -36,7 +37,7 @@ export const isRoad = (def: BuildingDef | undefined): boolean => !!def && ROAD_M
  * حواجز الحواف: أسوار وبوابات وجداول ماء؛ تشغل الحافة فلا يُرسم عليها طريق، ولا تدخل في اتصال الطرق
  * Edge barriers: walls, gates and water streams; they occupy the edge so no road goes there, and never join road connectivity
  */
-export const WALL_MODELS = new Set(['wall', 'gate', 'stream']);
+export const WALL_MODELS = new Set(['wall', 'gate', 'stream', 'canal']);
 
 export const isWall = (def: BuildingDef | undefined): boolean => !!def && WALL_MODELS.has(def.model);
 
@@ -203,6 +204,12 @@ export function richnessOf(state: GameState, placed: PlacedBuilding, def: Buildi
   const found = state.foundDeposits?.find((d) => d.resourceId === resource && d.tiles.includes(key));
   if (found) return found.richness ?? 1;
   return farming ? defs.world.plainFarmPercent / 100 : 1;
+}
+
+/** هل المربع ماء (بركة أو بئر القرية) لا يُبنى عليه؟ / Is the tile water (a pond or the village well) that nothing is built on? */
+export function isWaterTile(world: World, x: number, z: number): boolean {
+  const key = tileKey(x, z);
+  return world.ponds.includes(key) || world.springs.includes(key);
 }
 
 /** هل المربع أرض خصبة مكشوفة؟ / Is the tile revealed fertile land? */
@@ -396,7 +403,7 @@ export function wallNear(state: GameState, defs: GameDefinitions, at: { x: numbe
   let bestD = within;
   for (const w of state.walls) {
     const model = defs.buildings.find((b) => b.id === w.buildingId)?.model;
-    if (model !== 'wall' && model !== 'gate') continue;
+    if (model !== 'wall' && model !== 'gate' && model !== 'canal') continue;
     const [[ax, az], [bx, bz]] = edgeCorners(w.edge);
     // بعد النقطة عن القطعة المستقيمة / The point's distance to the straight piece
     const t = Math.max(0, Math.min(1, ((at.x - ax) * (bx - ax) + (at.z - az) * (bz - az)) / ((bx - ax) ** 2 + (bz - az) ** 2)));
@@ -463,7 +470,7 @@ function edgeLandCheck(world: World, state: GameState, def: BuildingDef, edge: s
     .filter((t): t is Tile => !!t);
   if (!sides.some((t) => owned.has(tileKey(t.x, t.z)))) return { ok: false, reason: `${def.name} خارج حدود الدولة` };
   if (sides.length === 2 && sides.every((t) => isSettlementTile(state, t.x, t.z))) return { ok: false, reason: 'هذه الحافة داخل مجمع الحكم' };
-  if (!sides.some((t) => owned.has(tileKey(t.x, t.z)) && def.allowedTerrain.includes(t.terrainId) && !world.ponds.includes(tileKey(t.x, t.z)))) {
+  if (!sides.some((t) => owned.has(tileKey(t.x, t.z)) && def.allowedTerrain.includes(t.terrainId) && !isWaterTile(world, t.x, t.z))) {
     return { ok: false, reason: `لا يُرسم ${def.name} هنا؛ الأرض لا تسمح بذلك` };
   }
   return { ok: true };
@@ -488,8 +495,13 @@ export function checkWallEdge(defs: GameDefinitions, world: World, state: GameSt
 export function placeWallPath(state: GameState, defs: GameDefinitions, world: World, wall: BuildingDef, edges: string[], now: number, uid: () => string): RoadPathResult {
   let current = state;
   let placed = 0;
+  // قناة الري تمتد من الماء: إن رُسمت من طرفها البعيد يُعكس مسارها / An irrigation canal grows from the water: drawn from its far end, the path is reversed
+  const canal = isCanal(wall);
+  const reaches = (edge: string) => edgeCorners(edge).some(([x, z]) => canalNetwork(current, defs, now, true).corners.has(tileKey(x, z)));
+  if (canal && edges.length > 1 && !reaches(edges[0]) && reaches(edges[edges.length - 1])) edges = [...edges].reverse();
   for (const edge of edges) {
     if (wallAt(current, edge)) continue;
+    if (canal && !reaches(edge)) return { state: current, placed, stoppedBy: 'القناة تبدأ من البئر أو من قناة متصلة به؛ صِلها بمصدر الماء' };
     const check = checkWallEdge(defs, world, current, wall, edge, now);
     if (!check.ok) return { state: current, placed, stoppedBy: check.reason };
     current = {
@@ -703,7 +715,7 @@ export function checkPlacement(defs: GameDefinitions, world: World, state: GameS
     if (gaps.length) return { ok: false, reason: `${building.name} مقفل؛ يحتاج: ${gaps.join('، ')}` };
   }
   if (isSettlementTile(state, tile.x, tile.z)) return { ok: false, reason: 'هذا المربع يشغله مبنى الحكم' };
-  if (world.ponds.includes(tileKey(tile.x, tile.z))) return { ok: false, reason: 'لا يُبنى فوق الماء' };
+  if (isWaterTile(world, tile.x, tile.z)) return { ok: false, reason: 'لا يُبنى فوق الماء أو البئر' };
   if (!state.territory.includes(tileKey(tile.x, tile.z))) return { ok: false, reason: 'المربع خارج حدود الدولة؛ ضمّه للدولة أولًا' };
   const occupant = buildingAt(state, tile.x, tile.z);
   if (occupant && occupant.uid !== opts.ignoreUid) return { ok: false, reason: 'يوجد مبنى في هذا المربع' };
@@ -819,6 +831,8 @@ export function advance(state: GameState, defs: GameDefinitions, world: World, n
     // يعمل في هذه الدفعة ما بدأ قبل نهايتها / What started before this step's end runs in it
     const active = (b: PlacedBuilding) => b.completesAt < to && running({ ...b, completesAt: Math.min(b.completesAt, to) });
     const factor = (b: PlacedBuilding) => factorsOf(defs, b, to);
+    // الري يُحسب مرة لكل دفعة / Irrigation is worked out once per step
+    const wet = canalNetwork(current, defs, to).edges;
     const crew = staffing(buildings, byId, active, (b) => factor(b).population);
     const caps = capacities(defs, buildings, byId, active, (b) => factor(b).production);
     for (const placed of buildings) {
@@ -826,7 +840,7 @@ export function advance(state: GameState, defs: GameDefinitions, world: World, n
       const start = Math.max(from, placed.completesAt);
       if (!def || start >= to || !active(placed)) continue;
       // الإنتاج والاستهلاك بقدر العمال المتوفرين ومستوى المبنى / Output and input scale with the available workers and the building's level
-      const minutes = ((to - start) / MINUTE_MS) * (crew.get(placed.uid)?.efficiency ?? 1) * factor(placed).production * richnessOf(state, placed, def, defs);
+      const minutes = ((to - start) / MINUTE_MS) * (crew.get(placed.uid)?.efficiency ?? 1) * factor(placed).production * richnessOf(state, placed, def, defs) * irrigationFactor(defs, placed, def, wet);
       for (const [id, n] of Object.entries(def.production)) resources[id] = addCapped(resources[id] ?? 0, n * minutes, caps[id] ?? Infinity);
       for (const [id, n] of Object.entries(def.consumption)) resources[id] = Math.max(0, (resources[id] ?? 0) - n * minutes);
     }
@@ -855,10 +869,11 @@ export function rateBreakdown(state: GameState, defs: GameDefinitions, now: numb
   const production: Record<string, number> = {};
   const consumption: Record<string, number> = {};
   const crew = staffingAt(state, defs, now);
+  const wet = canalNetwork(state, defs, now).edges;
   for (const placed of state.buildings) {
     if (buildingStatus(placed, state, defs, now).kind !== 'operating') continue;
     const def = defs.buildings.find((b) => b.id === placed.buildingId)!;
-    const efficiency = (crew.get(placed.uid)?.efficiency ?? 1) * factorsOf(defs, placed, now).production * richnessOf(state, placed, def, defs);
+    const efficiency = (crew.get(placed.uid)?.efficiency ?? 1) * factorsOf(defs, placed, now).production * richnessOf(state, placed, def, defs) * irrigationFactor(defs, placed, def, wet);
     for (const [id, n] of Object.entries(def.production)) production[id] = (production[id] ?? 0) + n * efficiency;
     for (const [id, n] of Object.entries(def.consumption)) consumption[id] = (consumption[id] ?? 0) + n * efficiency;
   }

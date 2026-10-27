@@ -103,13 +103,14 @@ describe('الغابة المحيطة / the surrounding forest', () => {
     expect(done.clearedByPool).toEqual({ early: 1 });
   });
 
-  it('بركة داخل القرية وحولها أرض خصبة تقوم عليها المزرعة الابتدائية / a pond in the village with fertile land around it holding the starting farm', () => {
+  it('بئر داخل القرية وحوله أرض خصبة تقوم عليها المزرعة الابتدائية / a well in the village with fertile land around it holding the starting farm', () => {
     const owned = new Set(start.territory);
-    expect(world.ponds.some((k) => owned.has(k))).toBe(true);
+    expect(world.springs.some((k) => owned.has(k))).toBe(true);
+    expect(start.springs).toEqual(world.springs.filter((k) => owned.has(k)));
     const farm = start.buildings.find((b) => b.buildingId === 'farm')!;
     expect(isFertile(start, farm.x, farm.z)).toBe(true);
-    for (const b of start.buildings) expect(world.ponds.includes(tileKey(b.x, b.z)), b.buildingId).toBe(false);
-    const pond = world.ponds.find((k) => owned.has(k))!.split(',').map(Number);
+    for (const b of start.buildings) expect(world.springs.includes(tileKey(b.x, b.z)), b.buildingId).toBe(false);
+    const pond = world.springs.find((k) => owned.has(k))!.split(',').map(Number);
     expect(checkPlacement(defs, world, { ...start, resources: Object.fromEntries(defs.resources.map((r) => [r.id, 1e5])) }, defs.buildings.find((b) => b.id === 'tent')!, tileAt(pond[0], pond[1]), T0).ok).toBe(false);
   });
 

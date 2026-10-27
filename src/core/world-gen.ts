@@ -149,24 +149,25 @@ export function generateWorld(settings: WorldSettings, terrain: TerrainType[], d
   }
 
   const deposits = placeDeposits(rng, depositTypes, terrain, tiles, settings, basins, massifs, flatWorld);
-  const ponds = flatWorld ? placePonds(settings, basins, deposits) : [];
-  return { settings, vertsX, vertsZ, heights, tiles, basins: basins.map(({ x, z }) => ({ x, z })), deposits, ponds };
+  const { ponds, springs } = flatWorld ? placePonds(settings, basins, deposits) : { ponds: [], springs: [] };
+  return { settings, vertsX, vertsZ, heights, tiles, basins: basins.map(({ x, z }) => ({ x, z })), deposits, ponds, springs };
 }
 
 /**
- * برك الماء في العالم المستوي: بركة صغيرة داخل كل قرية أولى (لمزرعتها الخصبة)، وبرك في الغابة المحيطة بها.
+ * الماء في العالم المستوي: بئر داخل كل قرية أولى (مصدر دائم للري وللأرض الخصبة حوله)، وبرك طبيعية في الغابة المحيطة بها.
  * لها مولّد عشوائي خاص حتى لا يتغير توزيع المكامن
- * Water ponds in the flat world: a small pond inside each first village (for its fertile farm), and ponds in the forest around it.
- * They have their own random generator so the deposit layout never changes
+ * Water in the flat world: a well inside each first village (a lasting source for irrigation and the fertile land around it), and natural
+ * ponds in the forest around it. They have their own random generator so the deposit layout never changes
  */
-function placePonds(s: WorldSettings, basins: Feature[], deposits: Deposit[]): string[] {
-  if (s.starterDepositDistance <= 0 && s.frontierPonds <= 0) return [];
+function placePonds(s: WorldSettings, basins: Feature[], deposits: Deposit[]): { ponds: string[]; springs: string[] } {
+  if (s.starterDepositDistance <= 0 && s.frontierPonds <= 0) return { ponds: [], springs: [] };
   const rng = seededRandom(s.seed + 505);
   const taken = new Set(deposits.flatMap((d) => d.tiles));
   const out = new Set<string>();
+  const springs: string[] = [];
   for (const b of basins) {
-    // بركة القرية: أول اتجاه حر على بعد موارد البداية، بعيدًا عن الطريق الرئيسي جنوبًا
-    // The village pond: the first free direction at the starter distance, clear of the main road to the south
+    // بئر القرية: أول اتجاه حر على بعد موارد البداية، بعيدًا عن الطريق الرئيسي جنوبًا
+    // The village well: the first free direction at the starter distance, clear of the main road to the south
     if (s.starterDepositDistance > 0) {
       for (let k = 0; k < 8; k++) {
         const a = (k * Math.PI) / 4 + Math.PI / 8;
@@ -174,7 +175,7 @@ function placePonds(s: WorldSettings, basins: Feature[], deposits: Deposit[]): s
         const z = Math.round(b.z + Math.sin(a) * s.starterDepositDistance);
         const onRoad = (x === b.x || x === b.x - 1) && z < b.z;
         if (!taken.has(`${x},${z}`) && !onRoad) {
-          out.add(`${x},${z}`);
+          springs.push(`${x},${z}`);
           break;
         }
       }
@@ -192,7 +193,7 @@ function placePonds(s: WorldSettings, basins: Feature[], deposits: Deposit[]): s
       }
     }
   }
-  return [...out].sort();
+  return { ponds: [...out].sort(), springs };
 }
 
 /**
