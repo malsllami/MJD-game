@@ -6,7 +6,7 @@
 // هذا تنسيق بصري تقني وليس بيانات أعمال: الشيت يحدد نمط كل مبنى، وهذا الملف يحدد شكل كل نمط.
 // Technical visual mapping, not business data: the sheet sets each building's style; this file sets each style's look.
 
-import { governmentAssembly, PRIMITIVE_LOOKS, TRANSITIONAL_LOOKS, type Assembly } from './village-kit';
+import { compoundAssembly, governmentAssembly, PRIMITIVE_LOOKS, TRANSITIONAL_LOOKS, type Assembly } from './village-kit';
 
 /** قطعة في نموذج مركّب: الموضع والحجم كنسبة من ضلع المربع / A composite part: position and size as fractions of a tile side */
 export interface ModelPart {
@@ -91,6 +91,14 @@ export const STYLE_MODELS: Record<string, StyleVariants> = {
  */
 export function settlementLook(level: number): Look {
   return governmentAssembly(level) ?? settlementParts(level);
+}
+
+/**
+ * شكل مجمع الحكم على tiles × tiles مربعات حسب مستوى الحكم وعصره؛ المجمع بمربع واحد (خادم أقدم) يأخذ شكل المرحلة
+ * The government compound's look on tiles × tiles by its level and era; a one-tile compound (older server) takes the stage look
+ */
+export function compoundLook(level: number, stone: boolean, tiles: number, stageOrder: number): Look {
+  return tiles > 1 ? compoundAssembly(level, stone, tiles) : settlementLook(stageOrder);
 }
 
 function settlementParts(level: number): ModelPart[] {

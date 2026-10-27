@@ -35,9 +35,13 @@ export const APP_CONFIG = {
     /** تقريب حتى مستوى الشارع / Zoom down to street level */
     minRadius: 6,
     maxRadiusFactor: 1.15,
-    startRadius: 60,
-    /** على الجوال تبدأ الكاميرا أقرب، بعدد المربعات، حتى تملأ القرية الشاشة الصغيرة / On phones the camera starts closer, in tiles, so the village fills the small screen */
-    startRadiusMobileTiles: { landscape: 4.5, portrait: 8.5 },
+    /**
+     * بُعد الكاميرا عند البدء بعدد المربعات: قريبة حتى تملأ القرية الشاشة، وأقرب على الجوال بالعرض لأن زاوية الرؤية رأسية
+     * The starting camera distance in tiles: close so the village fills the screen, closer on a landscape phone since the field of view is vertical
+     */
+    startRadiusTiles: { desktop: 8, landscape: 4.5, portrait: 8.5 },
+    /** أبعد مسافة بعدد المربعات حتى لا تضيع القرية في الأفق / The farthest distance in tiles so the village never gets lost on the horizon */
+    maxRadiusTiles: 30,
     /**
      * أبعد مسافة للكاميرا كنسبة من مدى الضباب (1 ÷ كثافته)، حتى لا يبيضّ المشهد عند الإبعاد
      * Farthest camera distance as a share of the fog range (1 ÷ its density), so the scene never washes out white when zooming out

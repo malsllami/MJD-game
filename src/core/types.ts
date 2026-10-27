@@ -59,6 +59,10 @@ export interface WorldSettings {
   adminZoneRadius: number;
   residentialZoneRadius: number;
   industrialRoadDistance: number;
+  /** المربعات المحجوزة حول مبنى الحكم لساحته وحديقته (1 = 3 × 3) / Tiles reserved around the government building (1 = 3 × 3) */
+  governmentRadius: number;
+  /** بعد موارد البداية عن مبنى الحكم داخل القرية؛ صفر = خارجها / Starter resources' distance inside the village; zero = outside it */
+  starterDepositDistance: number;
 }
 
 /** المنطقة المقترحة للمبنى / A building's suggested zone */
@@ -155,6 +159,43 @@ export interface Stage {
   upgradeCost: Record<string, number>;
 }
 
+/** طراز سور القرية: أوتاد، ثم سياج أعلى بأبراج، ثم حجر / Village wall look: stakes, then a taller palisade with towers, then stone */
+export type WallStyle = 'stakes' | 'palisade' | 'stone';
+
+/** مستوى من مستويات مبنى الحكم / A government building level */
+export interface GovernmentLevel {
+  level: number;
+  name: string;
+  /** المرحلة التي تكون فيها الدولة عند هذا المستوى / The stage the nation is in at this level */
+  stage: string;
+  /** شروط الترقية إلى هذا المستوى / Conditions to upgrade into this level */
+  population: number;
+  requiredBuildings: string[];
+  upgradeCost: Record<string, number>;
+  /** أعلى مستوى يُسمح للمباني بالترقية إليه / The highest level buildings may be upgraded to */
+  maxBuildingLevel: number;
+  /** طراز سور القرية، أو null بلا سور / The village wall look, or null for no wall */
+  wallStyle: WallStyle | null;
+  description: string;
+}
+
+/** طراز شكل المبنى حسب مستواه / A building's look by its level */
+export type BuildingStyle = 'wood' | 'stone';
+
+/** مستوى من مستويات المباني / A building level */
+export interface BuildingLevel {
+  level: number;
+  /** يُضرب فيه الإنتاج والاستهلاك والتخزين / Multiplies output, input and storage */
+  productionFactor: number;
+  /** يُضرب فيه سكان المسكن وعمال المبنى / Multiplies a home's residents and a building's workers */
+  populationFactor: number;
+  /** تكلفة الترقية إلى هذا المستوى ومدتها كنسبة من تكلفة البناء ومدته / Upgrade cost and time as % of the build cost and time */
+  costPercent: number;
+  timePercent: number;
+  /** شكل المبنى، أو null فيتبع مرحلة الدولة (خادم أقدم) / The look, or null to follow the nation's stage (older server) */
+  style: BuildingStyle | null;
+}
+
 /** تعريف مبنى / Building definition */
 export interface BuildingDef {
   id: string;
@@ -226,6 +267,12 @@ export interface GameDefinitions {
   contextMenus: ContextMenuDef[];
   professions: Profession[];
   marketPrices: MarketPrice[];
+  /** مرتبة تصاعديًا، والأول مستوى البداية / Ascending; the first is the starting level */
+  governmentLevels: GovernmentLevel[];
+  /** مرتبة تصاعديًا، والأول المستوى 1 / Ascending; the first is level 1 */
+  buildingLevels: BuildingLevel[];
+  /** معرفات المباني القائمة مع بداية اللعبة بالترتيب / Ids of the buildings standing at the start, in order */
+  startBuildings: string[];
 }
 
 /** مربع منطقي في شبكة العالم / Logical tile of the world grid */
@@ -260,6 +307,9 @@ export interface PlacedBuilding {
   completesAt: number;
   /** سكان المسكن الآن (للمساكن فقط) / Residents living here now (housing only) */
   residents?: number;
+  /** مستوى المبنى (1 إن غاب في حفظ أقدم)، ووقت اكتمال ترقيته الجارية إليه / The building's level (1 when absent), and when its running upgrade to it completes */
+  level?: number;
+  upgradeCompletesAt?: number;
 }
 
 /**
@@ -277,12 +327,14 @@ export interface PlacedRoad {
 /** حالة الدولة أثناء اللعب / Nation state during play */
 export interface GameState {
   /** موقع القرية الأولى الذي اختاره اللاعب / The first village site chosen by the player */
-  settlement: { x: number; z: number };
+  settlement: { x: number; z: number; /** مجمع الحكم المحجوز حوله؛ يغيب في حفظ أقدم (مربع واحد) / Reserved compound around it; absent in older saves */ radius?: number };
   /** الكميات بكسور حتى لا يضيع إنتاج الثواني؛ تُعرض مقرّبة للأسفل / Fractional so per-second output is kept; shown floored */
   resources: Record<string, number>;
   population: number;
   /** أعلى مرحلة بلغتها الدولة (لا تتراجع) / Highest stage reached (never goes back) */
   stage: string;
+  /** مستوى مبنى الحكم؛ يغيب في حفظ أقدم فيُستنتج من المرحلة / The government level; absent in older saves, so derived from the stage */
+  governmentLevel?: number;
   buildings: PlacedBuilding[];
   /** الطرق على حدود المربعات / Roads on tile edges */
   roads: PlacedRoad[];

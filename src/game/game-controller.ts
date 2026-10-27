@@ -4,12 +4,14 @@
 // selection and commands, deposits and survey, the time loop and autosave
 
 import { Color3, type AbstractMesh, type TransformNode } from '@babylonjs/core';
-import { eraOf, styleOf } from '../assets/catalog';
+import { compoundLook, eraOf, styleOf, type Era } from '../assets/catalog';
+import { COMPOUND_ENTRANCE_X, compoundGardens, TILE_METRES } from '../assets/village-kit';
 import { APP_CONFIG } from '../config/app.config';
 import {
   buildingAt, buildingStatus, checkMove, checkPlacement, cornerPath, costShare, depositAt, edgeTiles, housingCapacity, isRoad,
   autoRoadPath, capacityAt, isSettlementTile, isUnderConstruction, isWall, netRates, placeWallPath, wallAt, nextStage, pathEdges, placeRoadPath, roadAt, stageById, surveyCost, tileKey,
 } from '../core/economy';
+import { governmentLevel, governmentLevelOf, levelOf, levelRow } from '../core/levels';
 import { placementAdvice, zoneTest } from '../core/placement-guide';
 import type { BuildingDef, ContextCommand, EntityType, GameDefinitions, Tile, World } from '../core/types';
 import { tileAtPoint } from '../core/world-gen';
@@ -36,6 +38,7 @@ import { Thumbnails } from '../world/thumbnails';
 import { TileSetFill } from '../world/tile-set-fill';
 import { TileSetOutline } from '../world/tile-set-outline';
 import { Traffic } from '../world/traffic';
+import { VillageWall } from '../world/village-wall';
 import type { GameSession } from './game-session';
 
 const TICK_MS = 250;
@@ -84,6 +87,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const roads = new RoadNetwork(game.scene, world, byId, game.dayNight.lights, game.ground ? new Set(['road']) : new Set());
   const traffic = new Traffic(game.scene, world, game.library);
   const walls = new WallNetwork(game.scene, world, game.library, byId, game.shadows);
+  const villageWall = new VillageWall(game.scene, world, game.shadows);
   const animals = new Animals(game.scene, world, game.library, game.shadows);
   const models = new BuildingModels(
     game.scene, world, game.library, byId, game.shadows,
@@ -94,7 +98,18 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const ghost = new GhostPreview(game.scene, world, game.library);
   const confirm = new ConfirmBar(hud.confirm, (p) => game.project(p));
   /** عصر الدولة البصري من مرحلتها الحالية / The nation's visual era from its current stage */
-  const era = () => eraOf(stageById(defs, session.state.stage).order);
+  const stageEra = () => eraOf(stageById(defs, session.state.stage).order);
+  /**
+   * عصر شكل المبنى من طراز مستواه (خشبي أو حجري)، والمدينة حديثة دائمًا؛ وبلا مستويات (خادم أقدم) يتبع المرحلة
+   * A building's era from its level's look (wood or stone), the city always modern; without levels (older server) it follows the stage
+   */
+  const levelEra = (level: number): Era => {
+    const stage = stageEra();
+    const style = levelRow(defs, level).style;
+    return stage === 'modern' || !style ? stage : style === 'stone' ? 'transitional' : 'primitive';
+  };
+  /** المبنى الجديد يبدأ بالمستوى الأول / A new building starts at level 1 */
+  const era = () => levelEra(1);
   const thumbnails = new Thumbnails(game.scene, game.library, world.settings.tileSize);
   const buildBar = new BuildBar(hud.buildBar, defs, (b) => pickBuilding(b), (style) => thumbnails.get(style, era()));
   // على الجوال: فتح فئة بناء يغلق لوحات الشريط السفلي، وفتح إحداها يطوي بطاقات البناء
@@ -110,6 +125,14 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
       upgrade: () => {
         const result = session.upgrade(Date.now());
         if (result.ok) refresh(true);
+        return result;
+      },
+      upgradeBuilding: (uid) => {
+        const result = session.upgradeBuilding(uid, Date.now());
+        if (result.ok) {
+          refresh(true);
+          toast.show('بدأت ترقية المبنى؛ يبقى يعمل بمستواه الحالي حتى تكتمل');
+        }
         return result;
       },
       trade: (resourceId, amount, side) => {
@@ -162,15 +185,17 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   // ===== مبنى الحكم: أول مبنى في القرية، يكبر مع كل مرحلة / Government building: the village's first building, growing each stage =====
   const settlementTile = tileAt(session.state.settlement.x, session.state.settlement.z);
   let settlement: { root: TransformNode; meshes: AbstractMesh[] } | null = null;
-  let settlementStage = '';
+  let settlementKey = '';
+  const compoundTiles = 2 * (session.state.settlement.radius ?? 0) + 1;
   function syncSettlement(): void {
     const { stage } = session.state;
-    if (stage === settlementStage) return;
-    const announce = !!settlementStage;
-    settlementStage = stage;
-    void createSettlementModel(
-      game.library, game.scene, game.tileAnchor(settlementTile), world.settings.tileSize, stageById(defs, stage).order, game.shadows,
-    ).then((next) => {
+    const level = governmentLevelOf(defs, session.state);
+    const key = `${stage}|${level}`;
+    if (key === settlementKey) return;
+    const announce = settlementKey ? (settlementKey.split('|')[0] === stage ? 'level' : 'stage') : '';
+    settlementKey = key;
+    const look = compoundLook(level, levelEra(level) !== 'primitive', compoundTiles, stageById(defs, stage).order);
+    void createSettlementModel(game.library, game.scene, game.tileAnchor(settlementTile), world.settings.tileSize, look, game.shadows).then((next) => {
       if (settlement) {
         for (const m of settlement.meshes) game.unregisterPickable(m);
         settlement.root.dispose();
@@ -181,8 +206,35 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
         game.registerPickable(m, settlementTile);
       }
     });
-    if (announce) toast.show(`أصبحت ${defs.world.capitalName} ${stageById(defs, stage).name}! فُتحت مبانٍ جديدة وتوسعت الحدود`, 6000);
+    if (announce === 'stage') toast.show(`أصبحت ${defs.world.capitalName} ${stageById(defs, stage).name}! فُتحت مبانٍ جديدة وتوسعت الحدود`, 6000);
+    else if (announce === 'level') {
+      const row = governmentLevel(defs, session.state);
+      toast.show(`ارتقى ${governmentName} إلى «${row.name}»؛ يمكن ترقية المباني حتى المستوى ${formatNumber(row.maxBuildingLevel)}`, 6000);
+    }
   }
+
+  // مربعات مجمع الحكم، وبلاطه وحدائقه على الأرض (بإحداثيات المربعات؛ المجمع مدار نصف دورة)
+  // The compound's tiles, and its paving and gardens on the ground (in tile coordinates; the compound is turned half a turn)
+  const compoundKeys: string[] = [];
+  {
+    const r = session.state.settlement.radius ?? 0;
+    for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) compoundKeys.push(tileKey(settlementTile.x + dx, settlementTile.z + dz));
+  }
+  const compoundGround = (() => {
+    if (compoundTiles <= 1) return {};
+    const cx = settlementTile.x + 0.5;
+    const cz = settlementTile.z + 0.5;
+    const half = compoundTiles / 2 - 0.06;
+    const flip = (b: { x0: number; z0: number; x1: number; z1: number }) => ({
+      x0: cx - b.x1 / TILE_METRES, x1: cx - b.x0 / TILE_METRES, z0: cz - b.z1 / TILE_METRES, z1: cz - b.z0 / TILE_METRES,
+    });
+    // ممر مرصوف من مدخل السور إلى الطريق الرئيسي / A paved path from the wall's entrance out to the main road
+    const gate = cx - COMPOUND_ENTRANCE_X / TILE_METRES;
+    return {
+      paving: [{ x0: cx - half, z0: cz - half, x1: cx + half, z1: cz + half }, { x0: gate - 0.14, z0: cz - half - 0.12, x1: gate + 0.14, z1: cz - half }],
+      gardens: compoundGardens((compoundTiles * TILE_METRES) / 2).map(flip),
+    };
+  })();
 
   // ===== الأوضاع / Modes =====
 
@@ -378,7 +430,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     if (!placed || !def) return setMode({ kind: 'idle' });
     const check = checkMove(defs, world, session.state, uid, tile, Date.now());
     const advice = check.ok ? placementAdvice(defs, session.state, def, tile, Date.now(), formatNumber) : null;
-    ghost.show(partsFor(styleOf(def), uid, era()), tile, !check.ok ? 'bad' : advice ? 'warn' : 'ok');
+    ghost.show(partsFor(styleOf(def), uid, levelEra(levelOf(placed, Date.now()))), tile, !check.ok ? 'bad' : advice ? 'warn' : 'ok');
     if (advice) toast.show(advice, 6000);
     const detail = check.ok ? `تكلفة النقل ${costText(costShare(def.cost, defs.world.moveCostPercent)) || 'مجانًا'}` : check.reason;
     confirm.show(labelAbove(tile.x, tile.z, 0.6), `نقل ${def.name}`, detail, check.ok, () => {
@@ -511,7 +563,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     session.tick(now);
     const state = session.state;
     // الأرض تُسوّى تحت المباني، والطبيعة تُزال منها ومن جوانب الطرق / Level under buildings; clear nature there and beside roads
-    const built = [tileKey(state.settlement.x, state.settlement.z), ...state.buildings.map((b) => tileKey(b.x, b.z))];
+    const built = [...compoundKeys, ...state.buildings.map((b) => tileKey(b.x, b.z))];
     game.surface.level(built);
     const cleared = new Set(built);
     for (const r of state.roads) for (const [x, z] of edgeTiles(r.edge)) cleared.add(tileKey(x, z));
@@ -519,12 +571,14 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     // تراب تحت الطرق والمباني، وتربة محروثة تحت الحقول / Dirt under roads and buildings, tilled soil under fields
     const isField = (id: string) => byId.get(id)?.model === 'field';
     game.ground?.paint({
-      dirt: [state.settlement, ...state.buildings.filter((b) => !isField(b.buildingId)).map((b) => ({ x: b.x, z: b.z }))],
+      dirt: [...(compoundTiles > 1 ? [] : [state.settlement]), ...state.buildings.filter((b) => !isField(b.buildingId)).map((b) => ({ x: b.x, z: b.z }))],
       soil: state.buildings.filter((b) => isField(b.buildingId)).map((b) => ({ x: b.x, z: b.z })),
       roads: state.roads.map((r) => r.edge),
+      ...compoundGround,
     });
     syncSettlement();
-    models.sync(state, now, era());
+    models.sync(state, now, (placed) => levelEra(levelOf(placed, now)));
+    villageWall.sync(state, governmentLevel(defs, state).wallStyle);
     roads.sync(state);
     walls.sync(state, now);
     animals.sync(state, defs, now);
@@ -535,7 +589,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     // لافتات: مبنى الحكم، والمكامن المكتشفة، وعدّاد ما يُبنى، وتحذير المتوقف
     // Labels: the government building, discovered deposits, construction timers, stopped warnings
     const keep = new Set<string>(['settlement']);
-    labels.set('settlement', `${governmentName} · ${stageById(defs, state.stage).name}`, labelAbove(settlementTile.x, settlementTile.z, 1.5));
+    labels.set('settlement', `${governmentName} · ${governmentLevel(defs, state).name}`, labelAbove(settlementTile.x, settlementTile.z, compoundTiles > 1 ? 2.2 : 1.5));
     for (const d of world.deposits) {
       if (!showDeposits(now) || !state.discovered.includes(d.id)) continue;
       keep.add(`d-${d.id}`);
@@ -608,9 +662,9 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const start = game.tileAnchor(settlementTile);
   game.camera.focus(start.x, start.z);
   // زاوية الرؤية رأسية، فالشاشة العريضة القصيرة تحتاج كاميرا أقرب / The field of view is vertical, so a wide, short screen needs a closer camera
-  const mobileTiles = APP_CONFIG.camera.startRadiusMobileTiles;
+  const mobileTiles = APP_CONFIG.camera.startRadiusTiles;
   const landscape = window.matchMedia('(orientation: landscape)');
-  if (mobile.matches) game.camera.camera.radius = mobileTiles[landscape.matches ? 'landscape' : 'portrait'] * world.settings.tileSize;
+  game.camera.camera.radius = (mobile.matches ? mobileTiles[landscape.matches ? 'landscape' : 'portrait'] : mobileTiles.desktop) * world.settings.tileSize;
   // عند تدوير الجوال تتكيّف المسافة بنفس النسبة فيبقى التقريب الذي اختاره اللاعب / On rotating a phone the distance scales by the same ratio, keeping the player's zoom
   landscape.addEventListener('change', () => {
     if (!mobile.matches) return;

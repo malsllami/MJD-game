@@ -40,11 +40,13 @@ const ROOF_OVERHANG = 1.5;
  * ضلع المربع بالمتر لكل البيوت: مقياس واحد يجعل المبنى الأكبر يبدو أكبر فعلًا، والكوخ أصغر من القاعة
  * A tile side in metres for every house: one scale so a bigger building really looks bigger, a hut smaller than a hall
  */
-const TILE_METRES = 9.5;
+export const TILE_METRES = 9.5;
 /** أقصى حجم للبيت كنسبة من المربع حتى يبقى طريق حوله / Max house size as a tile fraction so a road still fits around it */
 const MAX_HOUSE_SIZE = 0.96;
 /** سارية علم تُرسم بالكود: fit طولها بالمتر / A flagpole drawn in code: fit is its height in metres */
 export const FLAG_POLE = 'procedural:flag';
+/** سور حجري منخفض يُرسم بالكود: fit طوله بالمتر / A low stone wall drawn in code: fit is its length in metres */
+export const LOW_WALL = 'procedural:low-wall';
 
 /** نوع الجدران / Wall finish */
 type Finish = 'timber' | 'plaster' | 'brick';
@@ -260,6 +262,92 @@ function forecourt(cols: number, rows: number, z0: number): KitPiece[] {
 
 /** نقل قطع المبنى للخلف حتى تتسع الساحة أمامه / Shift the building's pieces back to make room for the forecourt */
 const shiftBack = (pieces: KitPiece[], dz: number): KitPiece[] => pieces.map((p) => ({ ...p, z: p.z - dz }));
+/** نقل قطع المبنى / Move a building's pieces */
+const moveBy = (pieces: KitPiece[], dx: number, dz: number): KitPiece[] => pieces.map((p) => ({ ...p, x: p.x + dx, z: p.z + dz }));
+
+/** مستطيل بالمتر من مركز المجمع (الواجهة نحو +z) / A rectangle in metres from the compound centre (front toward +z) */
+export interface Bed {
+  x0: number;
+  z0: number;
+  x1: number;
+  z1: number;
+}
+
+/**
+ * مدخل المجمع في سوره الأمامي: الطريق الرئيسي يسير على خط الشبكة يسار المربع الأوسط، أي نصف مربع عن المركز
+ * (والمجمع مدار نصف دورة، فيقع على +x في إحداثياته)
+ * The compound's entrance in its front wall: the main road runs on the grid line left of the middle tile, half a tile from
+ * the centre (and the compound is turned half a turn, so it sits at +x in its own coordinates)
+ */
+export const COMPOUND_ENTRANCE_X = TILE_METRES / 2;
+
+/**
+ * أحواض حدائق مجمع الحكم: جانبان وخلف القاعة؛ وما سواها ساحة مرصوفة. half نصف ضلع المجمع بالمتر
+ * The compound's garden beds: two sides and behind the hall; everything else is paved. half is half the compound side in metres
+ */
+export function compoundGardens(half: number): Bed[] {
+  const inner = half - 1.2;
+  return [
+    { x0: -inner, z0: -inner, x1: -inner + 4.4, z1: 6 },
+    { x0: inner - 4.4, z0: -inner, x1: inner, z1: 6 },
+    { x0: -inner + 4.4, z0: -inner, x1: inner - 4.4, z1: -inner + 3.4 },
+  ];
+}
+
+/**
+ * مجمع الحكم على tiles × tiles مربعات: قاعة في الخلف تكبر مع كل مستوى، وساحة أمامية مرصوفة بمدخل وساريتي علم، وحدائق على
+ * الجانبين والخلف، وسور حجري منخفض بمدخل على الطريق الرئيسي؛ وفي العصر الحجري قاعة من الطوب بجناحين
+ * The government compound on tiles × tiles: a hall at the back growing each level, a paved forecourt with an entrance and two
+ * flagpoles, gardens on the sides and back, and a low stone wall open onto the main road; in the stone era a brick hall with two wings
+ */
+export function compoundAssembly(level: number, stone: boolean, tiles: number): Assembly {
+  const half = (tiles * TILE_METRES) / 2;
+  const edge = half - 0.6;
+  const gx = COMPOUND_ENTRANCE_X;
+  const pieces: KitPiece[] = [];
+
+  // القاعة: تكبر وتزداد طوابقها وأجنحتها مع المستوى / The hall: bigger, taller and winged as the level rises
+  const roof: RoofColor = 'Green';
+  const hall = stone
+    ? house({ w: 6, d: 8, finish: 'brick', roof, floors: 2, extras: [{ path: V('Prop_Chimney2'), x: 2, z: -2.5, y: 6.6 }] })
+    : level >= 3
+      ? house({ w: 6, d: 8, finish: 'plaster', roof, floors: 2, extras: [{ ...chimney(2, -2.5), y: 6.6 }] })
+      : house({ w: 6, d: 8, finish: 'timber', roof, floors: 2, extras: [{ ...chimney(2, -2.5), y: 6.6 }] });
+  pieces.push(...moveBy(hall.pieces, 0, -4.5));
+  const wings = stone ? 2 : level >= 5 ? 2 : level >= 4 ? 1 : 0;
+  for (let i = 0; i < wings; i++) {
+    const side = i ? -1 : 1;
+    const wing = house({ w: 4, d: 4, finish: stone ? 'brick' : 'plaster', roof, extras: [] });
+    pieces.push(...moveBy(wing.pieces, side * 6, -5.5));
+  }
+
+  // الساحة الأمامية: ساريتا علم عند المدخل، وصناديق وعربة عند السور / The forecourt: two flagpoles at the entrance, crates and a wagon by the wall
+  pieces.push({ path: FLAG_POLE, x: gx - 3, z: edge - 1.6, fit: 6 + Math.min(level, 6) * 0.3 }, { path: FLAG_POLE, x: gx + 3, z: edge - 1.6, fit: 6 + Math.min(level, 6) * 0.3 });
+  pieces.push(crate(-4.6, edge - 1.4), crate(-5.6, edge - 2.3));
+  if (level >= 2) pieces.push(wagon(-3, 3.6, 0.4));
+
+  // الحدائق: أشجار وشجيرات وزهور تزداد مع المستوى / The gardens: trees, bushes and flowers that grow in number with the level
+  const sideX = half - 3.4;
+  for (const side of [-1, 1]) {
+    pieces.push({ path: F(side < 0 ? 'CommonTree_1' : 'CommonTree_2'), x: side * sideX, z: -8.6, fit: 3.6 });
+    pieces.push({ path: F('Bush_Common_Flowers'), x: side * sideX, z: 3.6, fit: 1.8 });
+    pieces.push({ path: F('Flower_3_Group'), x: side * (sideX - 0.8), z: -2.2, fit: 1.3 });
+    if (level >= 2) pieces.push({ path: F('CommonTree_3'), x: side * sideX, z: -2.6, fit: 3.2 });
+    if (level >= 3) pieces.push({ path: F('Flower_4_Group'), x: side * (sideX + 0.6), z: 0.8, fit: 1.2 }, { path: F('Bush_Common_Flowers'), x: side * (sideX + 0.4), z: -5.6, fit: 1.5 });
+  }
+  for (let i = -2; i <= 2; i++) pieces.push({ path: F(i % 2 ? 'Flower_4_Group' : 'Bush_Common_Flowers'), x: i * 2.6, z: -half + 2.8, fit: i % 2 ? 1.1 : 1.5 });
+
+  // السور المنخفض: ثلاثة أضلاع كاملة، والأمامي مفتوح عند المدخل / The low wall: three full sides, the front open at the entrance
+  const gap = 2.4;
+  pieces.push(
+    { path: LOW_WALL, x: 0, z: -edge, fit: edge * 2 },
+    { path: LOW_WALL, x: -edge, z: 0, fit: edge * 2, yaw: Math.PI / 2 },
+    { path: LOW_WALL, x: edge, z: 0, fit: edge * 2, yaw: Math.PI / 2 },
+    { path: LOW_WALL, x: (-edge + gx - gap) / 2, z: edge, fit: gx - gap + edge },
+    { path: LOW_WALL, x: (edge + gx + gap) / 2, z: edge, fit: edge - gx - gap },
+  );
+  return { pieces, extent: tiles * TILE_METRES, size: tiles };
+}
 
 /**
  * مبنى الحكم حسب المرحلة: قاعة بطابقين أكبر من كل البيوت، أمامها ساحة مرصوفة بسارية علم؛ خشبية في القرية وحجرية في البلدة

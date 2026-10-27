@@ -1,6 +1,6 @@
 // اختبارات ترقية الدولة والسوق / Nation upgrade and market tests
 import { describe, expect, it } from 'vitest';
-import { seedDefinitions } from '../test/gas-harness';
+import { classicDefinitions } from '../test/gas-harness';
 import { createInitialState, placeBuilding, tileKey } from './economy';
 import { checkTrade, trade } from './market';
 import { checkUpgrade, upgradeGovernment, upgradeRequirements } from './progression';
@@ -8,7 +8,7 @@ import { suggestStartSites } from './start-sites';
 import type { GameState } from './types';
 import { generateWorld } from './world-gen';
 
-const defs = seedDefinitions();
+const defs = classicDefinitions();
 const world = generateWorld(defs.world, defs.terrain, defs.deposits);
 const site = suggestStartSites(world, defs)[0];
 const T0 = 1_000_000;

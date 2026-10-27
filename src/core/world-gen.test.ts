@@ -48,9 +48,30 @@ describe('العالم المستوي / flat world', () => {
     for (const b of world.basins) expect(edgeDistance(settings, b.x, b.z)).toBeGreaterThan(settings.flatZoneRadius + FLAT_EDGE_FOREST);
   });
 
+  // حزمة البداية داخل القرية: حجر وحديد وغابة صغيرة لكل موقع، داخل حدود المرحلة الأولى وخارج مجمع الحكم
+  // The starter pack inside the village: stone, iron and a small forest per site, within the first-stage borders and clear of the compound
+  const reach = settings.starterDepositDistance + 2;
+  const nearest = (d: { x: number; z: number }) => Math.min(...world.basins.map((b) => Math.max(Math.abs(d.x - b.x), Math.abs(d.z - b.z))));
+
+  it('لكل موقع حجر وحديد وغابة داخل القرية / every site has stone, iron and a forest inside the village', () => {
+    const village = defs.stages[0].territoryRadius;
+    for (const b of world.basins) {
+      const pack = world.deposits.filter((d) => Math.max(Math.abs(d.x - b.x), Math.abs(d.z - b.z)) <= reach);
+      expect(new Set(pack.map((d) => d.resourceId))).toEqual(new Set(['stone', 'iron', 'wood']));
+      for (const d of pack) {
+        for (const k of d.tiles) {
+          const [x, z] = k.split(',').map(Number);
+          const away = Math.max(Math.abs(x - b.x), Math.abs(z - b.z));
+          expect(away).toBeLessThanOrEqual(village);
+          expect(away).toBeGreaterThan(settings.governmentRadius + 1);
+        }
+      }
+    }
+  });
+
   it('كل أنواع المكامن موزعة خارج مواقع العاصمة / every deposit type is spread outside the capital sites', () => {
     expect(new Set(world.deposits.map((d) => d.typeId))).toEqual(new Set(defs.deposits.map((t) => t.id)));
-    for (const d of world.deposits.filter((x) => x.resourceId !== 'wood')) {
+    for (const d of world.deposits.filter((x) => x.resourceId !== 'wood' && nearest(x) > reach)) {
       for (const b of world.basins) expect(Math.max(Math.abs(d.x - b.x), Math.abs(d.z - b.z))).toBeGreaterThan(settings.flatZoneRadius);
       expect(edgeDistance(settings, d.x, d.z)).toBeGreaterThanOrEqual(FLAT_EDGE_FOREST);
     }

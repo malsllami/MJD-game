@@ -395,6 +395,44 @@ describe('Apps Script: توجيه البناء / placement guidance', () => {
   });
 });
 
+describe('Apps Script: مستويات القرية / village levels', () => {
+  const fresh = seedDefinitions();
+
+  /** قاعدة بيانات قبل الإضافة: بلا جداول المستويات والمباني الابتدائية ولا إعداديها / A database before the addition */
+  function beforeLevels() {
+    const { gas, ss } = loadGas();
+    gas.setupDatabase();
+    for (const name of ['مستويات الحكم', 'مستويات المباني', 'المباني الابتدائية']) ss.sheets.delete(name);
+    const world = ss.sheets.get('إعدادات العالم')!;
+    world.values = world.values.filter((row) => row[0] !== 'نصف قطر مجمع الحكم' && row[0] !== 'بعد موارد البداية');
+    return { gas: loadGas(ss).gas, ss };
+  }
+
+  it('الخادم الأقدم: مستوى لكل مرحلة، بلا مبانٍ ابتدائية ولا مجمع / an older server: a level per stage, no starting buildings or compound', () => {
+    const defs = definitionsFrom(beforeLevels().gas);
+    expect(defs.governmentLevels.map((l) => l.stage)).toEqual(defs.stages.map((s) => s.id));
+    expect(defs.buildingLevels).toHaveLength(1);
+    expect(defs.startBuildings).toEqual([]);
+    expect(defs.world.governmentRadius).toBe(0);
+  });
+
+  it('الإضافة تطابق قاعدة بيانات جديدة / the addition matches a fresh database', () => {
+    const { gas } = beforeLevels();
+    gas.addVillageLevels();
+    expect(definitionsFrom(gas)).toEqual(fresh);
+    expect(fresh.governmentLevels.filter((l) => l.stage === 'village')).toHaveLength(5);
+    expect(fresh.buildingLevels[5].style).toBe('stone');
+  });
+
+  it('تشغيلها مرتين لا يغير شيئًا / running it twice changes nothing', () => {
+    const { gas, ss } = beforeLevels();
+    gas.addVillageLevels();
+    const snapshot = JSON.stringify([...ss.sheets.values()].map((s) => s.values));
+    loadGas(ss).gas.addVillageLevels();
+    expect(JSON.stringify([...ss.sheets.values()].map((s) => s.values))).toBe(snapshot);
+  });
+});
+
 describe('Apps Script: البداية المتقاربة / compact start', () => {
   it('تصغّر حدود المراحل والأرض المسطحة وقطع الضم ولا تمس غيرها / shrinks stage borders, the flat zone and annex parcels only', () => {
     const { gas } = loadGas();

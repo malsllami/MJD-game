@@ -11,7 +11,7 @@ const NOON_SUN = new Color3(1, 0.96, 0.88);
 const LOW_SUN = new Color3(1, 0.6, 0.32);
 const DAY_AMBIENT = new Color3(0.86, 0.9, 1);
 /** ضوء القمر: أزرق خافت يكشف شكل الأرض ليلًا / Moonlight: a faint blue that keeps the land readable at night */
-const NIGHT_AMBIENT = new Color3(0.42, 0.52, 0.8);
+const NIGHT_AMBIENT = new Color3(0.5, 0.6, 0.86);
 const DUSK_AMBIENT = new Color3(1, 0.72, 0.52);
 /** لون الضوء المرتد من الأرض نهارًا وليلًا / Ground-bounce light by day and by night */
 const DAY_GROUND = new Color3(0.32, 0.3, 0.26);
@@ -33,6 +33,7 @@ export class NightLights {
   private level = 0;
 
   add(material: Glowing, color: Color3): void {
+    if (this.lights.some((l) => l.material === material)) return;
     this.lights.push({ material, color });
     material.emissiveColor = color.scale(this.level);
   }
@@ -55,6 +56,10 @@ const SHADOW_SPAN = 0.9;
 const SHADOW_MIN = 24;
 const SHADOW_MAX = 140;
 
+/** اسم مادة زجاج النوافذ في حزمة القرية، وضوءها الدافئ ليلًا / The village kit's window-glass material, and its warm glow at night */
+const WINDOW_GLASS = 'MI_WindowGlass';
+const WINDOW_LIGHT = new Color3(1, 0.7, 0.36);
+
 export class DayNight {
   readonly lights = new NightLights();
   private fraction = 0.3;
@@ -70,6 +75,12 @@ export class DayNight {
     private readonly water: Mesh | null,
   ) {
     scene.onBeforeRenderObservable.add(() => this.update(new Date()));
+    // نوافذ البيوت تضيء ليلًا فتتضح المباني من بعيد / House windows light up at night so buildings read from afar
+    const watch = (m: { name: string }) => {
+      if (m.name.includes(WINDOW_GLASS) && 'emissiveColor' in m) this.lights.add(m as unknown as Glowing, WINDOW_LIGHT);
+    };
+    scene.materials.forEach(watch);
+    scene.onNewMaterialAddedObservable.add(watch);
   }
 
   /**
@@ -123,9 +134,10 @@ export class DayNight {
     const night = 1 - smoothstep(-0.08, 0.1, elevation);
     const { moon } = this.env;
     moon.direction = new Vector3(Math.cos(angle) * 0.9, -Math.max(0.45, -elevation), 0.55).normalize();
-    moon.intensity = 0.62 * night;
+    moon.intensity = 0.78 * night;
     moon.setEnabled(night > 0.001);
-    ambient.intensity = 0.2 + 0.24 * daylight;
+    // ليلًا يبقى ضوء محيط كافٍ لتمييز المباني وأسقفها / At night enough ambient light remains to tell buildings and roofs apart
+    ambient.intensity = 0.3 + 0.14 * daylight;
     ambient.diffuse = Color3.Lerp(Color3.Lerp(NIGHT_AMBIENT, DAY_AMBIENT, daylight), DUSK_AMBIENT, dusk * 0.5);
     ambient.groundColor = Color3.Lerp(NIGHT_GROUND, DAY_GROUND, daylight);
 

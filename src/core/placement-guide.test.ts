@@ -1,13 +1,13 @@
 // اختبارات توجيه البناء: المناطق المقترحة والتنبيه الذي لا يمنع البناء / Placement guidance tests: suggested zones and the non-blocking note
 import { describe, expect, it } from 'vitest';
-import { seedDefinitions } from '../test/gas-harness';
+import { classicDefinitions } from '../test/gas-harness';
 import { checkPlacement, createInitialState, tileKey } from './economy';
 import { placementAdvice, zoneTest } from './placement-guide';
 import { suggestStartSites } from './start-sites';
 import type { GameState } from './types';
 import { generateWorld } from './world-gen';
 
-const defs = seedDefinitions();
+const defs = classicDefinitions();
 const world = generateWorld(defs.world, defs.terrain, defs.deposits);
 const site = suggestStartSites(world, defs)[0];
 const T0 = 1_000_000;

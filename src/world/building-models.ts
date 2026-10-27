@@ -1,15 +1,17 @@
-// مسؤولية الملف: مجسمات المباني حسب عمود "النموذج" وعصر الدولة — موقع إنشاء تظهر فيه القطع بخاماتها من الأساس حتى السقف داخل سقالة خشبية،
-// ثم المبنى المكتمل، ويُعاد تشكيله عند تغير العصر
-// File responsibility: building models by the "model" column and the nation's era — a construction site where the real pieces appear from
-// the foundations up to the roof inside a timber scaffold, then the finished building, reshaped when the era changes
+// مسؤولية الملف: مجسمات المباني حسب عمود "النموذج" وعصر كل مبنى (من مستواه) — موقع إنشاء تظهر فيه القطع بخاماتها من الأساس حتى
+// السقف داخل سقالة خشبية، ثم المبنى المكتمل، وسقالة حوله أثناء ترقيته، ويُعاد تشكيله عند تغير عصره
+// File responsibility: building models by the "model" column and each building's era (from its level) — a construction site where the
+// real pieces appear from the foundations up to the roof inside a timber scaffold, then the finished building, a scaffold around it
+// while it is upgraded, reshaped when its era changes
 //
 // الطرق تُرسم في road-network وليس هنا. / Roads are drawn by road-network, not here.
 
 import { Color3, Mesh, MeshBuilder, Scene, StandardMaterial, Texture, TransformNode, Vector3, type AbstractMesh, type Material, type PBRMaterial, type ShadowGenerator } from '@babylonjs/core';
 import { looksFor, styleOf, type Era, type Look } from '../assets/catalog';
-import { FLAG_POLE, ROOF_MATERIAL, WATER_SURFACE, roofTexture, type RoofColor } from '../assets/village-kit';
+import { FLAG_POLE, LOW_WALL, ROOF_MATERIAL, WATER_SURFACE, roofTexture, type RoofColor } from '../assets/village-kit';
 import type { ModelLibrary } from '../assets/model-library';
 import { isRoad, isUnderConstruction } from '../core/economy';
+import { isUpgrading } from '../core/levels';
 import type { BuildingDef, GameState, PlacedBuilding, World } from '../core/types';
 import { sampleHeight, tileCenter } from '../core/world-gen';
 
@@ -46,6 +48,14 @@ export async function spawnParts(library: ModelLibrary, scene: Scene, parent: Tr
         disc.position.set(p.x, 0.06, p.z);
         disc.material = waterMaterial(scene);
         all.push(disc);
+        return;
+      }
+      if (p.path === LOW_WALL) {
+        const wall = lowWall(scene, p.fit ?? 4);
+        wall.parent = kit;
+        wall.position.set(p.x, 0, p.z);
+        wall.rotation.y = p.yaw ?? 0;
+        all.push(wall);
         return;
       }
       if (p.path === FLAG_POLE) {
@@ -118,6 +128,38 @@ function flagPole(scene: Scene, height: number): Mesh {
   return Mesh.MergeMeshes([pole, cloth], true, true, undefined, false, true)!;
 }
 
+/** ارتفاع السور المنخفض وسمكه بالمتر / The low wall's height and thickness in metres */
+const LOW_WALL_HEIGHT = 1.05;
+const LOW_WALL_DEPTH = 0.55;
+
+/**
+ * سور حجري منخفض بطول length متر وغطاء أعرض قليلًا، بخامة حجر حزمة القرية مكررة على طوله
+ * A low stone wall length metres long with a slightly wider coping, in the village kit's stone texture repeated along it
+ */
+function lowWall(scene: Scene, length: number): Mesh {
+  const body = MeshBuilder.CreateBox('low-wall', { width: length, height: LOW_WALL_HEIGHT, depth: LOW_WALL_DEPTH, wrap: true }, scene);
+  body.position.y = LOW_WALL_HEIGHT / 2;
+  const cap = MeshBuilder.CreateBox('low-wall-cap', { width: length + 0.2, height: 0.14, depth: LOW_WALL_DEPTH + 0.18 }, scene);
+  cap.position.y = LOW_WALL_HEIGHT + 0.07;
+  body.material = stoneMaterial(scene, Math.max(1, Math.round(length / 2)));
+  cap.material = plainMaterial(scene, 'low-wall-cap', new Color3(0.62, 0.6, 0.55));
+  return Mesh.MergeMeshes([body, cap], true, true, undefined, false, true)!;
+}
+
+/** مادة حجر مكررة repeat مرات أفقيًا، مشتركة لكل تكرار / A stone material repeated horizontally, shared per repeat count */
+function stoneMaterial(scene: Scene, repeat: number): StandardMaterial {
+  const name = `low-wall-stone-${repeat}`;
+  const existing = scene.getMaterialByName(name) as StandardMaterial | null;
+  if (existing) return existing;
+  const m = new StandardMaterial(name, scene);
+  const t = new Texture(`${import.meta.env.BASE_URL}models/village/textures/T_UnevenBrick_BaseColor.jpg`, scene, false, false);
+  t.uScale = repeat;
+  t.vScale = 0.5;
+  m.diffuseTexture = t;
+  m.specularColor = new Color3(0.04, 0.04, 0.04);
+  return m;
+}
+
 /** مادة ماء مشتركة للبحيرات والجداول / A shared water material for lakes and streams */
 export function waterMaterial(scene: Scene): StandardMaterial {
   const existing = scene.getMaterialByName('built-water') as StandardMaterial | null;
@@ -149,14 +191,18 @@ export class BuildingModels {
     private readonly onRemove: (mesh: AbstractMesh) => void,
   ) {}
 
-  /** مطابقة المجسمات مع الحالة وتحديث تقدم الإنشاء / Match models to state and update construction progress */
-  sync(state: GameState, now: number, era: Era): void {
+  /**
+   * مطابقة المجسمات مع الحالة وتحديث تقدم الإنشاء والترقية؛ eraOf عصر كل مبنى من مستواه
+   * Match models to state and update construction and upgrade progress; eraOf gives each building's era from its level
+   */
+  sync(state: GameState, now: number, eraOf: (placed: PlacedBuilding) => Era): void {
     const alive = new Set<string>();
     for (const placed of state.buildings) {
       const def = this.defs.get(placed.buildingId);
       if (!def || isRoad(def)) continue;
       alive.add(placed.uid);
       let model = this.models.get(placed.uid);
+      const era = eraOf(placed);
       // تغيّر العصر يعيد تشكيل المبنى بشكل عصره الجديد / An era change reshapes the building into its new era's look
       if (model && model.era !== era) {
         this.remove(placed.uid, model);
@@ -167,7 +213,17 @@ export class BuildingModels {
       const c = tileCenter(this.world, placed.x, placed.z);
       model.root.position.set(c.x, Math.max(0, sampleHeight(this.world, c.x, c.z)), c.z);
       model.scaffold?.position.copyFrom(model.root.position);
-      if (!model.meshes.length || model.done) continue;
+      if (!model.meshes.length) continue;
+      // الترقية: المبنى ظاهر كاملًا وحوله سقالة حتى تكتمل / An upgrade: the whole building shown inside a scaffold until it completes
+      if (model.done) {
+        const upgrading = isUpgrading(placed, now);
+        if (upgrading && !model.scaffold) model.scaffold = this.buildScaffold(model.root, ...this.bounds(model));
+        else if (!upgrading && model.scaffold) {
+          model.scaffold.dispose();
+          model.scaffold = null;
+        }
+        continue;
+      }
       if (!isUnderConstruction(placed, now)) this.finish(model);
       else this.progress(model, (now - placed.startedAt) / Math.max(1, placed.completesAt - placed.startedAt));
     }
@@ -208,19 +264,26 @@ export class BuildingModels {
   private planConstruction(model: Model): void {
     model.root.computeWorldMatrix(true);
     const base = model.root.position.y;
-    const bounds = model.meshes.map((m) => {
+    const boxes = model.meshes.map((m) => {
       m.computeWorldMatrix(true);
       return m.getBoundingInfo().boundingBox;
     });
-    const order = model.meshes.map((m, i) => ({ m, y: bounds[i].minimumWorld.y - base, i })).sort((a, b) => a.y - b.y || a.i - b.i);
+    const order = model.meshes.map((m, i) => ({ m, y: boxes[i].minimumWorld.y - base, i })).sort((a, b) => a.y - b.y || a.i - b.i);
     order.forEach(({ m }, rank) => model.reveal.set(m, SITE_SHARE + (1 - SITE_SHARE) * 0.95 * (rank / Math.max(1, order.length - 1))));
+    model.scaffold = this.buildScaffold(model.root, ...this.bounds(model));
+  }
+
+  /** حدود المبنى كله في العالم / The whole building's world bounds */
+  private bounds(model: Model): [Vector3, Vector3] {
     const min = new Vector3(Infinity, Infinity, Infinity);
     const max = new Vector3(-Infinity, -Infinity, -Infinity);
-    for (const b of bounds) {
+    for (const m of model.meshes) {
+      m.computeWorldMatrix(true);
+      const b = m.getBoundingInfo().boundingBox;
       min.minimizeInPlace(b.minimumWorld);
       max.maximizeInPlace(b.maximumWorld);
     }
-    model.scaffold = this.buildScaffold(model.root, min, max);
+    return [min, max];
   }
 
   /** أعمدة خشبية حول المبنى وألواح أفقية على مستويين، بقياس المبنى نفسه / Timber poles around the building and planks at two levels, sized to the building */

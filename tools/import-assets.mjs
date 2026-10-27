@@ -4,7 +4,7 @@
 // الاستخدام / Usage:
 //   node tools/import-assets.mjs --village <MegaKit glTF dir> --nature <Nature MegaKit glTF dir> \
 //     --people <UAL2_Standard.glb> --characters <Universal Base Characters dir> --outfits <Modular Character Outfits dir> \
-//     --animals <Farm Animals OBJ dir> --ground 1 --grass-variants 1
+//     --animals <Farm Animals OBJ dir> --ground 1 --grass-variants 1 --paving 1
 // المصادر (CC0) / Sources (CC0): Quaternius Medieval Village MegaKit, Stylized Nature MegaKit, Universal Animation Library 2,
 // (opengameart.org)، و Universal Base Characters و Modular Character Outfits - Fantasy (quaternius.itch.io)، وخامات الأرض من Poly Haven / and ground textures from Poly Haven.
 
@@ -57,6 +57,8 @@ const SAND_TINT = '#c9a46a';
  * بدائل العشب لتنويع لون الأرض: عشب جاف مصفر وعشب كثيف داكن، يُولَّدان من خامة العشب نفسها
  * Grass variants to vary the ground colour: dry yellowish grass and lush dark grass, both derived from the grass texture itself
  */
+/** بلاط حجري لساحة مجمع الحكم من Poly Haven / Stone paving for the government compound from Poly Haven */
+const PAVING = 'cobblestone_floor_01';
 const GRASS_VARIANTS = { dry: { saturation: 0.62, hue: -14, brightness: 1.02 }, lush: { saturation: 1.05, hue: 6, brightness: 0.72 } };
 
 /** أقصى ضلع لكل نوع خامة / Max side per texture kind */
@@ -359,6 +361,18 @@ async function importGround() {
   console.log('ground:', Object.keys(GROUND).join(', '));
 }
 
+/** بلاط الساحة بدقة 1k، أفتح قليلًا حتى يبرز تحت ضوء المشهد / Forecourt paving at 1k, slightly lighter so it stands out under the scene light */
+async function importPaving() {
+  const out = join(OUT, 'textures', 'ground');
+  const files = await (await fetch(`https://api.polyhaven.com/files/${PAVING}`)).json();
+  for (const [map, suffix] of [['Diffuse', 'color'], ['nor_gl', 'normal']]) {
+    let buf = Buffer.from(await (await fetch(files[map]['1k'].jpg.url)).arrayBuffer());
+    if (suffix === 'color') buf = await sharp(buf).modulate({ brightness: 1.15, saturation: 0.8 }).toBuffer();
+    await sharp(buf).resize(suffix === 'normal' ? 512 : 1024).jpeg({ quality: 82, mozjpeg: true }).toFile(join(out, `paving_${suffix}.jpg`));
+  }
+  console.log('paving:', PAVING);
+}
+
 /** بدائل العشب من خامة العشب المستوردة / Grass variants from the imported grass texture */
 async function importGrassVariants() {
   const dir = join(OUT, 'textures', 'ground');
@@ -382,6 +396,7 @@ if (args.people) await importAnimations(args.people, PEOPLE_ANIMS, join(OUT, 'mo
 if (args.characters) await importCharacters(args.characters, args.outfits);
 if (args.ground) await importGround();
 if (args.ground || args['grass-variants']) await importGrassVariants();
+if (args.ground || args.paving) await importPaving();
 if (args.animals) {
   mkdirSync(join(OUT, 'models', 'animals'), { recursive: true });
   for (const name of ANIMALS) writeFileSync(join(OUT, 'models', 'animals', `${name}.glb`), await obj2gltf(join(args.animals, `${name}.obj`), { binary: true }));

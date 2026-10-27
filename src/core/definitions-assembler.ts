@@ -1,7 +1,9 @@
 // مسؤولية الملف: تجميع جداول قاعدة البيانات الخام في تعريفات لعبة كاملة ومرتبة
 // File responsibility: assembles raw database tables into complete, ordered game definitions
 
-import type { DepositType, EntityType, GameDefinitions, PlacementZone, Profession, Stage, WorldSettings } from './types';
+import type {
+  BuildingLevel, BuildingStyle, DepositType, EntityType, GameDefinitions, GovernmentLevel, PlacementZone, Profession, Stage, WallStyle, WorldSettings,
+} from './types';
 
 /** صف خام بترتيب اختياري / Raw row with optional ordering */
 interface Ordered {
@@ -34,6 +36,13 @@ export interface RawTables {
   professions?: Profession[];
   storage?: { buildingId: string; resourceId: string; capacity: number | null }[];
   marketPrices?: { resourceId: string; buyPrice: number | null; sellPrice: number | null }[];
+  /** اختيارية: لا يرسلها خادم أقدم من إضافة مستويات القرية / Optional: absent from servers older than the village levels addition */
+  governmentLevels?: {
+    level: number | null; name: string; stage: string; population: number | null; requiredBuildings?: string[]; upgradeCost?: string[];
+    maxBuildingLevel: number | null; wallStyle: string; description: string;
+  }[];
+  buildingLevels?: { level: number | null; productionFactor: number | null; populationFactor: number | null; costPercent: number | null; timePercent: number | null; style: string }[];
+  startBuildings?: ({ buildingId: string } & Ordered)[];
 }
 
 /** "gold:500" ← { gold: 500 }؛ الأرقام العربية مقبولة / "gold:500" → { gold: 500 }; Arabic digits accepted */
@@ -85,7 +94,45 @@ const BACKWARD_COMPATIBLE: Partial<WorldSettings> = {
   adminZoneRadius: 0,
   residentialZoneRadius: 0,
   industrialRoadDistance: 0,
+  // مبنى الحكم مربع واحد، وموارد البداية خارج القرية كما كانت / A one-tile government building; starter resources outside the village as before
+  governmentRadius: 0,
+  starterDepositDistance: 0,
 };
+
+const WALL_STYLES: WallStyle[] = ['stakes', 'palisade', 'stone'];
+const BUILDING_STYLES: BuildingStyle[] = ['wood', 'stone'];
+const known = <T extends string>(list: T[], raw: string | undefined): T | null => {
+  const v = String(raw ?? '').trim().toLowerCase() as T;
+  return list.includes(v) ? v : null;
+};
+
+/**
+ * مستويات الحكم من جدولها، وإلا مستوى لكل مرحلة بشروطها (خادم أقدم) فتبقى الترقية كما كانت
+ * Government levels from their table, otherwise one level per stage with its conditions (older server), so upgrading works as before
+ */
+function governmentLevels(raw: RawTables['governmentLevels'], stages: Stage[]): GovernmentLevel[] {
+  const rows = (raw ?? []).filter((r) => r.level && r.stage && stages.some((s) => s.id === r.stage)).sort((a, b) => a.level! - b.level!);
+  if (!rows.length) {
+    return stages.map((s, i) => ({
+      level: i + 1, name: s.name, stage: s.id, population: s.population, requiredBuildings: s.requiredBuildings, upgradeCost: s.upgradeCost,
+      maxBuildingLevel: 1, wallStyle: null, description: s.description,
+    }));
+  }
+  return rows.map((r, i) => ({
+    level: i + 1, name: r.name, stage: r.stage, population: r.population ?? 0, requiredBuildings: (r.requiredBuildings ?? []).filter(Boolean),
+    upgradeCost: parseAmounts(r.upgradeCost), maxBuildingLevel: Math.max(1, r.maxBuildingLevel ?? 1), wallStyle: known(WALL_STYLES, r.wallStyle), description: r.description,
+  }));
+}
+
+/** مستويات المباني من جدولها، وإلا مستوى واحد بلا مضاعفات (خادم أقدم) / Building levels from their table, otherwise one plain level (older server) */
+function buildingLevels(raw: RawTables['buildingLevels']): BuildingLevel[] {
+  const rows = (raw ?? []).filter((r) => r.level).sort((a, b) => a.level! - b.level!);
+  if (!rows.length) return [{ level: 1, productionFactor: 1, populationFactor: 1, costPercent: 0, timePercent: 0, style: null }];
+  return rows.map((r, i) => ({
+    level: i + 1, productionFactor: r.productionFactor ?? 1, populationFactor: r.populationFactor ?? 1,
+    costPercent: r.costPercent ?? 0, timePercent: r.timePercent ?? 0, style: known(BUILDING_STYLES, r.style),
+  }));
+}
 
 const ZONES: PlacementZone[] = ['residential', 'administrative', 'industrial', 'agricultural'];
 
@@ -186,5 +233,8 @@ export function assembleDefinitions(raw: RawTables, version: string): GameDefini
     })),
     professions: (raw.professions ?? []).map(({ id, name, icon, color }: Profession) => ({ id, name, icon, color })),
     marketPrices: (raw.marketPrices ?? []).filter((p) => p.resourceId).map((p) => ({ resourceId: p.resourceId, buyPrice: p.buyPrice ?? 0, sellPrice: p.sellPrice ?? 0 })),
+    governmentLevels: governmentLevels(raw.governmentLevels, stages),
+    buildingLevels: buildingLevels(raw.buildingLevels),
+    startBuildings: [...(raw.startBuildings ?? [])].sort(byOrder).map((r) => r.buildingId).filter((id) => raw.buildings.some((b) => b.id === id)),
   };
 }

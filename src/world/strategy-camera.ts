@@ -32,11 +32,15 @@ export class StrategyCamera {
     canvas: HTMLCanvasElement,
     private readonly bounds: { halfX: number; halfZ: number },
     start: { x: number; z: number },
+    tileSize: number,
     private readonly cfg: CameraConfig = APP_CONFIG.camera,
   ) {
-    const cam = new ArcRotateCamera('camera', -Math.PI / 2, cfg.startBeta, cfg.startRadius, new Vector3(start.x, 0, start.z), scene);
+    const cam = new ArcRotateCamera('camera', -Math.PI / 2, cfg.startBeta, cfg.startRadiusTiles.desktop * tileSize, new Vector3(start.x, 0, start.z), scene);
+    // حدود آمنة: لا أقرب من مستوى الشارع، ولا أبعد من مدى الضباب أو من حد المربعات / Safe limits: no closer than street level, no farther than the fog or the tile cap
     cam.lowerRadiusLimit = cfg.minRadius;
-    cam.upperRadiusLimit = Math.min(Math.max(bounds.halfX, bounds.halfZ) * 2 * cfg.maxRadiusFactor, cfg.fogClearance / Math.max(1e-4, scene.fogDensity));
+    cam.upperRadiusLimit = Math.min(
+      Math.max(bounds.halfX, bounds.halfZ) * 2 * cfg.maxRadiusFactor, cfg.fogClearance / Math.max(1e-4, scene.fogDensity), cfg.maxRadiusTiles * tileSize,
+    );
     cam.lowerBetaLimit = cfg.minBeta;
     cam.upperBetaLimit = cfg.maxBeta;
     cam.wheelDeltaPercentage = 0.01;

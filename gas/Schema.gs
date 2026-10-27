@@ -64,6 +64,9 @@ const WORLD_SETTINGS = [
   { key: 'نصف قطر المنطقة الإدارية', field: 'adminZoneRadius', type: 'number', description: 'المباني الإدارية يُقترح وضعها على هذا البعد من مبنى الحكم أو أقرب، بعدد المربعات' },
   { key: 'نصف قطر المنطقة السكنية', field: 'residentialZoneRadius', type: 'number', description: 'المساكن يُقترح وضعها على هذا البعد من مبنى الحكم أو أقرب، والمزارع خارجه' },
   { key: 'بعد الورش عن الطريق', field: 'industrialRoadDistance', type: 'number', description: 'الورش والمخازن يُقترح وضعها على طريق أو على هذا البعد منه بعدد المربعات' },
+  // إضافة مستويات القرية (addVillageLevels) / Village levels addition
+  { key: 'نصف قطر مجمع الحكم', field: 'governmentRadius', type: 'number', description: 'المربعات المحجوزة لمبنى الحكم وساحته وحديقته حوله؛ 1 يعني 3 × 3 مربعات، وصفر مربع واحد' },
+  { key: 'بعد موارد البداية', field: 'starterDepositDistance', type: 'number', description: 'بعد الغابة والمحجر والحديد عن مبنى الحكم داخل القرية بعدد المربعات؛ صفر يضعها خارج حدود القرية' },
 ];
 
 /**
@@ -247,6 +250,42 @@ const TABLES = [
       { name: 'المعرف', field: 'id', type: 'string' },
       { name: 'الاسم', field: 'name', type: 'string' },
       { name: 'الأيقونة', field: 'icon', type: 'string' },
+      { name: 'الترتيب', field: 'order', type: 'number' },
+      DISABLED_COLUMN,
+    ],
+  },
+  // إضافة مستويات القرية (addVillageLevels) / Village levels addition
+  {
+    id: 'governmentLevels', name: 'مستويات الحكم',
+    columns: [
+      { name: 'المستوى', field: 'level', type: 'number' },
+      { name: 'الاسم', field: 'name', type: 'string' },
+      { name: 'المرحلة', field: 'stage', type: 'string' },
+      { name: 'السكان المطلوبون', field: 'population', type: 'number' },
+      { name: 'المباني المطلوبة', field: 'requiredBuildings', type: 'list' },
+      { name: 'تكلفة الترقية', field: 'upgradeCost', type: 'list' },
+      { name: 'أقصى مستوى للمباني', field: 'maxBuildingLevel', type: 'number' },
+      { name: 'طراز السور', field: 'wallStyle', type: 'string' },
+      { name: 'الوصف', field: 'description', type: 'string' },
+      DISABLED_COLUMN,
+    ],
+  },
+  {
+    id: 'buildingLevels', name: 'مستويات المباني',
+    columns: [
+      { name: 'المستوى', field: 'level', type: 'number' },
+      { name: 'مضاعف الإنتاج', field: 'productionFactor', type: 'number' },
+      { name: 'مضاعف السكان', field: 'populationFactor', type: 'number' },
+      { name: 'نسبة تكلفة الترقية', field: 'costPercent', type: 'number' },
+      { name: 'نسبة مدة الترقية', field: 'timePercent', type: 'number' },
+      { name: 'الطراز', field: 'style', type: 'string' },
+      DISABLED_COLUMN,
+    ],
+  },
+  {
+    id: 'startBuildings', name: 'المباني الابتدائية',
+    columns: [
+      { name: 'معرف المبنى', field: 'buildingId', type: 'string' },
       { name: 'الترتيب', field: 'order', type: 'number' },
       DISABLED_COLUMN,
     ],

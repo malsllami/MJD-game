@@ -2,7 +2,12 @@
 // File responsibility: workforce and storage as pure logic — residents per trade, assigning workers to their trade's buildings and
 // the resulting efficiency, and each resource's capacity
 
+import { workersAt } from './levels';
 import type { BuildingDef, GameDefinitions, PlacedBuilding } from './types';
+
+/** مضاعف لكل مبنى حسب مستواه (1 بلا مستويات) / A per-building factor from its level (1 without levels) */
+type Factor = (b: PlacedBuilding) => number;
+const plain: Factor = () => 1;
 
 /** سكان كل مهنة من المساكن (بأعداد صحيحة) / Residents per trade from the housing (whole numbers) */
 export function residentsByProfession(buildings: PlacedBuilding[], byId: Map<string, BuildingDef>): Record<string, number> {
@@ -19,19 +24,21 @@ export function residentsByProfession(buildings: PlacedBuilding[], byId: Map<str
  * توزيع العمال: كل مبنى عمل يأخذ من سكان مهنته بترتيب بنائه حتى حاجته؛ الكفاءة = المعيّنون ÷ المطلوبون
  * المباني التي لا تحتاج عمالًا كفاءتها 1، وغير العاملة (طريق أو مدخلات أو إنشاء) لا تأخذ عمالًا
  * Staffing: each work building takes from its trade's residents in build order, up to its need; efficiency = assigned ÷ needed.
- * Buildings needing no workers run at 1; inactive ones (road, inputs or construction) take no workers
+ * Buildings needing no workers run at 1; inactive ones (road, inputs or construction) take no workers.
+ * population: مضاعف العمال حسب مستوى المبنى / the workers factor from the building's level
  */
 export function staffing(
   buildings: PlacedBuilding[],
   byId: Map<string, BuildingDef>,
   active: (b: PlacedBuilding) => boolean,
+  population: Factor = plain,
 ): Map<string, { assigned: number; needed: number; efficiency: number }> {
   const pool = residentsByProfession(buildings, byId);
   const out = new Map<string, { assigned: number; needed: number; efficiency: number }>();
   for (const b of buildings) {
     const def = byId.get(b.buildingId);
     if (!def) continue;
-    const needed = def.workers > 0 && def.profession ? def.workers : 0;
+    const needed = def.workers > 0 && def.profession ? workersAt(def, population(b)) : 0;
     if (!needed) {
       out.set(b.uid, { assigned: 0, needed: 0, efficiency: 1 });
       continue;
@@ -48,16 +55,18 @@ export function staffing(
 }
 
 /**
- * سعة كل مورد: السعة الأساسية + سعات المخازن العاملة؛ Infinity حين لا تُحدد سعة أساسية (خادم أقدم)
- * Each resource's capacity: base capacity + operating stores; Infinity when no base capacity is set (older server)
+ * سعة كل مورد: السعة الأساسية + سعات المخازن العاملة (بمضاعف مستواها)؛ Infinity حين لا تُحدد سعة أساسية (خادم أقدم)
+ * Each resource's capacity: base capacity + operating stores (by their level factor); Infinity when no base capacity is set (older server)
  */
-export function capacities(defs: GameDefinitions, buildings: PlacedBuilding[], byId: Map<string, BuildingDef>, active: (b: PlacedBuilding) => boolean): Record<string, number> {
+export function capacities(
+  defs: GameDefinitions, buildings: PlacedBuilding[], byId: Map<string, BuildingDef>, active: (b: PlacedBuilding) => boolean, production: Factor = plain,
+): Record<string, number> {
   const out: Record<string, number> = {};
   for (const r of defs.resources) out[r.id] = r.baseCapacity ?? Infinity;
   for (const b of buildings) {
     const def = byId.get(b.buildingId);
     if (!def || !active(b)) continue;
-    for (const [id, n] of Object.entries(def.storage)) out[id] = (out[id] ?? 0) + n;
+    for (const [id, n] of Object.entries(def.storage)) out[id] = (out[id] ?? 0) + n * production(b);
   }
   return out;
 }

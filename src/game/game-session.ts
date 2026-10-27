@@ -6,7 +6,7 @@ import {
   placeBuilding, placeRoadPath, placeWallPath, resumeAfterAbsence, surveyTile, type Check, type Resume, type RoadPathResult,
 } from '../core/economy';
 import { checkTrade, trade, type Side } from '../core/market';
-import { checkUpgrade, upgradeGovernment } from '../core/progression';
+import { checkBuildingUpgrade, checkUpgrade, upgradeBuilding, upgradeGovernment } from '../core/progression';
 import type { BuildingDef, Deposit, GameDefinitions, GameState, Tile, World } from '../core/types';
 import type { SaveService } from '../services/save-service';
 
@@ -112,12 +112,23 @@ export class GameSession {
     return result;
   }
 
-  /** ترقية مبنى الحكم إلى المرحلة التالية / Upgrade the government building to the next stage */
+  /** ترقية مبنى الحكم إلى المستوى التالي / Upgrade the government building to the next level */
   upgrade(now: number): Check {
     this.tick(now);
     const check = checkUpgrade(this.defs, this.current, now);
     if (check.ok) {
       this.current = upgradeGovernment(this.current, this.defs, this.world);
+      this.persist();
+    }
+    return check;
+  }
+
+  /** ترقية مبنى مستوى واحدًا / Upgrade a building one level */
+  upgradeBuilding(uid: string, now: number): Check {
+    this.tick(now);
+    const check = checkBuildingUpgrade(this.defs, this.current, uid, now);
+    if (check.ok) {
+      this.current = upgradeBuilding(this.current, this.defs, uid, now);
       this.persist();
     }
     return check;

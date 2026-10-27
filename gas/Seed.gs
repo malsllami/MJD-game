@@ -63,7 +63,10 @@ const COMPACT_VILLAGE = {
   adminZoneRadius: 2,
   residentialZoneRadius: 4,
   industrialRoadDistance: 1,
+  governmentRadius: 1,
+  starterDepositDistance: 4,
 };
+
 
 /**
  * المباني: [المعرف، الاسم، الفئة، التضاريس، المدة بالثواني، التقنية، المرحلة، السكان المضافون، النموذج، يتطلب طريق، يتطلب مكمن]
@@ -205,6 +208,35 @@ const SEED_STAGE_UPGRADE = {
   city: ['village_center, school, hospital, police', 'gold:2000, stone:1500, iron:500'],
 };
 
+/**
+ * مستويات الحكم: [المستوى، الاسم، المرحلة، السكان، المباني المطلوبة، تكلفة الترقية، أقصى مستوى للمباني، طراز السور، الوصف]
+ * المستويات 1–5 قرية خشبية، والسادس ينقل الدولة إلى البلدة الحجرية بشروطها، والسابع إلى المدينة
+ * Government levels: 1–5 are the wooden village, the sixth moves the nation into the stone town with its conditions, the seventh into the city
+ */
+const SEED_GOVERNMENT_LEVELS = [
+  [1, 'قرية ناشئة', 'village', 0, '', '', 1, 'stakes', 'أكواخ خشبية وإنتاج بدائي قليل'],
+  [2, 'قرية', 'village', 20, '', 'gold:300, wood:200', 2, 'stakes', 'المباني تُرقّى إلى المستوى الثاني'],
+  [3, 'قرية عامرة', 'village', 40, '', 'gold:500, wood:350, stone:150', 3, 'palisade', 'سور أوتاد أعلى بأبراج مراقبة'],
+  [4, 'قرية مزدهرة', 'village', 70, 'market', 'gold:800, wood:500, stone:250', 4, 'palisade', 'المباني تُرقّى إلى المستوى الرابع'],
+  [5, 'قرية كبرى', 'village', 110, 'development_center', 'gold:1200, wood:550, stone:400, iron:100', 5, 'palisade', 'آخر مستويات العصر الخشبي'],
+  [6, 'بلدة', 'town', 150, SEED_STAGE_UPGRADE.town[0], SEED_STAGE_UPGRADE.town[1], 6, 'stone', 'العصر الحجري: مبانٍ حجرية وسور حجري وحدود أوسع'],
+  [7, 'مدينة', 'city', 600, SEED_STAGE_UPGRADE.city[0], SEED_STAGE_UPGRADE.city[1], 7, 'stone', 'المدينة: الحكومة والصناعة والميناء'],
+];
+
+/**
+ * مستويات المباني: [المستوى، مضاعف الإنتاج، مضاعف السكان والعمال، نسبة تكلفة الترقية من تكلفة البناء، نسبة مدتها من مدة البناء، الطراز]
+ * Building levels: [level, output factor, residents and workers factor, upgrade cost as % of the build cost, its time as % of the build time, look]
+ */
+const SEED_BUILDING_LEVELS = [
+  [1, 1, 1, 0, 0, 'wood'], [2, 1.4, 1.25, 100, 100, 'wood'], [3, 1.8, 1.5, 150, 120, 'wood'], [4, 2.3, 1.75, 200, 140, 'wood'],
+  [5, 2.8, 2, 250, 160, 'wood'], [6, 3.6, 2.5, 300, 200, 'stone'], [7, 4.5, 3, 400, 250, 'stone'],
+];
+
+/** المباني القائمة مع بداية اللعبة حول مبنى الحكم: مصدر الماء والمنشآت الخمس ومساكن عمالها (والعامل يدير البئر) / The buildings standing at the start (a laborer runs the well) */
+const SEED_START_BUILDINGS = [
+  'well', 'houses', 'farm', 'farmers_house', 'lumber_camp', 'sawmill', 'carpenters_house', 'blacksmith', 'smiths_house', 'stone_prospector', 'miners_house',
+];
+
 /** صفوف إضافة العصر البدائي: [المبنى، المورد، الكمية] / Rows of the primitive era addition */
 const SEED_PRIMITIVE_IDS = ['well', 'tent'];
 const SEED_PRIMITIVE_COSTS = [['well', 'wood', 40], ['well', 'stone', 30], ['tent', 'wood', 20]];
@@ -331,6 +363,16 @@ const SEED_ROWS = {
   professions: SEED_PROFESSIONS.map(function (p) { return { 'المعرف': p[0], 'الاسم': p[1], 'الأيقونة': p[2], 'اللون': p[3] }; }),
   storage: SEED_STORAGE.map(function (s) { return { 'معرف المبنى': s[0], 'معرف المورد': s[1], 'السعة': s[2] }; }),
   marketPrices: SEED_PRICES.map(function (p) { return { 'معرف المورد': p[0], 'سعر الشراء': p[1], 'سعر البيع': p[2] }; }),
+  governmentLevels: SEED_GOVERNMENT_LEVELS.map(function (l) {
+    return {
+      'المستوى': l[0], 'الاسم': l[1], 'المرحلة': l[2], 'السكان المطلوبون': l[3], 'المباني المطلوبة': l[4], 'تكلفة الترقية': l[5],
+      'أقصى مستوى للمباني': l[6], 'طراز السور': l[7], 'الوصف': l[8],
+    };
+  }),
+  buildingLevels: SEED_BUILDING_LEVELS.map(function (l) {
+    return { 'المستوى': l[0], 'مضاعف الإنتاج': l[1], 'مضاعف السكان': l[2], 'نسبة تكلفة الترقية': l[3], 'نسبة مدة الترقية': l[4], 'الطراز': l[5] };
+  }),
+  startBuildings: SEED_START_BUILDINGS.map(function (id, i) { return { 'معرف المبنى': id, 'الترتيب': i + 1 }; }),
   ministries: [
     ['finance', 'المالية', 'الموارد والميزانية والضرائب'],
     ['interior', 'الداخلية', 'السكان والأمن الداخلي والرضا'],

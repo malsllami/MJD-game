@@ -7,7 +7,8 @@
 
 import { buildingStatus, capacityAt, isRoad, isUnderConstruction, netRates, stageById, staffingAt, unlockGaps, type Check } from '../core/economy';
 import { checkTrade, CURRENCY, hasMarket, type Side } from '../core/market';
-import { upgradeRequirements } from '../core/progression';
+import { factorsOf, governmentLevel, housingAt, isUpgradable, isUpgrading, levelOf, levelRow } from '../core/levels';
+import { buildingUpgradeCost, checkBuildingUpgrade, upgradeRequirements } from '../core/progression';
 import type { BuildingDef, PlacedBuilding } from '../core/types';
 import { residentsByProfession } from '../core/workforce';
 import { formatDuration, formatNumber, parseNumber } from '../utils/format';
@@ -22,6 +23,7 @@ export type PanelTarget = { kind: 'government' } | { kind: 'building'; uid: stri
 /** أوامر اللوحة التي ينفذها المتحكم / Panel commands carried out by the controller */
 export interface PanelActions {
   upgrade(): Check;
+  upgradeBuilding(uid: string): Check;
   trade(resourceId: string, amount: number, side: Side): Check;
   move(uid: string): void;
   demolish(uid: string): void;
@@ -101,7 +103,7 @@ export class BuildingPanel {
     if (!tabs.some((t) => t.id === this.tab)) this.tab = tabs[0].id;
     const active = tabs.find((t) => t.id === this.tab)!;
     const name = def?.name ?? (ctx.defs.world.governmentName || ctx.defs.world.capitalName);
-    const status = placed ? this.statusText(placed) : `${ctx.defs.world.capitalName} · ${stageById(ctx.defs, ctx.state.stage).name}`;
+    const status = placed ? this.statusText(placed) : `${ctx.defs.world.capitalName} · ${governmentLevel(ctx.defs, ctx.state).name}`;
     const html = `
       <header class="bp-head">
         <span class="bp-pic" data-pic></span>
@@ -122,6 +124,13 @@ export class BuildingPanel {
 
   private statusText(placed: PlacedBuilding): string {
     const ctx = this.context();
+    const level = `المستوى ${formatNumber(levelOf(placed, ctx.now))}`;
+    if (isUpgrading(placed, ctx.now)) return `${level} · يُرقّى · ${formatDuration(Math.ceil((placed.upgradeCompletesAt! - ctx.now) / 1000))}`;
+    return `${level} · ${this.statusOnly(placed)}`;
+  }
+
+  private statusOnly(placed: PlacedBuilding): string {
+    const ctx = this.context();
     const status = buildingStatus(placed, ctx.state, ctx.defs, ctx.now);
     const profession = (id: string) => ctx.defs.professions.find((p) => p.id === id)?.name ?? id;
     const resource = (id: string) => ctx.defs.resources.find((r) => r.id === id)?.name ?? id;
@@ -135,7 +144,7 @@ export class BuildingPanel {
   }
 
   private tabsFor(kind: Kind, def: BuildingDef | null, placed: PlacedBuilding | null): Tab[] {
-    const building: Tab = { id: 'building', name: 'المبنى', body: () => this.buildingTab(def!) };
+    const building: Tab = { id: 'building', name: 'المبنى', body: () => this.levelSection(def!, placed!) + this.buildingTab(def!) };
     switch (kind) {
       case 'government':
         return [
@@ -167,6 +176,8 @@ export class BuildingPanel {
     const caps = capacityAt(state, defs, now);
     const stats: [string, string][] = [
       ['المرحلة', stageById(defs, state.stage).name],
+      ['مستوى الحكم', governmentLevel(defs, state).name],
+      ['أقصى مستوى للمباني', formatNumber(governmentLevel(defs, state).maxBuildingLevel)],
       ['السكان', formatNumber(Math.floor(state.population))],
       ['المباني المكتملة', formatNumber(done.length)],
       ['المزارع والحظائر', formatNumber(count((d) => d.workers > 0 && (d.profession === 'farmer' || d.profession === 'herder')))],
@@ -190,11 +201,11 @@ export class BuildingPanel {
   private upgradeTab(): string {
     const { defs, state, now } = this.context();
     const req = upgradeRequirements(defs, state, now);
-    if (!req) return '<p class="panel-note">بلغت الدولة أعلى مرحلة.</p>';
+    if (!req) return '<p class="panel-note">بلغ مبنى الحكم أعلى مستوى.</p>';
     const ready = req.items.every((r) => r.met);
     const list = req.items.map((r) => `<li class="${r.met ? 'done' : ''}"><i>${r.met ? '✓' : ''}</i>${esc(r.label)}</li>`).join('');
     const button = this.target?.kind === 'government'
-      ? `<button type="button" class="text-btn bp-main" data-act="upgrade" ${ready ? '' : 'disabled'}>ترقية الدولة إلى ${esc(req.stage)}</button>`
+      ? `<button type="button" class="text-btn bp-main" data-act="upgrade" ${ready ? '' : 'disabled'}>ترقية مبنى الحكم إلى «${esc(req.stage)}»</button>`
       : '<p class="panel-note">تتم الترقية من مبنى الحكم عند اكتمال الشروط.</p>';
     return `<p class="panel-note">الترقية إلى ${esc(req.stage)}: أُنجز ${formatNumber(req.items.filter((r) => r.met).length)} من ${formatNumber(req.items.length)}</p><ul class="tasks">${list}</ul>${button}`;
   }
@@ -209,15 +220,16 @@ export class BuildingPanel {
   }
 
   private residentsTab(def: BuildingDef, placed: PlacedBuilding): string {
-    const { defs } = this.context();
+    const { defs, now } = this.context();
     const profession = defs.professions.find((p) => p.id === def.profession)?.name ?? 'عامة';
     const residents = Math.floor(placed.residents ?? 0);
+    const capacity = housingAt(def, factorsOf(defs, placed, now).population);
     const consumption = Object.entries(def.consumption).map(([id, n]) => `${formatNumber(n)} ${defs.resources.find((r) => r.id === id)?.name ?? id}`).join('، ');
     return `<dl class="stats">
-        <div><dt>السكان</dt><dd>${formatNumber(residents)} من ${formatNumber(def.housing)}</dd></div>
+        <div><dt>السكان</dt><dd>${formatNumber(residents)} من ${formatNumber(capacity)}</dd></div>
         <div><dt>المهنة</dt><dd>${esc(profession)}</dd></div>
       </dl>
-      <i class="meter wide" style="--p:${Math.round((residents / Math.max(1, def.housing)) * 100)}%"></i>
+      <i class="meter wide" style="--p:${Math.round((residents / Math.max(1, capacity)) * 100)}%"></i>
       <p class="panel-note">${consumption ? `يستهلك في الدقيقة: ${esc(consumption)}` : 'لا يستهلك موارد'}. سكانه يعملون في مباني مهنتهم.</p>`;
   }
 
@@ -225,10 +237,12 @@ export class BuildingPanel {
     const { defs, state, now } = this.context();
     const crew = staffingAt(state, defs, now).get(placed.uid);
     const efficiency = buildingStatus(placed, state, defs, now).kind === 'operating' ? crew?.efficiency ?? 1 : 0;
+    // كامل الطاقة يشمل مضاعف مستوى المبنى / Full capacity includes the building's level factor
+    const factor = factorsOf(defs, placed, now).production;
     const resource = (id: string) => defs.resources.find((r) => r.id === id);
     const flows = [
-      ...Object.entries(def.production).map(([id, n]) => [`${icon(resource(id)?.icon ?? id)} ${esc(resource(id)?.name ?? id)}`, signed(n * efficiency), formatNumber(n)]),
-      ...Object.entries(def.consumption).map(([id, n]) => [`${icon(resource(id)?.icon ?? id)} ${esc(resource(id)?.name ?? id)}`, signed(-n * efficiency), formatNumber(-n)]),
+      ...Object.entries(def.production).map(([id, n]) => [`${icon(resource(id)?.icon ?? id)} ${esc(resource(id)?.name ?? id)}`, signed(n * factor * efficiency), formatNumber(n * factor)]),
+      ...Object.entries(def.consumption).map(([id, n]) => [`${icon(resource(id)?.icon ?? id)} ${esc(resource(id)?.name ?? id)}`, signed(-n * factor * efficiency), formatNumber(-n * factor)]),
     ];
     const profession = defs.professions.find((p) => p.id === def.profession)?.name;
     const workers = crew && crew.needed
@@ -269,9 +283,38 @@ export class BuildingPanel {
     const running = buildingStatus(placed, state, defs, now).kind === 'operating';
     const rows = Object.entries(def.storage).map(([id, n]) => {
       const r = defs.resources.find((x) => x.id === id);
-      return [`${icon(r?.icon ?? id)} ${esc(r?.name ?? id)}`, formatNumber(Math.floor(state.resources[id] ?? 0)), formatNumber(caps[id]), `+${formatNumber(n)}`];
+      return [`${icon(r?.icon ?? id)} ${esc(r?.name ?? id)}`, formatNumber(Math.floor(state.resources[id] ?? 0)), formatNumber(caps[id]), `+${formatNumber(n * factorsOf(defs, placed, now).production)}`];
     });
     return `${running ? '' : '<p class="panel-note warn">المخزن لا يعمل الآن فلا تُحسب سعته.</p>'}${table(['المورد', 'المخزون', 'سعة الدولة', 'يضيف هذا المخزن'], rows)}`;
+  }
+
+  /**
+   * مستوى المبنى وترقيته: ما تضيفه، وتكلفتها ومدتها، أو سبب تعذرها (ومنه أن مبنى الحكم لم يبلغ المستوى المطلوب)
+   * The building's level and upgrade: what it adds, its cost and time, or why it is not possible (including the government's level)
+   */
+  private levelSection(def: BuildingDef, placed: PlacedBuilding): string {
+    const { defs, state, now } = this.context();
+    if (!isUpgradable(def) || defs.buildingLevels.length < 2) return '';
+    const level = levelOf(placed, now);
+    const top = Math.min(defs.buildingLevels.length, governmentLevel(defs, state).maxBuildingLevel);
+    const head = `<dl class="stats"><div><dt>المستوى</dt><dd>${formatNumber(level)} من ${formatNumber(defs.buildingLevels.length)}</dd></div>
+      <div><dt>يسمح مبنى الحكم حتى</dt><dd>المستوى ${formatNumber(top)}</dd></div></dl>`;
+    if (isUpgrading(placed, now)) return `${head}<p class="panel-note">تجري الترقية إلى المستوى ${formatNumber(placed.level!)}؛ تكتمل بعد ${formatDuration(Math.ceil((placed.upgradeCompletesAt! - now) / 1000))}.</p>`;
+    const next = (placed.level ?? 1) + 1;
+    if (next > defs.buildingLevels.length) return `${head}<p class="panel-note">المبنى في أعلى مستوى.</p>`;
+    const now1 = levelRow(defs, level);
+    const then = levelRow(defs, next);
+    const { cost, seconds } = buildingUpgradeCost(defs, def.id, next);
+    const costText = Object.entries(cost).map(([id, n]) => `${formatNumber(n)} ${defs.resources.find((r) => r.id === id)?.name ?? id}`).join('، ') || 'مجانًا';
+    const gains = [
+      Object.keys(def.production).length || Object.keys(def.storage).length ? `الإنتاج ×${formatNumber(Math.round((then.productionFactor / now1.productionFactor) * 100) / 100)}` : '',
+      def.housing || def.workers ? `السكان والعمال ×${formatNumber(Math.round((then.populationFactor / now1.populationFactor) * 100) / 100)}` : '',
+      then.style !== now1.style && then.style === 'stone' ? 'يتحول إلى مبنى حجري' : '',
+    ].filter(Boolean).join('، ');
+    const check = checkBuildingUpgrade(defs, state, placed.uid, now);
+    return `${head}<p class="panel-note">الترقية إلى المستوى ${formatNumber(next)}: ${esc(gains)} · ${esc(costText)} · ${formatDuration(seconds)}</p>
+      ${check.ok ? '' : `<p class="panel-note warn">${esc(check.reason)}</p>`}
+      <button type="button" class="text-btn bp-main" data-act="level-up" ${check.ok ? '' : 'disabled'}>ترقية إلى المستوى ${formatNumber(next)}</button>`;
   }
 
   private buildingTab(def: BuildingDef): string {
@@ -306,7 +349,10 @@ export class BuildingPanel {
     const placed = this.placed();
     if (act === 'upgrade') {
       const result = this.actions.upgrade();
-      this.message = result.ok ? 'تمت ترقية الدولة' : result.reason;
+      this.message = result.ok ? 'تمت ترقية مبنى الحكم' : result.reason;
+    } else if (act === 'level-up' && placed) {
+      const result = this.actions.upgradeBuilding(placed.uid);
+      this.message = result.ok ? 'بدأت الترقية' : result.reason;
     } else if (act === 'buy' || act === 'sell') {
       const amount = parseNumber(this.el.querySelector<HTMLInputElement>('[data-qty]')?.value ?? '');
       const { defs, state, now } = this.context();

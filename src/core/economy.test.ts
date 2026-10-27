@@ -1,7 +1,7 @@
 // اختبارات منطق الاقتصاد: الوضع، الإنتاج والاستهلاك، السكان، المراحل، الغياب، الطرق على الحواف، المكامن والضم
 // Economy tests: placement, production and consumption, population, stages, absence, edge roads, deposits and annexation
 import { describe, expect, it } from 'vitest';
-import { seedDefinitions } from '../test/gas-harness';
+import { classicDefinitions } from '../test/gas-harness';
 import {
   advance, annexTile, autoRoadPath, buildingStatus, capacityAt, checkAnnex, checkMove, checkPlacement, checkRoadEdge, connectedRoads, cornerPath,
   createInitialState, demolishBuilding, demolishRoads, depositAt, hasRoadAccess, housingCapacity, moveBuilding, netRates, pathEdges,
@@ -11,7 +11,7 @@ import { suggestStartSites } from './start-sites';
 import type { BuildingDef, GameState, Tile } from './types';
 import { generateWorld } from './world-gen';
 
-const defs = seedDefinitions();
+const defs = classicDefinitions();
 const world = generateWorld(defs.world, defs.terrain, defs.deposits);
 const site = suggestStartSites(world, defs)[0];
 const T0 = 1_000_000;
@@ -370,7 +370,7 @@ describe('المكامن / deposits', () => {
     expect(checkPlacement(defs, world, state, prospector, t, T0)).toEqual({ ok: true });
   });
 
-  it('البداية فيها حجر وحديد وغابة قريبة ومكتشفة / the start has nearby, discovered stone, iron and forest', () => {
+  it('بقواعد ما قبل المستويات: حجر وحديد وغابة قريبة ومكتشفة / pre-levels rules: nearby, discovered stone, iron and forest', () => {
     const found = new Set(world.deposits.filter((d) => s.discovered.includes(d.id)).map((d) => d.resourceId));
     for (const r of ['stone', 'iron', 'wood']) expect(found.has(r), r).toBe(true);
     // وخارج حدود القرية، فتحتاج توسعًا قريبًا / And outside the village borders, so they need a nearby expansion

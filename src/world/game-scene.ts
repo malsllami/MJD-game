@@ -103,7 +103,7 @@ export function createGameScene(canvas: HTMLCanvasElement, world: World, defs: G
   // كل مجسم قابل للنقر يحمل مربعه، فالنقر على مبنى يحدد مربعه لا الأرض خلفه
   // Each pickable model carries its tile, so clicking a building selects its tile, not the ground behind
   const tileOfMesh = new Map<AbstractMesh, Tile>();
-  const camera = new StrategyCamera(scene, canvas, { halfX, halfZ }, { x: 0, z: 0 });
+  const camera = new StrategyCamera(scene, canvas, { halfX, halfZ }, { x: 0, z: 0 }, world.settings.tileSize);
   // تفاصيل الطبيعة تتبع الكاميرا / Nature detail follows the camera
   scene.onBeforeRenderObservable.add(() => {
     const { target, radius } = camera.camera;

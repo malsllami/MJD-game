@@ -7,6 +7,8 @@
 // Every function returns a new state without mutating the old one, and time is passed explicitly.
 
 import type { BuildingDef, Deposit, GameDefinitions, GameState, PlacedBuilding, Stage, Tile, World } from './types';
+import { foundVillage } from './founding';
+import { factorsOf, housingAt, isUpgrading } from './levels';
 import { addCapped, capacities, seedResidents, settle, staffing } from './workforce';
 
 /** مفتاح مربع أو زاوية / Tile or corner key */
@@ -92,10 +94,11 @@ export function createInitialState(defs: GameDefinitions, world: World, site: { 
   for (const r of defs.resources) resources[r.id] = r.startAmount;
   const first = defs.stages[0];
   const state: GameState = {
-    settlement: { x: site.x, z: site.z },
+    settlement: { x: site.x, z: site.z, radius: defs.world.governmentRadius },
     resources,
     population: 0,
     stage: first.id,
+    governmentLevel: 1,
     buildings: [],
     roads: [],
     walls: [],
@@ -103,7 +106,8 @@ export function createInitialState(defs: GameDefinitions, world: World, site: { 
     discovered: [],
     lastTick: now,
   };
-  return discoverNearTerritory(state, defs, world);
+  // القرية تبدأ بمبانيها الابتدائية وطرقها حول مبنى الحكم / The village starts with its starting buildings and roads
+  return foundVillage(discoverNearTerritory(state, defs, world), defs, world, now);
 }
 
 /**
@@ -239,10 +243,17 @@ export function pathEdges(corners: { x: number; z: number }[]): string[] {
   return out;
 }
 
-/** زوايا مربع مبنى الحكم: منها تبدأ شبكة الطرق / Corners of the government tile: the road network starts here */
+/** زوايا محيط مجمع الحكم: منها تبدأ شبكة الطرق / Corners around the government compound: the road network starts here */
 function hubCorners(state: GameState): string[] {
   const { x, z } = state.settlement;
-  return [tileKey(x, z), tileKey(x + 1, z), tileKey(x, z + 1), tileKey(x + 1, z + 1)];
+  const r = state.settlement.radius ?? 0;
+  const out: string[] = [];
+  for (let cz = z - r; cz <= z + r + 1; cz++) {
+    for (let cx = x - r; cx <= x + r + 1; cx++) {
+      if (cx === x - r || cx === x + r + 1 || cz === z - r || cz === z + r + 1) out.push(tileKey(cx, cz));
+    }
+  }
+  return out;
 }
 
 /**
@@ -347,6 +358,7 @@ function edgeLandCheck(world: World, state: GameState, def: BuildingDef, edge: s
     .map(([x, z]) => (x >= 0 && z >= 0 && x < world.settings.tilesX && z < world.settings.tilesZ ? world.tiles[z * world.settings.tilesX + x] : null))
     .filter((t): t is Tile => !!t);
   if (!sides.some((t) => owned.has(tileKey(t.x, t.z)))) return { ok: false, reason: `${def.name} خارج حدود الدولة` };
+  if (sides.length === 2 && sides.every((t) => isSettlementTile(state, t.x, t.z))) return { ok: false, reason: 'هذه الحافة داخل مجمع الحكم' };
   if (!sides.some((t) => owned.has(tileKey(t.x, t.z)) && def.allowedTerrain.includes(t.terrainId))) return { ok: false, reason: `لا يُرسم ${def.name} هنا؛ الأرض لا تسمح بذلك` };
   return { ok: true };
 }
@@ -452,8 +464,10 @@ export function buildingAt(state: GameState, x: number, z: number): PlacedBuildi
   return state.buildings.find((b) => b.x === x && b.z === z);
 }
 
+/** هل المربع ضمن مجمع الحكم (المبنى وساحته وحديقته)؟ / Is the tile inside the government compound (building, forecourt and garden)? */
 export function isSettlementTile(state: GameState, x: number, z: number): boolean {
-  return state.settlement.x === x && state.settlement.z === z;
+  const r = state.settlement.radius ?? 0;
+  return Math.abs(state.settlement.x - x) <= r && Math.abs(state.settlement.z - z) <= r;
 }
 
 /** الموارد التي ينقصها المبنى ليعمل / Inputs the building lacks to operate */
@@ -488,12 +502,12 @@ function runner(state: GameState, defs: GameDefinitions, now: number, stock: Rec
 
 /** توزيع العمال الآن / Worker assignment now */
 export function staffingAt(state: GameState, defs: GameDefinitions, now: number) {
-  return staffing(state.buildings, new Map(defs.buildings.map((b) => [b.id, b])), runner(state, defs, now));
+  return staffing(state.buildings, new Map(defs.buildings.map((b) => [b.id, b])), runner(state, defs, now), (b) => factorsOf(defs, b, now).population);
 }
 
 /** سعة كل مورد الآن / Each resource's capacity now */
 export function capacityAt(state: GameState, defs: GameDefinitions, now: number): Record<string, number> {
-  return capacities(defs, state.buildings, new Map(defs.buildings.map((b) => [b.id, b])), runner(state, defs, now));
+  return capacities(defs, state.buildings, new Map(defs.buildings.map((b) => [b.id, b])), runner(state, defs, now), (b) => factorsOf(defs, b, now).production);
 }
 
 /** خيارات التحقق للنقل / Check options used when moving */
@@ -532,7 +546,8 @@ export function checkPlacement(defs: GameDefinitions, world: World, state: GameS
     return { ok: false, reason: `${building.name} يحتاج طريقًا متصلًا بمبنى الحكم على أحد جوانبه` };
   }
   if (!opts.alreadyBuilt) {
-    const active = state.buildings.filter((b) => isUnderConstruction(b, now)).length;
+    // الترقيات الجارية تُحسب من البناء المتزامن / Running upgrades count as concurrent builds
+    const active = state.buildings.filter((b) => isUnderConstruction(b, now) || isUpgrading(b, now)).length;
     if (active >= defs.world.maxConcurrentBuilds) {
       return { ok: false, reason: `وصلت للحد الأقصى من البناء المتزامن (${defs.world.maxConcurrentBuilds})؛ انتظر اكتمال مبنى` };
     }
@@ -618,20 +633,21 @@ export function advance(state: GameState, defs: GameDefinitions, _world: World, 
     const running = runner(current, defs, to, stock);
     // يعمل في هذه الدفعة ما بدأ قبل نهايتها / What started before this step's end runs in it
     const active = (b: PlacedBuilding) => b.completesAt < to && running({ ...b, completesAt: Math.min(b.completesAt, to) });
-    const crew = staffing(buildings, byId, active);
-    const caps = capacities(defs, buildings, byId, active);
+    const factor = (b: PlacedBuilding) => factorsOf(defs, b, to);
+    const crew = staffing(buildings, byId, active, (b) => factor(b).population);
+    const caps = capacities(defs, buildings, byId, active, (b) => factor(b).production);
     for (const placed of buildings) {
       const def = byId.get(placed.buildingId);
       const start = Math.max(from, placed.completesAt);
       if (!def || start >= to || !active(placed)) continue;
-      // الإنتاج والاستهلاك بقدر العمال المتوفرين / Output and input scale with the available workers
-      const minutes = ((to - start) / MINUTE_MS) * (crew.get(placed.uid)?.efficiency ?? 1);
+      // الإنتاج والاستهلاك بقدر العمال المتوفرين ومستوى المبنى / Output and input scale with the available workers and the building's level
+      const minutes = ((to - start) / MINUTE_MS) * (crew.get(placed.uid)?.efficiency ?? 1) * factor(placed).production;
       for (const [id, n] of Object.entries(def.production)) resources[id] = addCapped(resources[id] ?? 0, n * minutes, caps[id] ?? Infinity);
       for (const [id, n] of Object.entries(def.consumption)) resources[id] = Math.max(0, (resources[id] ?? 0) - n * minutes);
     }
     // السكان يتجهون نحو سعة المساكن العاملة / Residents move toward the capacity of operating homes
     const change = defs.world.populationGrowthPerMinute * ((to - from) / MINUTE_MS);
-    buildings = settle(buildings, byId, (b) => (active(b) ? byId.get(b.buildingId)?.housing ?? 0 : 0), change);
+    buildings = settle(buildings, byId, (b) => (active(b) ? housingAt(byId.get(b.buildingId)!, factor(b).population) : 0), change);
   }
   const population = buildings.reduce((sum, b) => sum + (b.residents ?? 0), 0);
   return { ...state, buildings, resources, population, lastTick: now };
@@ -656,7 +672,7 @@ export function rateBreakdown(state: GameState, defs: GameDefinitions, now: numb
   for (const placed of state.buildings) {
     if (buildingStatus(placed, state, defs, now).kind !== 'operating') continue;
     const def = defs.buildings.find((b) => b.id === placed.buildingId)!;
-    const efficiency = crew.get(placed.uid)?.efficiency ?? 1;
+    const efficiency = (crew.get(placed.uid)?.efficiency ?? 1) * factorsOf(defs, placed, now).production;
     for (const [id, n] of Object.entries(def.production)) production[id] = (production[id] ?? 0) + n * efficiency;
     for (const [id, n] of Object.entries(def.consumption)) consumption[id] = (consumption[id] ?? 0) + n * efficiency;
   }
@@ -667,7 +683,8 @@ export function rateBreakdown(state: GameState, defs: GameDefinitions, now: numb
 export function housingCapacity(state: GameState, defs: GameDefinitions, now: number): number {
   return state.buildings.reduce((sum, placed) => {
     if (buildingStatus(placed, state, defs, now).kind !== 'operating') return sum;
-    return sum + (defs.buildings.find((b) => b.id === placed.buildingId)?.housing ?? 0);
+    const def = defs.buildings.find((b) => b.id === placed.buildingId);
+    return sum + (def ? housingAt(def, factorsOf(defs, placed, now).population) : 0);
   }, 0);
 }
 

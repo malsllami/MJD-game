@@ -2,9 +2,10 @@
 // File responsibility: a realistic ground material blending Poly Haven textures — colour-varied grass everywhere, dirt under roads and buildings, tilled soil under fields
 //
 // خريطة المزج الأولى ترسم من حالة الدولة على لوحة رسم، ولا يُعاد رسمها إلا عند تغيّر ما يُرسم؛ والثانية بقع عشب جاف وداكن
-// ثابتة من بذرة العالم تكسر تكرار الخامة، وتُمحى تحت التراب والتربة.
+// ثابتة من بذرة العالم تكسر تكرار الخامة، وتُمحى تحت التراب والتربة، وقناتها الزرقاء بلاط حجري لساحة مجمع الحكم.
 // The first blend map is painted from the nation's state on a canvas, repainted only when what it shows changes; the second holds
-// dry and lush grass patches fixed by the world seed that break up the texture's repetition, erased under dirt and soil.
+// dry and lush grass patches fixed by the world seed that break up the texture's repetition, erased under dirt and soil, and its
+// blue channel is stone paving for the government compound.
 
 import { Color3, DynamicTexture, Texture, type Mesh, type Scene } from '@babylonjs/core';
 import { MixMaterial } from '@babylonjs/materials/mix';
@@ -18,6 +19,8 @@ const GRASS_REPEAT_TILES = 3;
 /** بدائل العشب بتكرار مختلف حتى لا تتطابق نقوشها / Grass variants repeat differently so their patterns never line up */
 const VARIANT_REPEAT_TILES = 4.3;
 const SOIL_REPEAT_TILES = 1;
+/** البلاط الحجري يتكرر كل نصف مربع فتبدو حجارته بحجم حقيقي / Paving repeats every half tile so its stones look life-size */
+const PAVING_REPEAT_TILES = 0.5;
 /** عرض الطريق الترابي كنسبة من المربع / Dirt road width as a tile fraction */
 const ROAD_WIDTH = 0.24;
 /** خفض سطوع الأرض كلها حتى لا يطغى العشب على المباني / Dims the whole ground so the grass never outshines the buildings */
@@ -35,6 +38,17 @@ export interface GroundMarks {
   soil: { x: number; z: number }[];
   /** حواف الطرق / Road edges */
   roads: string[];
+  /** مستطيلات البلاط الحجري بإحداثيات المربعات، وأحواض الحدائق المحفورة منها / Paving rectangles in tile coordinates, and the garden beds cut from them */
+  paving?: Rect[];
+  gardens?: Rect[];
+}
+
+/** مستطيل بإحداثيات المربعات (قد تكون كسرية) / A rectangle in tile coordinates (may be fractional) */
+export interface Rect {
+  x0: number;
+  z0: number;
+  x1: number;
+  z1: number;
 }
 
 export class GroundPainter {
@@ -73,7 +87,7 @@ export class GroundPainter {
     material.diffuseTexture4 = material.diffuseTexture1;
     material.diffuseTexture5 = layer('grass_dry', VARIANT_REPEAT_TILES);
     material.diffuseTexture6 = layer('grass_lush', VARIANT_REPEAT_TILES);
-    material.diffuseTexture7 = material.diffuseTexture1;
+    material.diffuseTexture7 = layer('paving', PAVING_REPEAT_TILES);
     material.diffuseTexture8 = material.diffuseTexture1;
     material.diffuseColor = GROUND_TINT;
     material.specularColor = new Color3(0.02, 0.02, 0.02);
@@ -102,6 +116,14 @@ export class GroundPainter {
     pc.drawImage(this.patchBase, 0, 0);
     this.drawMarks(pc, marks, 'rgb(0,0,0)', 'rgb(0,0,0)');
     pc.globalAlpha = 1;
+    // البلاط في القناة الزرقاء، والحدائق عشب داكن داخله / Paving in the blue channel, gardens as lush grass inside it
+    const px = this.px;
+    const fill = (rects: Rect[] | undefined, color: string) => {
+      pc.fillStyle = color;
+      for (const r of rects ?? []) pc.fillRect(r.x0 * px, r.z0 * px, (r.x1 - r.x0) * px, (r.z1 - r.z0) * px);
+    };
+    fill(marks.paving, 'rgb(0,0,255)');
+    fill(marks.gardens, 'rgb(0,150,0)');
     this.patches.update(false);
   }
 
