@@ -4,7 +4,7 @@
 // الاستخدام / Usage:
 //   node tools/import-assets.mjs --village <MegaKit glTF dir> --nature <Nature MegaKit glTF dir> \
 //     --people <UAL2_Standard.glb> --characters <Universal Base Characters dir> --outfits <Modular Character Outfits dir> \
-//     --animals <Farm Animals OBJ dir> --ground 1
+//     --animals <Farm Animals OBJ dir> --ground 1 --grass-variants 1
 // المصادر (CC0) / Sources (CC0): Quaternius Medieval Village MegaKit, Stylized Nature MegaKit, Universal Animation Library 2,
 // (opengameart.org)، و Universal Base Characters و Modular Character Outfits - Fantasy (quaternius.itch.io)، وخامات الأرض من Poly Haven / and ground textures from Poly Haven.
 
@@ -36,7 +36,7 @@ const NATURE = [
   'Rock_Medium_1', 'Rock_Medium_2', 'Rock_Medium_3', 'Pebble_Round_1', 'Plant_1', 'Plant_1_Big', 'DeadTree_1',
 ];
 /** الحركات المستخدمة من مكتبة الحركات 2 (هيكلها واحد، فلا تحتاج نقلًا بين هياكل) / Animations kept from library 2 (one skeleton, no retargeting) */
-const PEOPLE_ANIMS = ['Farm_Harvest', 'Farm_PlantSeed', 'Farm_Watering', 'TreeChopping_Loop', 'Walk_Carry_Loop', 'Idle_FoldArms_Loop'];
+const PEOPLE_ANIMS = ['Farm_Harvest', 'Farm_PlantSeed', 'Farm_Watering', 'TreeChopping_Loop', 'Walk_Carry_Loop', 'Idle_FoldArms_Loop', 'Yes', 'Chest_Open', 'Consume'];
 /** حيوانات الحظائر من حزمة Quaternius للحيوانات / Barn animals from Quaternius's farm animal pack */
 const ANIMALS = ['Cow', 'Sheep', 'Pig', 'Horse'];
 
@@ -52,6 +52,12 @@ const GROUND = { grass: 'leafy_grass', dirt: 'dirt', soil: 'farm_furrows' };
 const GRASS_TINT = '#5a8c33';
 /** تراب Poly Haven بني داكن؛ يُلوَّن رمليًا فتبدو الطرق الترابية رملية فاتحة / The Poly Haven dirt is dark brown; tinted sand so dirt roads look light and sandy */
 const SAND_TINT = '#c9a46a';
+
+/**
+ * بدائل العشب لتنويع لون الأرض: عشب جاف مصفر وعشب كثيف داكن، يُولَّدان من خامة العشب نفسها
+ * Grass variants to vary the ground colour: dry yellowish grass and lush dark grass, both derived from the grass texture itself
+ */
+const GRASS_VARIANTS = { dry: { saturation: 0.62, hue: -14, brightness: 1.02 }, lush: { saturation: 1.05, hue: 6, brightness: 0.72 } };
 
 /** أقصى ضلع لكل نوع خامة / Max side per texture kind */
 const sideFor = (name) => (/normal|_nor|orm|rough/i.test(name) ? 512 : 1024);
@@ -353,6 +359,16 @@ async function importGround() {
   console.log('ground:', Object.keys(GROUND).join(', '));
 }
 
+/** بدائل العشب من خامة العشب المستوردة / Grass variants from the imported grass texture */
+async function importGrassVariants() {
+  const dir = join(OUT, 'textures', 'ground');
+  for (const [name, tone] of Object.entries(GRASS_VARIANTS)) {
+    // تدوير ربع دورة حتى لا يتطابق نقش البديل مع الأصل / A quarter turn so the variant's pattern does not line up with the original
+    await sharp(join(dir, 'grass_color.jpg')).rotate(90).modulate(tone).jpeg({ quality: 82, mozjpeg: true }).toFile(join(dir, `grass_${name}_color.jpg`));
+  }
+  console.log('grass variants:', Object.keys(GRASS_VARIANTS).join(', '));
+}
+
 if (args.village) {
   await importPieces(args.village, VILLAGE, 'village', join(dirname(args.village), 'Textures', 'Normals Godot-Unity'));
   for (const [name, tint] of Object.entries(ROOF_COLORS)) {
@@ -365,6 +381,7 @@ if (args.nature) await importPieces(args.nature, NATURE, 'forest');
 if (args.people) await importAnimations(args.people, PEOPLE_ANIMS, join(OUT, 'models', 'people', 'animations.glb'));
 if (args.characters) await importCharacters(args.characters, args.outfits);
 if (args.ground) await importGround();
+if (args.ground || args['grass-variants']) await importGrassVariants();
 if (args.animals) {
   mkdirSync(join(OUT, 'models', 'animals'), { recursive: true });
   for (const name of ANIMALS) writeFileSync(join(OUT, 'models', 'animals', `${name}.glb`), await obj2gltf(join(args.animals, `${name}.obj`), { binary: true }));

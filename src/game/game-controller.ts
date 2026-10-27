@@ -41,6 +41,8 @@ const TICK_MS = 250;
 const HUD_MS = 500;
 const AUTOSAVE_MS = 5000;
 const CONFIRM_MS = 4000;
+/** مدة ظهور أسماء المكامن بعد المسح / How long deposit names show after a survey */
+const SURVEY_LABELS_MS = 10000;
 
 /** وضع التفاعل الحالي / Current interaction mode */
 type Mode =
@@ -137,6 +139,10 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
 
   let mode: Mode = { kind: 'idle' };
   let gridAlways = false;
+  // أسماء المكامن تظهر عند الحاجة فقط حتى تبقى الشاشة هادئة / Deposit names show only when needed, keeping the screen calm
+  let depositsAlways = false;
+  let depositsUntil = 0;
+  const showDeposits = (now: number) => depositsAlways || now < depositsUntil || (mode.kind === 'place' && !!mode.building.requiresDeposit);
   grid.setVisible(false);
   let selected: Tile | null = null;
 
@@ -426,6 +432,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
       case 'survey': {
         const result = session.survey(tile, now);
         if ('reason' in result) return toast.show(result.reason);
+        depositsUntil = now + SURVEY_LABELS_MS;
         const names = [...new Set(result.found.map((d) => depositTypeById.get(d.typeId)?.name ?? d.typeId))].join('، ');
         refresh(true);
         return toast.show(names ? `اكتشف المسح: ${names}` : `لم يجد المسح مكامن جديدة حول هذا المربع · ${costText(surveyCost(defs))}`, 6000);
@@ -458,8 +465,14 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     const action = (e.target as HTMLElement).closest<HTMLElement>('[data-action]')?.dataset.action;
     if (action === 'toggle-grid') {
       gridAlways = !gridAlways;
+      root.querySelector('[data-action="toggle-grid"]')?.setAttribute('aria-pressed', String(gridAlways));
       grid.setVisible(gridAlways || mode.kind !== 'idle');
       toast.show(gridAlways ? 'شبكة المربعات ظاهرة دائمًا' : 'الشبكة تظهر عند البناء ورسم الطرق فقط');
+    } else if (action === 'toggle-deposits') {
+      depositsAlways = !depositsAlways;
+      root.querySelector('[data-action="toggle-deposits"]')?.setAttribute('aria-pressed', String(depositsAlways));
+      toast.show(depositsAlways ? 'أسماء المكامن ظاهرة دائمًا' : 'أسماء المكامن تظهر عند البناء عليها أو بعد المسح فقط');
+      refresh(true);
     } else if (action === 'bulldoze') {
       closeSelection();
       if (mode.kind === 'bulldoze') return setMode({ kind: 'idle' });
@@ -503,7 +516,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     const keep = new Set<string>(['settlement']);
     labels.set('settlement', `${governmentName} · ${stageById(defs, state.stage).name}`, labelAbove(settlementTile.x, settlementTile.z, 1.5));
     for (const d of world.deposits) {
-      if (!state.discovered.includes(d.id)) continue;
+      if (!showDeposits(now) || !state.discovered.includes(d.id)) continue;
       keep.add(`d-${d.id}`);
       labels.set(`d-${d.id}`, depositTypeById.get(d.typeId)?.name ?? d.typeId, labelAbove(d.x, d.z, 1.4), 'pin-deposit');
     }

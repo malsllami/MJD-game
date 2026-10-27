@@ -20,6 +20,8 @@ export async function createSettlementModel(
 ): Promise<{ root: TransformNode; meshes: AbstractMesh[] }> {
   const root = new TransformNode('settlement', scene);
   root.position.copyFrom(center);
+  // الواجهة والساحة نحو زاوية الكاميرا الافتتاحية / The front and forecourt face the opening camera angle
+  root.rotation.y = Math.PI;
   const meshes = await spawnParts(library, scene, root, settlementLook(level), tileSize);
   for (const m of meshes) shadows?.addShadowCaster(m);
   return { root, meshes };

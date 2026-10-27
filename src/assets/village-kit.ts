@@ -36,6 +36,15 @@ export const WATER_SURFACE = 'procedural:water';
 const F = (name: string) => `forest/${name}.glb`;
 const WALL_HEIGHT = 3;
 const ROOF_OVERHANG = 1.5;
+/**
+ * ضلع المربع بالمتر لكل البيوت: مقياس واحد يجعل المبنى الأكبر يبدو أكبر فعلًا، والكوخ أصغر من القاعة
+ * A tile side in metres for every house: one scale so a bigger building really looks bigger, a hut smaller than a hall
+ */
+const TILE_METRES = 9.5;
+/** أقصى حجم للبيت كنسبة من المربع حتى يبقى طريق حوله / Max house size as a tile fraction so a road still fits around it */
+const MAX_HOUSE_SIZE = 0.96;
+/** سارية علم تُرسم بالكود: fit طولها بالمتر / A flagpole drawn in code: fit is its height in metres */
+export const FLAG_POLE = 'procedural:flag';
 
 /** نوع الجدران / Wall finish */
 type Finish = 'timber' | 'plaster' | 'brick';
@@ -59,14 +68,13 @@ interface HouseSpec {
   yard?: boolean;
   /** إضافات حول البيت أو عليه / Extras around or on the house */
   extras?: KitPiece[];
-  size: number;
 }
 
 /**
  * بيت مستطيل: جدران على الأضلاع الأربعة (الباب في منتصف الواجهة الأمامية +z)، وزوايا، وسقف بنفس المقاس
  * A rectangular house: walls on all four sides (the door mid-front, +z), corners, and a matching roof
  */
-export function house({ w, d, finish, roof, floors = 1, yard = false, extras = [], size }: HouseSpec): Assembly {
+export function house({ w, d, finish, roof, floors = 1, yard = false, extras = [] }: HouseSpec): Assembly {
   const kit = WALLS[finish];
   const pieces: KitPiece[] = [];
   const front = w / 2;
@@ -103,7 +111,8 @@ export function house({ w, d, finish, roof, floors = 1, yard = false, extras = [
       { path: V('Prop_Vine1'), x: -front - 0.1, z: d / 2 - 1, y: WALL_HEIGHT - 0.3, yaw: -Math.PI / 2 },
     );
   }
-  return { pieces: [...pieces, ...extras], extent: Math.max(w, d) + ROOF_OVERHANG, size };
+  const extent = Math.max(w, d) + ROOF_OVERHANG;
+  return { pieces: [...pieces, ...extras], extent, size: Math.min(MAX_HOUSE_SIZE, extent / TILE_METRES) };
 }
 
 /**
@@ -155,30 +164,30 @@ function shelter(x: number, z: number): KitPiece[] {
 export const PRIMITIVE_LOOKS: Record<string, Assembly[]> = {
   // بيوت متنوعة الأسقف بأفنية مزهرة / Houses with varied roofs and flowered yards
   house: [
-    house({ w: 4, d: 4, finish: 'timber', size: 0.6, yard: true }),
-    house({ w: 4, d: 6, finish: 'timber', roof: 'Brown', size: 0.66, extras: [{ path: V('Prop_Crate'), x: 3, z: 3.4 }] }),
-    house({ w: 4, d: 4, finish: 'timber', roof: 'Green', size: 0.6, yard: true }),
+    house({ w: 4, d: 4, finish: 'timber', yard: true }),
+    house({ w: 4, d: 6, finish: 'timber', roof: 'Brown', extras: [{ path: V('Prop_Crate'), x: 3, z: 3.4 }] }),
+    house({ w: 4, d: 4, finish: 'timber', roof: 'Green', yard: true }),
   ],
-  civic: [house({ w: 6, d: 6, finish: 'timber', roof: 'Green', size: 0.74, yard: true, extras: [{ path: V('Prop_Chimney'), x: 2, z: -1.5, y: 3.6 }] })],
-  industry: [{ pieces: [...shelter(-2.6, -1), ...shelter(2.6, -1), { path: V('Prop_Crate'), x: 3.6, z: 3.2 }, { path: V('Prop_Wagon'), x: -1, z: 3.6, yaw: Math.PI / 2 }], extent: 11, size: 0.8 }],
+  civic: [house({ w: 6, d: 6, finish: 'timber', roof: 'Green', yard: true, extras: [{ path: V('Prop_Chimney'), x: 2, z: -1.5, y: 3.6 }] })],
+  industry: [{ pieces: [...shelter(-2.6, -1), ...shelter(2.6, -1), { path: V('Prop_Crate'), x: 3.6, z: 3.2 }, { path: V('Prop_Wagon'), x: -1, z: 3.6, yaw: Math.PI / 2 }], extent: 11, size: 0.92 }],
   sawmill: [{
     pieces: [...shelter(-1, -1.2), { path: V('Prop_Wagon'), x: 3.4, z: 1.2, yaw: -0.4 }, { path: V('Prop_Crate'), x: -2.8, z: 2.8 }, { path: V('Prop_Crate'), x: -1.6, z: 3.2 }, { path: F('DeadTree_1'), x: 3, z: -3, fit: 3 }],
-    extent: 9, size: 0.78,
+    extent: 9, size: 0.88,
   }],
-  smithy: [house({ w: 4, d: 4, finish: 'brick', roof: 'Slate', size: 0.6, extras: [{ path: V('Prop_Chimney2'), x: 1.2, z: -1.2, y: 2.8 }, { path: V('Prop_Crate'), x: 3, z: 2.6 }] })],
-  barn: [house({ w: 4, d: 6, finish: 'timber', size: 0.66, extras: fenceRing(6) })],
+  smithy: [house({ w: 4, d: 4, finish: 'brick', roof: 'Slate', extras: [{ path: V('Prop_Chimney2'), x: 1.2, z: -1.2, y: 2.8 }, { path: V('Prop_Crate'), x: 3, z: 2.6 }] })],
+  barn: [house({ w: 4, d: 6, finish: 'timber', extras: fenceRing(4) })],
   // حقل محروث بصفوف قمح وسور خشبي؛ التربة نفسها ترسمها خامة الأرض / A tilled field with wheat rows and a wooden fence; the soil itself is ground texture
   field: [{
     pieces: [...fenceRing(6), ...[-4, -2, 0, 2, 4].flatMap((x) => [-4, -1.3, 1.3, 4].map((z) => ({ path: F('Plant_1'), x, z, fit: 1.5 })))],
     extent: 12.5, size: 0.9,
   }],
-  market: [{ pieces: [...shelter(-2.6, -2.4), ...shelter(2.6, -2.4), ...shelter(0, 2.8), { path: V('Prop_Crate'), x: -2.4, z: -2.4 }, { path: V('Prop_Crate'), x: 2.8, z: -2.2 }, { path: V('Prop_Wagon'), x: -4, z: 3.4, yaw: 1.2 }], extent: 11.5, size: 0.84 }],
+  market: [{ pieces: [...shelter(-2.6, -2.4), ...shelter(2.6, -2.4), ...shelter(0, 2.8), { path: V('Prop_Crate'), x: -2.4, z: -2.4 }, { path: V('Prop_Crate'), x: 2.8, z: -2.2 }, { path: V('Prop_Wagon'), x: -4, z: 3.4, yaw: 1.2 }], extent: 11.5, size: 0.96 }],
   // خيمة من ألواح مائلة على الأرض / A tent of planks leaning on the ground
   // خيمة: سقف مائل على الأرض مسدود من الخلف ومفتوح من الأمام / A tent: a roof on the ground, closed at the back, open at the front
-  tent: [{ pieces: [{ path: V('Roof_RoundTiles_4x4'), x: 0, z: 0, y: 0.5 }, { path: V('Roof_Front_Brick4'), x: 0, z: -2, y: 0.5, yaw: Math.PI }, { path: V('Prop_Crate'), x: 2.6, z: 2 }], extent: 6, size: 0.5 }],
-  well: [{ pieces: [...shelter(0, 0), { path: F('Rock_Medium_2'), x: 0, z: 0, fit: 1.8 }, { path: V('Prop_Crate'), x: 2.6, z: 2.4 }], extent: 6.5, size: 0.45 }],
-  quarry: [{ pieces: [{ path: F('Rock_Medium_1'), x: -1.5, z: -1 }, { path: F('Rock_Medium_3'), x: 2, z: -1.5 }, { path: F('Rock_Medium_2'), x: 0, z: 2 }, { path: V('Prop_Wagon'), x: 3.5, z: 2.5, yaw: -0.6 }, { path: V('Prop_Crate'), x: -3, z: 2.5 }], extent: 9, size: 0.8 }],
-  'oil-rig': [{ pieces: [...shelter(0, 0), { path: F('Rock_Medium_3'), x: -3, z: 2.4, fit: 2 }, { path: V('Prop_Crate'), x: 3, z: 2.6 }, { path: V('Prop_Crate'), x: 3, z: -2.4 }], extent: 8, size: 0.62 }],
+  tent: [{ pieces: [{ path: V('Roof_RoundTiles_4x4'), x: 0, z: 0, y: 0.5 }, { path: V('Roof_Front_Brick4'), x: 0, z: -2, y: 0.5, yaw: Math.PI }, { path: V('Prop_Crate'), x: 2.6, z: 2 }], extent: 6, size: 0.56 }],
+  well: [{ pieces: [...shelter(0, 0), { path: F('Rock_Medium_2'), x: 0, z: 0, fit: 1.8 }, { path: V('Prop_Crate'), x: 2.6, z: 2.4 }], extent: 6.5, size: 0.56 }],
+  quarry: [{ pieces: [{ path: F('Rock_Medium_1'), x: -1.5, z: -1 }, { path: F('Rock_Medium_3'), x: 2, z: -1.5 }, { path: F('Rock_Medium_2'), x: 0, z: 2 }, { path: V('Prop_Wagon'), x: 3.5, z: 2.5, yaw: -0.6 }, { path: V('Prop_Crate'), x: -3, z: 2.5 }], extent: 9, size: 0.9 }],
+  'oil-rig': [{ pieces: [...shelter(0, 0), { path: F('Rock_Medium_3'), x: -3, z: 2.4, fit: 2 }, { path: V('Prop_Crate'), x: 3, z: 2.6 }, { path: V('Prop_Crate'), x: 3, z: -2.4 }], extent: 8, size: 0.74 }],
 };
 
 /** قطع متكررة للأشكال المميزة / Recurring pieces for the distinct looks */
@@ -191,19 +200,19 @@ const chimney = (x: number, z: number, tall = false): KitPiece => ({ path: V(tal
  * A distinct look for each kind of housing, store and public building, so a building is known by its shape
  */
 const DISTINCT_LOOKS: Record<string, Assembly[]> = {
-  'house-farmer': [house({ w: 4, d: 4, finish: 'timber', roof: 'Brown', yard: true, size: 0.62, extras: [wagon(3.4, 1.5, 0.4), { path: F('Plant_1'), x: -3, z: 3, fit: 1.4 }, { path: F('Plant_1'), x: -1.8, z: 3.4, fit: 1.2 }] })],
-  'house-carpenter': [house({ w: 4, d: 6, finish: 'timber', roof: 'Green', size: 0.66, extras: [{ path: F('DeadTree_1'), x: 3.4, z: -2, fit: 2.6 }, crate(3.2, 2.6), crate(2.2, 3.4)] })],
-  'house-smith': [house({ w: 4, d: 4, finish: 'brick', roof: 'Slate', size: 0.6, extras: [chimney(1.2, -1.2, true), crate(3, 2.6)] })],
-  'house-miner': [house({ w: 4, d: 4, finish: 'plaster', size: 0.6, extras: [{ path: F('Rock_Medium_2'), x: 3.2, z: 2.6, fit: 1.8 }, wagon(-3.4, 1, -0.3)] })],
-  'house-trader': [house({ w: 4, d: 6, finish: 'plaster', roof: 'Wine', yard: true, size: 0.66, extras: [crate(3.2, 3), crate(3.2, 1.9), crate(2.1, 3.4)] })],
-  'house-herder': [house({ w: 4, d: 4, finish: 'timber', roof: 'Brown', size: 0.7, extras: fenceRing(4) })],
-  'storage-farm': [house({ w: 6, d: 8, finish: 'timber', roof: 'Brown', size: 0.86, extras: [wagon(4.6, 2, 0.2), crate(-4.4, 3.6), crate(-4.4, 2.4)] })],
-  'storage-materials': [house({ w: 6, d: 8, finish: 'brick', roof: 'Slate', size: 0.86, extras: [{ path: F('Rock_Medium_1'), x: 4.6, z: 3, fit: 2 }, crate(-4.4, 3.6), { path: F('DeadTree_1'), x: -4.6, z: -2.8, fit: 2.6 }] })],
+  'house-farmer': [house({ w: 4, d: 4, finish: 'timber', roof: 'Brown', yard: true, extras: [wagon(3.4, 1.5, 0.4), { path: F('Plant_1'), x: -3, z: 3, fit: 1.4 }, { path: F('Plant_1'), x: -1.8, z: 3.4, fit: 1.2 }] })],
+  'house-carpenter': [house({ w: 4, d: 6, finish: 'timber', roof: 'Green', extras: [{ path: F('DeadTree_1'), x: 3.4, z: -2, fit: 2.6 }, crate(3.2, 2.6), crate(2.2, 3.4)] })],
+  'house-smith': [house({ w: 4, d: 4, finish: 'brick', roof: 'Slate', extras: [chimney(1.2, -1.2, true), crate(3, 2.6)] })],
+  'house-miner': [house({ w: 4, d: 4, finish: 'plaster', extras: [{ path: F('Rock_Medium_2'), x: 3.2, z: 2.6, fit: 1.8 }, wagon(-3.4, 1, -0.3)] })],
+  'house-trader': [house({ w: 4, d: 6, finish: 'plaster', roof: 'Wine', yard: true, extras: [crate(3.2, 3), crate(3.2, 1.9), crate(2.1, 3.4)] })],
+  'house-herder': [house({ w: 4, d: 4, finish: 'timber', roof: 'Brown', extras: fenceRing(4) })],
+  'storage-farm': [house({ w: 6, d: 8, finish: 'timber', roof: 'Brown', extras: [wagon(4.6, 2, 0.2), crate(-4.4, 3.6), crate(-4.4, 2.4)] })],
+  'storage-materials': [house({ w: 6, d: 8, finish: 'brick', roof: 'Slate', extras: [{ path: F('Rock_Medium_1'), x: 4.6, z: 3, fit: 2 }, crate(-4.4, 3.6), { path: F('DeadTree_1'), x: -4.6, z: -2.8, fit: 2.6 }] })],
   bank: [house({
-    w: 6, d: 6, finish: 'brick', roof: 'Wine', floors: 2, size: 0.8,
+    w: 6, d: 6, finish: 'brick', roof: 'Wine', floors: 2,
     extras: [{ ...chimney(2, -1.6), y: 6.6 }, { path: V('Prop_MetalFence_Ornament'), x: -2.6, z: 4.6 }, { path: V('Prop_MetalFence_Ornament'), x: 2.6, z: 4.6 }],
   })],
-  development: [house({ w: 6, d: 6, finish: 'plaster', roof: 'Slate', floors: 2, yard: true, size: 0.8, extras: [{ ...chimney(2, -1.6), y: 6.6 }, crate(3.8, 3.6), crate(-3.8, 3.6)] })],
+  development: [house({ w: 6, d: 6, finish: 'plaster', roof: 'Slate', floors: 2, yard: true, extras: [{ ...chimney(2, -1.6), y: 6.6 }, crate(3.8, 3.6), crate(-3.8, 3.6)] })],
   pond: [{
     pieces: [
       { path: WATER_SURFACE, x: 0, z: 0, fit: 7.2 },
@@ -227,12 +236,12 @@ Object.assign(PRIMITIVE_LOOKS, DISTINCT_LOOKS);
 export const TRANSITIONAL_LOOKS: Record<string, Assembly[]> = {
   // بيوت البلدة بطابقين وألوان أسقف متنوعة / Town houses with two storeys and varied roof colours
   house: [
-    house({ w: 4, d: 6, finish: 'plaster', yard: true, size: 0.66, extras: [{ path: V('Prop_Chimney'), x: 1.2, z: -1.5, y: 3.6 }] }),
-    house({ w: 6, d: 6, finish: 'timber', roof: 'Green', floors: 2, yard: true, size: 0.74 }),
-    house({ w: 4, d: 6, finish: 'plaster', roof: 'Wine', floors: 2, size: 0.68 }),
-    house({ w: 6, d: 6, finish: 'plaster', roof: 'Brown', floors: 2, yard: true, size: 0.74 }),
+    house({ w: 4, d: 6, finish: 'plaster', yard: true, extras: [{ path: V('Prop_Chimney'), x: 1.2, z: -1.5, y: 3.6 }] }),
+    house({ w: 6, d: 6, finish: 'timber', roof: 'Green', floors: 2, yard: true }),
+    house({ w: 4, d: 6, finish: 'plaster', roof: 'Wine', floors: 2 }),
+    house({ w: 6, d: 6, finish: 'plaster', roof: 'Brown', floors: 2, yard: true }),
   ],
-  civic: [house({ w: 6, d: 8, finish: 'brick', roof: 'Green', floors: 2, yard: true, size: 0.82 })],
+  civic: [house({ w: 6, d: 8, finish: 'brick', roof: 'Green', floors: 2, yard: true })],
   smithy: PRIMITIVE_LOOKS.smithy,
   sawmill: PRIMITIVE_LOOKS.sawmill,
   barn: PRIMITIVE_LOOKS.barn,
@@ -242,25 +251,52 @@ export const TRANSITIONAL_LOOKS: Record<string, Assembly[]> = {
 };
 
 /**
- * مبنى الحكم حسب المرحلة: قاعة خشبية، ثم قاعة حجرية كبيرة (المدينة تستخدم نموذجها الحديث)
- * The government building by stage: a timber hall, then a large stone hall (the city uses its modern model)
+ * ساحة مرصوفة أمام القاعة بعرض cols وعمق rows قطعة (كل قطعة 2×2 م) تبدأ من z0
+ * A paved forecourt before the hall, cols wide and rows deep in 2×2 m slabs, starting at z0
+ */
+function forecourt(cols: number, rows: number, z0: number): KitPiece[] {
+  return Array.from({ length: cols * rows }, (_, i) => ({ path: V('Floor_Brick'), x: (i % cols) * 2 - cols + 1, z: z0 + Math.floor(i / cols) * 2 + 1, y: 0.02 }));
+}
+
+/** نقل قطع المبنى للخلف حتى تتسع الساحة أمامه / Shift the building's pieces back to make room for the forecourt */
+const shiftBack = (pieces: KitPiece[], dz: number): KitPiece[] => pieces.map((p) => ({ ...p, z: p.z - dz }));
+
+/**
+ * مبنى الحكم حسب المرحلة: قاعة بطابقين أكبر من كل البيوت، أمامها ساحة مرصوفة بسارية علم؛ خشبية في القرية وحجرية في البلدة
+ * (المدينة تستخدم نموذجها الحديث)
+ * The government building by stage: a two-storey hall bigger than every house, with a paved forecourt and a flagpole;
+ * timber in the village and stone in the town (the city uses its modern model)
  */
 export function governmentAssembly(level: number): Assembly | null {
-  if (level <= 1) return house({ w: 6, d: 6, finish: 'timber', roof: 'Green', yard: true, size: 0.7, extras: [{ path: V('Prop_Chimney'), x: 2, z: -1.6, y: 3.6 }, ...fenceRing(6).map((p) => ({ ...p, x: p.x * 1.25, z: p.z * 1.25 }))] });
-  // البلدة: قاعة حجرية بسور وبوابة وحديقة / Town: a stone hall with a wall, a gate and a garden
-  if (level === 2) {
-    // السور والحديقة حول القاعة يوسّعان امتداد المبنى / The wall and garden around the hall widen its extent
-    const hall = house({
-      w: 6, d: 8, finish: 'brick', roof: 'Green', floors: 2, yard: true, size: 0.86,
-      extras: [
-        { path: V('Prop_Chimney2'), x: 2, z: -2.5, y: 6.6 },
-        ...fenceRing(8).map((p) => ({ ...p, x: p.x * 1.1, z: p.z * 1.1 })),
-        { path: V('Wall_Arch'), x: 0, z: 8.8 },
-        { path: F('CommonTree_1'), x: -6.5, z: 6, fit: 2.8 }, { path: F('CommonTree_2'), x: 6.5, z: 6, fit: 2.6 },
-        { path: F('Bush_Common_Flowers'), x: -6.4, z: -6, fit: 1.6 }, { path: F('Bush_Common_Flowers'), x: 6.4, z: -6, fit: 1.6 },
+  if (level <= 1) {
+    const hall = house({ w: 6, d: 6, finish: 'timber', roof: 'Green', floors: 2, extras: [{ ...chimney(2, -1.6), y: 6.6 }] });
+    return {
+      pieces: [
+        ...shiftBack(hall.pieces, 1.8),
+        ...forecourt(4, 2, 1.4),
+        { path: FLAG_POLE, x: -3.4, z: 4.6, fit: 6 },
+        { path: F('Bush_Common_Flowers'), x: 3.6, z: 4.4, fit: 1.4 }, { path: F('Flower_3_Group'), x: 4.2, z: 2.6, fit: 1.1 },
+        { path: F('Flower_4_Group'), x: -4.3, z: 2.4, fit: 1 }, crate(4.2, -4.4), crate(-4.2, -4.4),
       ],
-    });
-    return { ...hall, extent: 19 };
+      extent: 11,
+      size: 1,
+    };
+  }
+  // البلدة: قاعة حجرية أعمق بساحة أوسع وسور مزخرف وأشجار / Town: a deeper stone hall with a wider forecourt, an ornate fence and trees
+  if (level === 2) {
+    const hall = house({ w: 6, d: 8, finish: 'brick', roof: 'Green', floors: 2, extras: [{ path: V('Prop_Chimney2'), x: 2, z: -2.5, y: 6.6 }] });
+    return {
+      pieces: [
+        ...shiftBack(hall.pieces, 1.6),
+        ...forecourt(4, 2, 2.4),
+        { path: FLAG_POLE, x: -3.4, z: 5.6, fit: 7 }, { path: FLAG_POLE, x: 3.4, z: 5.6, fit: 7 },
+        { path: V('Prop_MetalFence_Ornament'), x: -2.6, z: 6.6 }, { path: V('Prop_MetalFence_Ornament'), x: 2.6, z: 6.6 },
+        { path: F('CommonTree_1'), x: -4.8, z: -4.6, fit: 2.6 }, { path: F('CommonTree_2'), x: 4.8, z: -4.6, fit: 2.4 },
+        { path: F('Bush_Common_Flowers'), x: -4.6, z: 2.4, fit: 1.4 }, { path: F('Bush_Common_Flowers'), x: 4.6, z: 2.4, fit: 1.4 },
+      ],
+      extent: 13,
+      size: 1,
+    };
   }
   return null;
 }

@@ -1,27 +1,39 @@
-// مسؤولية الملف: الحياة في الدولة — عمال يتحركون في المباني العاملة (مزارعون، حطابون، حدادون، تجار، رعاة)،
-// ومارة يحملون البضائع على الطرق المتصلة؛ كل ذلك من حالة الدولة الحقيقية ولا أثر له على الاقتصاد
-// File responsibility: life in the nation — workers moving at operating buildings (farmers, woodcutters, smiths, traders,
-// herders) and passers-by carrying goods on connected roads; all from the real nation state, with no economic effect
+// مسؤولية الملف: الحياة في الدولة — عمال يعملون في المباني العاملة بعدد عمالها الحقيقي (مزارعون، حطابون، حدادون، منقبون، تجار،
+// رعاة، أمناء مخازن)، وحمّالون ينقلون إنتاج كل مبنى على الطرق إلى مخزنه، ومارة على الطرق المتصلة؛ كل ذلك من حالة الدولة
+// الحقيقية ولا أثر له على الاقتصاد
+// File responsibility: life in the nation — workers at operating buildings in their real staff numbers (farmers, woodcutters,
+// smiths, miners, traders, herders, storekeepers), carriers taking each building's output along the roads to its store, and
+// passers-by on connected roads; all from the real nation state, with no economic effect
 
 import {
   Color3, LoadAssetContainerAsync, Texture, TransformNode, Vector3,
   type AbstractMesh, type AnimationGroup, type AssetContainer, type Material, type Node, type PBRMaterial, type Scene, type ShadowGenerator,
 } from '@babylonjs/core';
-import { buildingStatus, connectedRoads, edgeCorners, tileKey } from '../core/economy';
-import type { GameDefinitions, GameState, World } from '../core/types';
+import { styleOf } from '../assets/catalog';
+import { buildingStatus, connectedRoads, edgeCorners, staffingAt, tileKey } from '../core/economy';
+import type { BuildingDef, GameDefinitions, GameState, World } from '../core/types';
 import { sampleHeight, tileCenter, worldHalfExtents } from '../core/world-gen';
 
 const PEOPLE = `${import.meta.env.BASE_URL}models/people/`;
 /** مكتبة الحركات: هيكل بلا مجسم، تُربط حركاته بكل شخصية بأسماء العظام / The motion library: a meshless skeleton whose motions bind to each character by bone name */
 const ANIMATIONS = `${PEOPLE}animations.glb`;
+/** الصندوق الذي يحمله الحمّال / The crate a carrier holds */
+const CRATE = `${import.meta.env.BASE_URL}models/village/Prop_Crate.glb`;
 /** طول الشخص بالنسبة لضلع المربع (أكبر قليلًا من الواقع ليُرى من الكاميرا الاستراتيجية) / Person height vs tile side (a bit larger than life to read from the strategy camera) */
 const HEIGHT_PER_TILE = 0.2;
 /** سرعة المشي بالمربعات في الثانية / Walking speed in tiles per second */
 const WALK_SPEED = 0.32;
 /** سكان لكل مارّ على الطرق / Residents per passer-by on the roads */
-const RESIDENTS_PER_WALKER = 3;
+const RESIDENTS_PER_WALKER = 2;
 /** بعد ظهور الناس عن مركز الكاميرا بالمربعات / How far from the camera centre people show, in tiles */
 const VIEW_TILES = 26;
+/** أقصى عمال ظاهرين في المبنى الواحد / Most workers shown at one building */
+const MAX_SHOWN_PER_BUILDING = 3;
+/** حصص الناس الظاهرين: العمال أولًا ثم الحمّالون، والباقي مارة / Shares of shown people: workers first, then carriers, the rest passers-by */
+const WORKER_SHARE = 0.55;
+const CARRIER_SHARE = 0.25;
+/** توقف الحمّال عند طرفي رحلته بالثواني / A carrier's pause at either end of the trip, in seconds */
+const CARRIER_PAUSE = 2.5;
 
 /** مظهر شخصية: ملف ملابسها، ومادة الملابس، وخامات ألوانها البديلة / A character look: its outfit file, outfit material and alternate colour textures */
 type Look = 'male_peasant' | 'female_peasant' | 'male_ranger' | 'female_ranger';
@@ -36,36 +48,52 @@ const LOOKS: Record<Look, { outfit: string; colors: string[] }> = {
 const HAIR_COLORS = ['#2a1d14', '#3d2a1c', '#5a3b22', '#1a1512', '#6b3a20'];
 
 /** مهنة ظاهرة: حركاتها ومظاهر من يعمل بها / A visible trade: its animations and the looks of those who work it */
-type Role = 'farmer' | 'woodcutter' | 'smith' | 'miner' | 'trader' | 'herder' | 'walker';
+type Role = 'farmer' | 'woodcutter' | 'smith' | 'miner' | 'trader' | 'herder' | 'storekeeper' | 'carrier' | 'walker';
+const WALK = 'Walk_Carry_Loop';
 const ROLES: Record<Role, { anims: string[]; looks: Look[] }> = {
   farmer: { anims: ['Farm_Harvest', 'Farm_PlantSeed', 'Farm_Watering'], looks: ['male_peasant', 'female_peasant'] },
   woodcutter: { anims: ['TreeChopping_Loop'], looks: ['male_peasant'] },
-  smith: { anims: ['TreeChopping_Loop'], looks: ['male_peasant'] },
-  miner: { anims: ['TreeChopping_Loop'], looks: ['male_peasant'] },
-  trader: { anims: ['Idle_FoldArms_Loop'], looks: ['male_ranger', 'female_ranger'] },
-  herder: { anims: ['Farm_Watering'], looks: ['male_ranger', 'female_peasant'] },
-  walker: { anims: ['Walk_Carry_Loop'], looks: ['male_peasant', 'female_peasant', 'male_ranger', 'female_ranger'] },
-};
-const WALK = 'Walk_Carry_Loop';
-
-/** عمال كل نمط مبنى عامل (عدد ظاهر بصريًا فقط حتى يأتي عمود العمال) / Workers per operating building style (visual only until a workers column exists) */
-const JOBS: Record<string, { role: Role; count: number }> = {
-  field: { role: 'farmer', count: 2 },
-  sawmill: { role: 'woodcutter', count: 1 },
-  industry: { role: 'woodcutter', count: 1 },
-  smithy: { role: 'smith', count: 1 },
-  quarry: { role: 'miner', count: 2 },
-  'oil-rig': { role: 'miner', count: 1 },
-  market: { role: 'trader', count: 2 },
-  barn: { role: 'herder', count: 1 },
+  // الحداد يطرق ثم يفتح صندوق أدواته / The smith hammers, then opens his tool chest
+  smith: { anims: ['TreeChopping_Loop', 'Chest_Open'], looks: ['male_peasant'] },
+  // المنقب يضرب الصخر ثم ينحني يجمع الحجارة / The miner strikes the rock, then kneels to gather stones
+  miner: { anims: ['TreeChopping_Loop', 'Farm_PlantSeed'], looks: ['male_peasant'] },
+  // التاجر يعرض بضاعته ويساوم ويتذوق / The trader shows his goods, haggles and tastes
+  trader: { anims: ['Idle_FoldArms_Loop', 'Yes', 'Consume'], looks: ['male_ranger', 'female_ranger'] },
+  herder: { anims: ['Farm_Watering', 'Yes'], looks: ['male_ranger', 'female_peasant'] },
+  storekeeper: { anims: ['Chest_Open', 'Idle_FoldArms_Loop'], looks: ['male_ranger', 'female_peasant'] },
+  carrier: { anims: [WALK], looks: ['male_peasant', 'female_peasant'] },
+  walker: { anims: [WALK], looks: ['male_peasant', 'female_peasant', 'male_ranger', 'female_ranger'] },
 };
 
-/** عمل ظاهر: في مبنى، أو مشي على الطرق / A visible job: at a building, or walking the roads */
+/**
+ * عمل كل نمط مبنى: المهنة، والعدد الظاهر حين لا يحتاج المبنى عمالًا في الشيت، ومكان العمل:
+ * داخل المربع للأماكن المفتوحة (حقل، محجر، سوق)، أو حوله للمباني ذات الجدران
+ * Work per building style: the trade, the count shown when the sheet gives the building no workers, and where the work happens:
+ * inside the tile for open places (field, quarry, market), or around it for walled buildings
+ */
+const JOBS: Record<string, { role: Role; count: number; area: 'inside' | 'around' }> = {
+  field: { role: 'farmer', count: 2, area: 'inside' },
+  sawmill: { role: 'woodcutter', count: 1, area: 'around' },
+  industry: { role: 'woodcutter', count: 1, area: 'around' },
+  smithy: { role: 'smith', count: 1, area: 'around' },
+  quarry: { role: 'miner', count: 2, area: 'inside' },
+  'oil-rig': { role: 'miner', count: 1, area: 'around' },
+  market: { role: 'trader', count: 2, area: 'inside' },
+  barn: { role: 'herder', count: 1, area: 'around' },
+  'storage-farm': { role: 'storekeeper', count: 1, area: 'around' },
+  'storage-materials': { role: 'storekeeper', count: 1, area: 'around' },
+  bank: { role: 'storekeeper', count: 1, area: 'around' },
+};
+
+/** عمل ظاهر: في مبنى، أو نقل بين مبنى ومخزنه، أو مشي على الطرق / A visible job: at a building, carrying between a building and its store, or walking the roads */
 interface Job {
   id: string;
   role: Role;
   x: number;
   z: number;
+  area?: 'inside' | 'around';
+  /** للحمّال: زوايا الطريق من المبنى إلى المخزن / Carrier: the road corners from the building to the store */
+  route?: string[];
 }
 
 interface Actor {
@@ -82,10 +110,15 @@ interface Actor {
   from: string;
   to: string;
   t: number;
+  /** للحمّال: موضعه على مساره واتجاهه وصندوقه / Carrier: position along the route, direction and crate */
+  leg: number;
+  loaded: boolean;
+  crate: TransformNode | null;
 }
 
 export class People {
   private motions: AssetContainer | null = null;
+  private crate: AssetContainer | null = null;
   private readonly looks = new Map<Look, AssetContainer>();
   /** مواد الملابس لكل مظهر: الأصلية ثم البديلة / Outfit materials per look: the original, then the alternates */
   private readonly outfits = new Map<Look, Material[]>();
@@ -100,8 +133,8 @@ export class People {
     private readonly shadows: ShadowGenerator | null,
   ) {
     const looks = Object.keys(LOOKS) as Look[];
-    void Promise.all([LoadAssetContainerAsync(ANIMATIONS, scene), ...looks.map((l) => LoadAssetContainerAsync(`${PEOPLE}${l}.glb`, scene))])
-      .then(([motions, ...containers]) => {
+    void Promise.all([LoadAssetContainerAsync(ANIMATIONS, scene), LoadAssetContainerAsync(CRATE, scene), ...looks.map((l) => LoadAssetContainerAsync(`${PEOPLE}${l}.glb`, scene))])
+      .then(([motions, crate, ...containers]) => {
         containers.forEach((c, i) => {
           const look = looks[i];
           this.looks.set(look, c);
@@ -114,6 +147,7 @@ export class People {
             return m;
           })]);
         });
+        this.crate = crate;
         this.motions = motions;
       })
       .catch((err) => console.warn('تعذّر تحميل الشخصيات', err));
@@ -121,22 +155,17 @@ export class People {
   }
 
   /**
-   * مطابقة الناس مع الحالة: عمال للمباني العاملة القريبة من الكاميرا، ومارة على الطرق المتصلة بقدر السكان
-   * Match people to the state: workers at operating buildings near the camera, passers-by on connected roads by population
+   * مطابقة الناس مع الحالة: عمال للمباني العاملة القريبة من الكاميرا بقدر عمالها، وحمّالون لإنتاجها، ومارة على الطرق بقدر السكان
+   * Match people to the state: workers at operating buildings near the camera by their staff, carriers for their output,
+   * and passers-by on the roads by population
    */
   sync(state: GameState, defs: GameDefinitions, now: number, focus: { x: number; z: number }): void {
     if (!this.motions) return;
     const byId = new Map(defs.buildings.map((b) => [b.id, b]));
     const near = (x: number, z: number) => Math.hypot(x - focus.x, z - focus.z) <= VIEW_TILES;
-    const jobs: Job[] = [];
-    for (const b of state.buildings) {
-      const job = JOBS[byId.get(b.buildingId)?.model ?? ''];
-      if (!job || !near(b.x, b.z) || buildingStatus(b, state, defs, now).kind !== 'operating') continue;
-      for (let i = 0; i < job.count; i++) jobs.push({ id: `${b.uid}:${i}`, role: job.role, x: b.x, z: b.z });
-    }
-    jobs.sort((a, b) => Math.hypot(a.x - focus.x, a.z - focus.z) - Math.hypot(b.x - focus.x, b.z - focus.z));
+    const byDistance = (a: Job, b: Job) => Math.hypot(a.x - focus.x, a.z - focus.z) - Math.hypot(b.x - focus.x, b.z - focus.z);
 
-    // المارة على الطرق المتصلة بمبنى الحكم فقط / Passers-by only on roads connected to the government building
+    // الطرق المتصلة بمبنى الحكم شبكة المشي والنقل / Roads connected to the government building are the walking and hauling network
     const links = new Map<string, string[]>();
     for (const edge of connectedRoads(state, now)) {
       const [a, b] = edgeCorners(edge).map(([x, z]) => tileKey(x, z));
@@ -144,19 +173,40 @@ export class People {
       links.set(b, [...(links.get(b) ?? []), a]);
     }
     this.links = links;
+
+    const crew = staffingAt(state, defs, now);
+    const operating = state.buildings.filter((b) => buildingStatus(b, state, defs, now).kind === 'operating');
+    const work: Job[] = [];
+    const hauls: Job[] = [];
+    for (const b of operating) {
+      const def = byId.get(b.buildingId);
+      if (!def || !near(b.x, b.z)) continue;
+      const job = JOBS[styleOf(def)];
+      if (job) {
+        // عدد العمال الظاهر هو عدد عمال المبنى الحقيقي / The shown workers are the building's real staff
+        const staff = def.workers > 0 && def.profession ? (crew.get(b.uid)?.assigned ?? 0) : job.count;
+        for (let i = 0; i < Math.min(MAX_SHOWN_PER_BUILDING, staff); i++) work.push({ id: `${b.uid}:${i}`, role: job.role, x: b.x, z: b.z, area: job.area });
+      }
+      const route = this.haulRoute(b, def, operating, byId, state);
+      if (route) hauls.push({ id: `carry:${b.uid}`, role: 'carrier', x: b.x, z: b.z, route });
+    }
+    work.sort(byDistance);
+    hauls.sort(byDistance);
+
     const corners = [...links.keys()].filter((k) => {
       const [x, z] = k.split(',').map(Number);
       return near(x, z);
     });
-    const workers = jobs.slice(0, Math.ceil(this.max * 0.6));
-    const walkers = corners.length ? Math.min(this.max - workers.length, Math.floor(state.population / RESIDENTS_PER_WALKER)) : 0;
-    for (let i = 0; i < walkers; i++) workers.push({ id: `walk:${i}`, role: 'walker', x: 0, z: 0 });
+    const wanted = work.slice(0, Math.ceil(this.max * WORKER_SHARE));
+    wanted.push(...hauls.slice(0, Math.floor(this.max * CARRIER_SHARE)));
+    const walkers = corners.length ? Math.min(this.max - wanted.length, Math.floor(state.population / RESIDENTS_PER_WALKER)) : 0;
+    for (let i = 0; i < walkers; i++) wanted.push({ id: `walk:${i}`, role: 'walker', x: 0, z: 0 });
 
     // من فقد عمله يتحرر، ثم توزّع الأعمال الجديدة على المتاحين / Those who lost their job are freed, then new jobs go to free actors
-    const wanted = new Map(workers.map((j) => [j.id, j]));
-    for (const a of this.actors) if (a.job && !wanted.has(a.job.id)) this.release(a);
+    const ids = new Set(wanted.map((j) => j.id));
+    for (const a of this.actors) if (a.job && !ids.has(a.job.id)) this.release(a);
     const taken = new Set(this.actors.filter((a) => a.job).map((a) => a.job!.id));
-    for (const job of workers) {
+    for (const job of wanted) {
       if (taken.has(job.id)) continue;
       const looks = ROLES[job.role].looks;
       const look = looks[Math.floor(Math.random() * looks.length)];
@@ -164,6 +214,43 @@ export class People {
       if (!actor) break;
       this.assign(actor, job, corners);
     }
+  }
+
+  /**
+   * مسار نقل الإنتاج: من زاوية طريق عند المبنى المنتج إلى أقرب مخزن عامل يخزن ما ينتجه، أو إلى مبنى الحكم إن لم يوجد
+   * The hauling route: from a road corner at the producing building to the nearest operating store holding its output,
+   * or to the government building when there is none
+   */
+  private haulRoute(b: { x: number; z: number; uid: string }, def: BuildingDef, operating: GameState['buildings'], byId: Map<string, BuildingDef>, state: GameState): string[] | null {
+    const outputs = Object.keys(def.production).filter((id) => def.production[id] > 0);
+    if (!outputs.length || Object.keys(def.storage).length) return null;
+    const stores = operating.filter((s) => s.uid !== b.uid && outputs.some((id) => (byId.get(s.buildingId)?.storage[id] ?? 0) > 0));
+    const target = stores.sort((p, q) => Math.hypot(p.x - b.x, p.z - b.z) - Math.hypot(q.x - b.x, q.z - b.z))[0] ?? state.settlement;
+    return this.roadPath(b, target);
+  }
+
+  /** أقصر مسار على الطرق بين زوايا مربعين (بحث بالعرض) / The shortest road path between two tiles' corners (breadth-first) */
+  private roadPath(from: { x: number; z: number }, to: { x: number; z: number }): string[] | null {
+    const cornersOf = (t: { x: number; z: number }) => [[0, 0], [1, 0], [0, 1], [1, 1]].map(([dx, dz]) => tileKey(t.x + dx, t.z + dz)).filter((k) => this.links.has(k));
+    const goals = new Set(cornersOf(to));
+    const starts = cornersOf(from);
+    if (!goals.size || !starts.length) return null;
+    const previous = new Map<string, string | null>(starts.map((k) => [k, null]));
+    const queue = [...starts];
+    while (queue.length) {
+      const at = queue.shift()!;
+      if (goals.has(at)) {
+        const path = [at];
+        for (let p = previous.get(at); p; p = previous.get(p)) path.unshift(p);
+        return path.length > 1 ? path : null;
+      }
+      for (const next of this.links.get(at) ?? []) {
+        if (previous.has(next)) continue;
+        previous.set(next, at);
+        queue.push(next);
+      }
+    }
+    return null;
   }
 
   /**
@@ -202,7 +289,9 @@ export class People {
     // خامة الشعر رمادية تُلوَّن، ولون واحد للشعر والحاجبين / The hair texture is grey and tinted, one colour for hair and brows
     const hair = Math.floor(Math.random() * HAIR_COLORS.length);
     for (const m of meshes) if (m.material?.name.startsWith('M_Hair')) m.material = this.hairMaterial(m.material as PBRMaterial, hair);
-    const actor: Actor = { look, root, meshes, groups, playing: '', job: null, spot: Vector3.Zero(), next: null, timer: 0, from: '', to: '', t: 0 };
+    const actor: Actor = {
+      look, root, meshes, groups, playing: '', job: null, spot: Vector3.Zero(), next: null, timer: 0, from: '', to: '', t: 0, leg: 0, loaded: true, crate: null,
+    };
     root.setEnabled(false);
     this.actors.push(actor);
     return actor;
@@ -221,9 +310,26 @@ export class People {
     return m;
   }
 
+  /** صندوق بين يدي الشخص بوحدات المتر (الشخص متجه نحو +z) / A crate in the person's hands in metres (the person faces +z) */
+  private holdCrate(actor: Actor): void {
+    if (actor.crate || !this.crate) return;
+    const crate = this.crate.instantiateModelsToScene((n) => n, false).rootNodes[0] as TransformNode;
+    crate.parent = actor.root;
+    // ضرب المقياس لا استبداله، حتى يبقى تصحيح اتجاه glTF / Multiply the scale rather than replace it, keeping glTF's handedness fix
+    crate.scaling.scaleInPlace(0.38);
+    crate.position.set(0, 0.92, 0.34);
+    for (const m of crate.getChildMeshes(false)) {
+      m.isPickable = false;
+      this.shadows?.addShadowCaster(m);
+    }
+    actor.crate = crate;
+  }
+
   private release(actor: Actor): void {
     actor.job = null;
     actor.root.setEnabled(false);
+    actor.crate?.dispose();
+    actor.crate = null;
     this.play(actor, '');
   }
 
@@ -233,14 +339,21 @@ export class People {
       actor.from = corners[Math.floor(Math.random() * corners.length)];
       actor.to = this.pickCorner(actor.from, null);
       actor.t = Math.random();
+    } else if (job.role === 'carrier') {
+      // يبدأ في موضع عشوائي من رحلته حتى لا يتحرك كل الحمّالين معًا / Starts at a random point of the trip so carriers never move in step
+      actor.leg = Math.random() * (job.route!.length - 1);
+      actor.loaded = Math.random() < 0.5;
+      actor.timer = 0;
+      this.holdCrate(actor);
+      actor.crate?.setEnabled(actor.loaded);
     } else {
       actor.spot = this.spotIn(job);
       actor.next = null;
       actor.timer = 2 + Math.random() * 5;
-      this.place(actor, actor.spot);
+      this.place(actor, actor.spot, this.towardBuilding(job, actor.spot));
     }
     actor.root.setEnabled(true);
-    this.play(actor, job.role === 'walker' ? WALK : this.workAnim(job));
+    this.play(actor, job.role === 'walker' || job.role === 'carrier' ? WALK : this.workAnim(job));
   }
 
   private workAnim(job: Job): string {
@@ -256,11 +369,26 @@ export class People {
     if (g) g.start(true, 0.9 + Math.random() * 0.2);
   }
 
-  /** نقطة عشوائية داخل مربع العمل / A random spot inside the work tile */
+  /**
+   * نقطة عمل: داخل المربع للأماكن المفتوحة، أو على حلقة خارج جدران المبنى للمباني المغلقة
+   * A work spot: inside the tile for open places, or on a ring outside the walls for closed buildings
+   */
   private spotIn(job: Job): Vector3 {
     const c = tileCenter(this.world, job.x, job.z);
     const s = this.world.settings.tileSize;
+    if (job.area === 'around') {
+      const angle = Math.random() * Math.PI * 2;
+      const r = s * (0.36 + Math.random() * 0.08);
+      return new Vector3(c.x + Math.cos(angle) * r, 0, c.z + Math.sin(angle) * r);
+    }
     return new Vector3(c.x + (Math.random() - 0.5) * s * 0.6, 0, c.z + (Math.random() - 0.5) * s * 0.6);
+  }
+
+  /** من يعمل حول المبنى يواجهه / Those working around a building face it */
+  private towardBuilding(job: Job, at: Vector3): Vector3 | undefined {
+    if (job.area !== 'around') return undefined;
+    const c = tileCenter(this.world, job.x, job.z);
+    return new Vector3(c.x - at.x, 0, c.z - at.z);
   }
 
   private place(actor: Actor, p: Vector3, facing?: Vector3): void {
@@ -282,6 +410,13 @@ export class People {
     return new Vector3(x * s - halfX, 0, z * s - halfZ);
   }
 
+  /** الموضع على جانب الطريق بين زاويتين / The roadside position between two corners */
+  private roadside(a: Vector3, b: Vector3, t: number): { at: Vector3; dir: Vector3 } {
+    const dir = b.subtract(a);
+    const side = dir.lengthSquared() > 0 ? new Vector3(dir.z, 0, -dir.x).normalize().scale(this.world.settings.tileSize * 0.07) : Vector3.Zero();
+    return { at: Vector3.Lerp(a, b, t).add(side), dir };
+  }
+
   /** حركة كل الناس في الإطار / Every person's movement this frame */
   private step(dt: number): void {
     const s = this.world.settings.tileSize;
@@ -297,12 +432,12 @@ export class People {
           actor.from = actor.to;
           actor.to = this.pickCorner(actor.from, previous);
         }
-        const a = this.corner(actor.from);
-        const b = this.corner(actor.to);
-        const dir = b.subtract(a);
-        // المشي على جانب الطريق / Walking along the roadside
-        const side = dir.lengthSquared() > 0 ? new Vector3(dir.z, 0, -dir.x).normalize().scale(s * 0.07) : Vector3.Zero();
-        this.place(actor, Vector3.Lerp(a, b, actor.t).add(side), dir);
+        const { at, dir } = this.roadside(this.corner(actor.from), this.corner(actor.to), actor.t);
+        this.place(actor, at, dir);
+        continue;
+      }
+      if (job.role === 'carrier') {
+        this.haul(actor, job.route!, dt);
         continue;
       }
       // العامل يعمل في نقطة ثم ينتقل مشيًا إلى نقطة أخرى في نفس المبنى / A worker works at a spot, then walks to another in the same building
@@ -315,7 +450,7 @@ export class People {
           actor.spot = actor.next;
           actor.next = null;
           actor.timer = 4 + Math.random() * 6;
-          this.place(actor, actor.spot);
+          this.place(actor, actor.spot, this.towardBuilding(job, actor.spot));
           this.play(actor, this.workAnim(job));
         } else {
           this.place(actor, actor.root.position.add(to.scale(stride / dist)), to);
@@ -327,6 +462,33 @@ export class People {
         actor.next = this.spotIn(job);
         this.play(actor, WALK);
       }
+    }
+  }
+
+  /**
+   * الحمّال يمشي بالصندوق من المبنى إلى المخزن، يفرغه ويعود فارغ اليدين، ثم يكرر
+   * The carrier walks the crate from the building to the store, unloads, walks back empty-handed, and repeats
+   */
+  private haul(actor: Actor, route: string[], dt: number): void {
+    const last = route.length - 1;
+    if (actor.timer > 0) {
+      actor.timer -= dt;
+      if (actor.timer > 0) return;
+      actor.loaded = !actor.loaded;
+      actor.crate?.setEnabled(actor.loaded);
+      this.play(actor, WALK);
+    }
+    // محمّلًا يتقدم نحو المخزن، وفارغًا يعود نحو المبنى / Loaded it heads for the store, empty it returns to the building
+    actor.leg = Math.min(last, Math.max(0, actor.leg + (actor.loaded ? 1 : -1) * dt * WALK_SPEED));
+    const arrived = actor.loaded ? actor.leg >= last : actor.leg <= 0;
+    const i = Math.min(last - 1, Math.floor(actor.leg));
+    const a = this.corner(route[i]);
+    const b = this.corner(route[i + 1]);
+    const { at, dir } = this.roadside(a, b, actor.leg - i);
+    this.place(actor, at, actor.loaded ? dir : dir.scale(-1));
+    if (arrived) {
+      actor.timer = CARRIER_PAUSE;
+      this.play(actor, 'Chest_Open');
     }
   }
 }

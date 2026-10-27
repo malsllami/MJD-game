@@ -21,6 +21,8 @@ const CHUNK = 16;
 const NEAR_CHUNKS = 1.6;
 /** فوق نصف قطر الكاميرا هذا (بالمربعات) تُرسم كل القطع خفيفة / Above this camera radius (in tiles) every chunk is light */
 const DETAIL_RADIUS_TILES = 40;
+/** نسبة الأشجار المتفرقة في مروج العالم المستوي (خارج الغابات)؛ قليلة حتى لا يتكرر الشكل نفسه في كل مكان / Share of stray trees on flat-world meadows (outside forests); few so the same shape is not repeated everywhere */
+const STRAY_TREES = 0.14;
 
 interface Placement {
   key: string;
@@ -77,7 +79,7 @@ export class Nature {
       if (forestTiles.has(key) || edgeForest(tile.x, tile.z)) patch = 2.2;
       else if (inBasin(tile.x, tile.z)) patch *= 0.25;
       // العالم المستوي كله يابسة، فالأشجار المتفرقة خارج الغابات أخف للحفاظ على الأداء / A flat world is all land, so stray trees are lighter for performance
-      else patch *= sparse;
+      else patch *= this.world.settings.worldMode === 'flat' ? STRAY_TREES : 1;
       const c = tileCenter(this.world, tile.x, tile.z);
       const cx = Math.floor(tile.x / CHUNK);
       const cz = Math.floor(tile.z / CHUNK);

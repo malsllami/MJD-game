@@ -68,7 +68,8 @@ export function createHud(root: HTMLElement, defs: GameDefinitions, actions: Hud
     <div class="mapbox glass">
       <div class="mini"><canvas data-minimap aria-label="الخريطة المصغرة"></canvas></div>
       <div class="map-tools">
-        <button type="button" class="icon-btn" data-action="toggle-grid" aria-label="إظهار شبكة المربعات أو إخفاؤها" title="الشبكة">${icon('grid')}</button>
+        <button type="button" class="icon-btn" data-action="toggle-deposits" aria-label="إظهار المكامن المكتشفة أو إخفاؤها" aria-pressed="false" title="المكامن">${icon('stone')}</button>
+        <button type="button" class="icon-btn" data-action="toggle-grid" aria-pressed="false" aria-label="إظهار شبكة المربعات أو إخفاؤها" title="الشبكة">${icon('grid')}</button>
         <button type="button" class="icon-btn" data-action="bulldoze" aria-label="هدم الطرق" title="هدم الطرق">${icon('demolish')}</button>
       </div>
     </div>

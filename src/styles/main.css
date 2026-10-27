@@ -160,6 +160,7 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
 }
 .toolnav button .ico { width: 18px; height: 18px; }
 .toolnav button:hover { background: var(--chip); }
+.map-tools .icon-btn[aria-pressed='true'] { background: var(--gold); color: var(--gold-ink); }
 .toolnav button[aria-pressed='true'] { background: var(--gold); color: var(--gold-ink); }
 .toolnav [data-badge] {
   position: absolute; top: 4px; left: 10px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
