@@ -63,6 +63,14 @@ export interface WorldSettings {
   governmentRadius: number;
   /** بعد موارد البداية عن مبنى الحكم داخل القرية؛ صفر = خارجها / Starter resources' distance inside the village; zero = outside it */
   starterDepositDistance: number;
+  /** مدة قطع قطعة الغابة بالثواني؛ صفر = الضم الفوري بالذهب / Seconds to clear a forest parcel; zero = instant annexing for gold */
+  clearingSeconds: number;
+  /** الخشب الناتج عن كل قطعة / Wood yielded by each parcel */
+  clearingWood: number;
+  /** عرض الغابة الكثيفة حول القرية الأولى بالمربعات / Width of the dense forest around the first village in tiles */
+  frontierDepth: number;
+  /** مربعات فارغة بين القرية الأولى والغابة / Empty tiles between the first village and the forest */
+  frontierGap: number;
 }
 
 /** المنطقة المقترحة للمبنى / A building's suggested zone */
@@ -94,6 +102,27 @@ export interface Deposit {
   z: number;
   /** مربعات المكمن بصيغة "x,z" / Deposit tiles as "x,z" keys */
   tiles: string[];
+  /** غنى المكمن: يضرب إنتاج منشأته (1 إن غاب) / The deposit's richness: multiplies its facility's output (1 when absent) */
+  richness?: number;
+}
+
+/** احتمال ظهور نوع مكمن في قطعة غابة تُقطع / The chance a deposit type appears in a cleared forest parcel */
+export interface FrontierResource {
+  depositTypeId: string;
+  /** بالمئة / In percent */
+  chance: number;
+  /** أدنى مستوى لمبنى الحكم حتى يظهر / The lowest government level at which it can appear */
+  minLevel: number;
+  minRichness: number;
+  maxRichness: number;
+}
+
+/** قطعة غابة يجري قطعها / A forest parcel being cleared */
+export interface Clearing {
+  uid: string;
+  tiles: string[];
+  startedAt: number;
+  completesAt: number;
 }
 
 /** نوع تضاريس وشروط تصنيف المربع إليه / Terrain type and the rule that assigns tiles to it */
@@ -273,6 +302,8 @@ export interface GameDefinitions {
   buildingLevels: BuildingLevel[];
   /** معرفات المباني القائمة مع بداية اللعبة بالترتيب / Ids of the buildings standing at the start, in order */
   startBuildings: string[];
+  /** ما قد تكشفه قطع الغابة / What clearing the forest may reveal */
+  frontierResources: FrontierResource[];
 }
 
 /** مربع منطقي في شبكة العالم / Logical tile of the world grid */
@@ -344,6 +375,9 @@ export interface GameState {
   territory: string[];
   /** معرفات المكامن المكتشفة / Discovered deposit ids */
   discovered: string[];
+  /** قطع الغابة الجارية، والمكامن التي كشفها القطع (تغيب في حفظ أقدم) / Running forest clearings, and the deposits clearing revealed (absent in older saves) */
+  clearings?: Clearing[];
+  foundDeposits?: Deposit[];
   /** آخر وقت حُسب عنده الإنتاج / Last time production was applied */
   lastTick: number;
 }

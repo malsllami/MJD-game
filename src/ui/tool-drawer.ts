@@ -1,7 +1,7 @@
 // مسؤولية الملف: أدوات القيادة على اليسار — نظرة عامة، الخريطة، المهام، التنبيهات، التقارير؛ كل محتواها محسوب من حالة الدولة الحقيقية
 // File responsibility: left command tools — overview, map, tasks, alerts, reports; all content is computed from the real nation state
 
-import { buildingStatus, housingCapacity, isRoad, isUnderConstruction, netRates, nextStage, rateBreakdown, stageById, unlockGaps } from '../core/economy';
+import { buildingStatus, housingCapacity, isRoad, isUnderConstruction, netRates, nextStage, rateBreakdown, stageById, unlockGaps, knownDeposits } from '../core/economy';
 import { upgradeRequirements } from '../core/progression';
 import { formatDuration, formatNumber } from '../utils/format';
 import { esc } from '../utils/html';
@@ -89,7 +89,7 @@ function overview({ defs, world, state, now }: PanelContext): string {
   const pop = Math.floor(state.population);
   const building = state.buildings.filter((b) => isUnderConstruction(b, now)).length;
   const typeName = new Map(defs.deposits.map((d) => [d.id, d.name]));
-  const known = world.deposits.filter((d) => state.discovered.includes(d.id));
+  const known = knownDeposits(world, state);
   const stats = [
     ['المرحلة', esc(stage.name)],
     ['السكان', `${formatNumber(pop)} / ${formatNumber(housingCapacity(state, defs, now))}`],

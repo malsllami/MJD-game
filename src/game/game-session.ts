@@ -5,6 +5,7 @@ import {
   advance, annexTile, checkAnnex, checkMove, checkPlacement, createInitialState, demolishBuilding, demolishRoads, moveBuilding,
   placeBuilding, placeRoadPath, placeWallPath, resumeAfterAbsence, surveyTile, type Check, type Resume, type RoadPathResult,
 } from '../core/economy';
+import { checkClearing, startClearing } from '../core/frontier';
 import { checkTrade, trade, type Side } from '../core/market';
 import { checkBuildingUpgrade, checkUpgrade, upgradeBuilding, upgradeGovernment } from '../core/progression';
 import type { BuildingDef, Deposit, GameDefinitions, GameState, Tile, World } from '../core/types';
@@ -140,6 +141,17 @@ export class GameSession {
     const check = checkTrade(this.current, this.defs, resourceId, amount, side, now);
     if (check.ok) {
       this.current = trade(this.current, this.defs, resourceId, amount, side);
+      this.persist();
+    }
+    return check;
+  }
+
+  /** بدء قطع قطعة غابة لضمها / Start clearing a forest parcel to annex it */
+  clear(tile: Tile, now: number): Check {
+    this.tick(now);
+    const check = checkClearing(this.defs, this.world, this.current, tile, now);
+    if (check.ok) {
+      this.current = startClearing(this.current, this.defs, this.world, tile, now, crypto.randomUUID());
       this.persist();
     }
     return check;

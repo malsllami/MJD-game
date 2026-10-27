@@ -67,6 +67,11 @@ const WORLD_SETTINGS = [
   // إضافة مستويات القرية (addVillageLevels) / Village levels addition
   { key: 'نصف قطر مجمع الحكم', field: 'governmentRadius', type: 'number', description: 'المربعات المحجوزة لمبنى الحكم وساحته وحديقته حوله؛ 1 يعني 3 × 3 مربعات، وصفر مربع واحد' },
   { key: 'بعد موارد البداية', field: 'starterDepositDistance', type: 'number', description: 'بعد الغابة والمحجر والحديد عن مبنى الحكم داخل القرية بعدد المربعات؛ صفر يضعها خارج حدود القرية' },
+  // إضافة الغابة المحيطة (applyForestFrontier) / Surrounding forest addition
+  { key: 'مدة قطع الغابة بالثواني', field: 'clearingSeconds', type: 'number', description: 'مدة قطع قطعة غابة وضمها للدولة؛ صفر يعيد الضم الفوري بالذهب بدل القطع' },
+  { key: 'خشب قطع الغابة', field: 'clearingWood', type: 'number', description: 'الخشب الذي يضاف للمخزون عند اكتمال قطع كل قطعة' },
+  { key: 'عمق الغابة المحيطة', field: 'frontierDepth', type: 'number', description: 'عرض الغابة الكثيفة حول القرية الأولى بعدد المربعات' },
+  { key: 'المسافة بين القرية والغابة', field: 'frontierGap', type: 'number', description: 'مربعات فارغة بين حدود القرية الأولى والغابة حتى تتضح معالمها' },
 ];
 
 /**
@@ -279,6 +284,18 @@ const TABLES = [
       { name: 'نسبة تكلفة الترقية', field: 'costPercent', type: 'number' },
       { name: 'نسبة مدة الترقية', field: 'timePercent', type: 'number' },
       { name: 'الطراز', field: 'style', type: 'string' },
+      DISABLED_COLUMN,
+    ],
+  },
+  // إضافة الغابة المحيطة (applyForestFrontier) / Surrounding forest addition
+  {
+    id: 'frontierResources', name: 'موارد الغابة',
+    columns: [
+      { name: 'معرف نوع المكمن', field: 'depositTypeId', type: 'string' },
+      { name: 'الاحتمال', field: 'chance', type: 'number' },
+      { name: 'أدنى مستوى للحكم', field: 'minLevel', type: 'number' },
+      { name: 'أدنى غنى', field: 'minRichness', type: 'number' },
+      { name: 'أعلى غنى', field: 'maxRichness', type: 'number' },
       DISABLED_COLUMN,
     ],
   },

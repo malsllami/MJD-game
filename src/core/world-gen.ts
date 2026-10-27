@@ -209,11 +209,11 @@ function placeDeposits(
       // داخل القرية تبتعد عن الطريق الرئيسي الخارج من ساحة مبنى الحكم نحو ‎-z / Inside the village they keep off the main road leaving toward -z
       const a0 = inside ? -Math.PI / 2 + 1.1 + (rng() - 0.5) * 0.3 : rng() * Math.PI * 2;
       const pack: [DepositType | undefined, number, number][] = inside
-        ? [[starter('stone'), 0, 1.1], [starter('iron'), 2.05, 1.1], [starter('wood'), 4.1, 1.5]]
+        ? [[starter('stone'), 0, 1], [starter('iron'), 2.05, 1], [starter('wood'), 4.1, 1.45]]
         : [[starter('stone'), 0, 1.6], [starter('iron'), 2.1, 1.6], [starter('wood'), 4.2, 3.5]];
       for (const [type, turn, r] of pack) {
         if (!type) continue;
-        const dist = inside ? s.starterDepositDistance + 0.4 : s.flatZoneRadius + 2 + r;
+        const dist = inside ? s.starterDepositDistance : s.flatZoneRadius + 2 + r;
         const x = Math.round(b.x + Math.cos(a0 + turn) * dist);
         const z = Math.round(b.z + Math.sin(a0 + turn) * dist);
         add(type, x, z, disc(x, z, r, (t) => !water.has(t.terrainId)));

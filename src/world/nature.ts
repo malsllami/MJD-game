@@ -1,5 +1,6 @@
-// مسؤولية الملف: الطبيعة — أشجار وصخور وأعشاب وزهور موزعة حسب نوع الأرض، تُزال من المربعات المبنية
-// File responsibility: nature — trees, rocks, grass and flowers scattered by terrain, cleared from built tiles
+// مسؤولية الملف: الطبيعة — أشجار وصخور وأعشاب وزهور موزعة حسب نوع الأرض، وغابة كثيفة حول القرية الأولى، تُزال من المربعات المبنية والمقطوعة
+// File responsibility: nature — trees, rocks, grass and flowers scattered by terrain, and a dense forest around the first village,
+// cleared from built and cleared tiles
 //
 // لكل نوع مجسمان فقط بنسخ خفيفة (thin instances): مفصّل يحمل ما في القطع القريبة من الكاميرا، وخفيف يحمل الباقي في نفس
 // المواضع؛ والنباتات الصغيرة تظهر قرب الكاميرا فقط. يُعاد توزيع النسخ فقط عند انتقال الكاميرا إلى قطعة أخرى.
@@ -31,6 +32,14 @@ interface Placement {
   matrix: Matrix;
 }
 
+/** الغابة المحيطة: تبدأ بعد حدود القرية الأولى inner وتمتد depth مربعًا؛ depth صفر بلا غابة / The surrounding forest: from past the first village's border inner, depth tiles wide; zero depth for none */
+export interface Frontier {
+  inner: number;
+  depth: number;
+  /** مربعات فارغة بين القرية والغابة / Empty tiles between the village and the forest */
+  gap: number;
+}
+
 /** نوع واحد: مواضعه، ومجسماته المفصّلة والخفيفة / One kind: its spots, and its detailed and light meshes */
 interface Kind {
   placements: Placement[];
@@ -47,7 +56,12 @@ export class Nature {
   /** مركز القطع المفصّلة، أو null حين تكون الكاميرا بعيدة / Centre of the detailed chunks, or null when the camera is far */
   private nearCentre: { x: number; z: number } | null = null;
 
-  constructor(private readonly library: ModelLibrary, private readonly world: World, private readonly density: number) {}
+  constructor(
+    private readonly library: ModelLibrary,
+    private readonly world: World,
+    private readonly density: number,
+    private readonly frontier: Frontier = { inner: 0, depth: 0, gap: 0 },
+  ) {}
 
   /**
    * يوزّع الطبيعة على العالم بشكل ثابت حسب البذرة: الغابات تتجمع في بقع والمروج مفتوحة
@@ -70,13 +84,18 @@ export class Nature {
     const flat = this.world.settings.flatZoneRadius;
     const inBasin = (x: number, z: number) => this.world.basins.some((b) => Math.max(Math.abs(x - b.x), Math.abs(z - b.z)) <= flat);
     const sparse = this.world.settings.worldMode === 'flat' ? 0.3 : 1;
+    const { inner, depth, gap } = this.frontier;
+    const aroundVillage = (x: number, z: number) => depth > 0 && this.world.basins.some((b) => {
+      const d = Math.max(Math.abs(x - b.x), Math.abs(z - b.z));
+      return d > inner + gap && d <= inner + gap + depth;
+    });
     for (const tile of this.world.tiles) {
       const key = tileKey(tile.x, tile.z);
       const options = outcrops.has(key) ? OUTCROP_NATURE : NATURE_BY_TERRAIN[tile.terrainId];
       if (!options) continue;
       // الغابات بقع متفرقة تتخللها مروج مفتوحة / Forests are scattered patches between open meadows
       let patch = Math.max(0.1, forest(tile.x * 0.11, tile.z * 0.11) * 2.6 - 0.75);
-      if (forestTiles.has(key) || edgeForest(tile.x, tile.z)) patch = 2.2;
+      if (forestTiles.has(key) || edgeForest(tile.x, tile.z) || aroundVillage(tile.x, tile.z)) patch = 2.2;
       else if (inBasin(tile.x, tile.z)) patch *= 0.25;
       // العالم المستوي كله يابسة، فالأشجار المتفرقة خارج الغابات أخف للحفاظ على الأداء / A flat world is all land, so stray trees are lighter for performance
       else patch *= this.world.settings.worldMode === 'flat' ? STRAY_TREES : 1;

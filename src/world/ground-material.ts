@@ -89,6 +89,8 @@ export class GroundPainter {
     material.diffuseTexture7 = layer('paving', PAVING_REPEAT_TILES);
     material.diffuseTexture8 = material.diffuseTexture1;
     material.diffuseColor = GROUND_TINT;
+    // الشمس والقمر والضوء المحيط وأضواء البوابات / The sun, moon, ambient light and the gate lights
+    material.maxSimultaneousLights = 8;
     material.specularColor = new Color3(0.02, 0.02, 0.02);
     mesh.material = material;
     this.paint({ dirt: [], soil: [], roads: [] });

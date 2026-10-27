@@ -63,7 +63,7 @@ describe('العالم المستوي / flat world', () => {
           const [x, z] = k.split(',').map(Number);
           const away = Math.max(Math.abs(x - b.x), Math.abs(z - b.z));
           expect(away).toBeLessThanOrEqual(village);
-          expect(away).toBeGreaterThan(settings.governmentRadius + 1);
+          expect(away).toBeGreaterThan(settings.governmentRadius);
         }
       }
     }

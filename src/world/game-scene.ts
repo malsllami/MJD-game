@@ -90,7 +90,10 @@ export function createGameScene(canvas: HTMLCanvasElement, world: World, defs: G
   const surface = new TerrainSurface(terrain, world);
   const library = new ModelLibrary(scene);
   // الطبيعة جزء من العالم نفسه، فتظهر من شاشة اختيار الموقع / Nature belongs to the world, so it shows from the start-site screen
-  const nature = new Nature(library, world, preset.natureDensity);
+  // الغابة المحيطة تُرسم حين يكون التوسع بقطعها / The surrounding forest is drawn when growth is by clearing it
+  const nature = new Nature(library, world, preset.natureDensity, {
+    inner: defs.stages[0]?.territoryRadius ?? 0, depth: defs.world.clearingSeconds > 0 ? defs.world.frontierDepth : 0, gap: defs.world.frontierGap,
+  });
   void nature.build(env.shadows);
   const people = new People(scene, world, preset.maxPeople, env.shadows);
 

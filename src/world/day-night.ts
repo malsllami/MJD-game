@@ -30,7 +30,14 @@ export interface Glowing {
 /** أضواء تعمل ليلًا: مواد تتوهج بقدر الظلام / Night lights: materials that glow as it gets dark */
 export class NightLights {
   private readonly lights: { material: Glowing; color: Color3 }[] = [];
+  private readonly watchers: ((level: number) => void)[] = [];
   private level = 0;
+
+  /** متابعة مستوى الظلام (لأضواء حقيقية تُضبط شدتها) / Follow the darkness level (for real lights whose intensity is set) */
+  watch(fn: (level: number) => void): void {
+    this.watchers.push(fn);
+    fn(this.level);
+  }
 
   add(material: Glowing, color: Color3): void {
     if (this.lights.some((l) => l.material === material)) return;
@@ -48,6 +55,7 @@ export class NightLights {
     if (Math.abs(level - this.level) < 0.005) return;
     this.level = level;
     for (const l of this.lights) l.material.emissiveColor = l.color.scale(level);
+    for (const fn of this.watchers) fn(level);
   }
 }
 

@@ -5,7 +5,7 @@
 // government (nation, upgrade, army), housing (residents and trade), work buildings (workers and output), the development centre
 // (tasks), the market (buying and selling), stores (amounts and capacity), plus a "building" tab to move and demolish
 
-import { buildingStatus, capacityAt, isRoad, isUnderConstruction, netRates, stageById, staffingAt, unlockGaps, type Check } from '../core/economy';
+import { buildingStatus, capacityAt, isRoad, isUnderConstruction, netRates, stageById, staffingAt, unlockGaps, type Check, richnessOf } from '../core/economy';
 import { checkTrade, CURRENCY, hasMarket, type Side } from '../core/market';
 import { factorsOf, governmentLevel, housingAt, isUpgradable, isUpgrading, levelOf, levelRow } from '../core/levels';
 import { buildingUpgradeCost, checkBuildingUpgrade, upgradeRequirements } from '../core/progression';
@@ -238,7 +238,7 @@ export class BuildingPanel {
     const crew = staffingAt(state, defs, now).get(placed.uid);
     const efficiency = buildingStatus(placed, state, defs, now).kind === 'operating' ? crew?.efficiency ?? 1 : 0;
     // كامل الطاقة يشمل مضاعف مستوى المبنى / Full capacity includes the building's level factor
-    const factor = factorsOf(defs, placed, now).production;
+    const factor = factorsOf(defs, placed, now).production * richnessOf(state, placed, def);
     const resource = (id: string) => defs.resources.find((r) => r.id === id);
     const flows = [
       ...Object.entries(def.production).map(([id, n]) => [`${icon(resource(id)?.icon ?? id)} ${esc(resource(id)?.name ?? id)}`, signed(n * factor * efficiency), formatNumber(n * factor)]),

@@ -43,6 +43,7 @@ export interface RawTables {
   }[];
   buildingLevels?: { level: number | null; productionFactor: number | null; populationFactor: number | null; costPercent: number | null; timePercent: number | null; style: string }[];
   startBuildings?: ({ buildingId: string } & Ordered)[];
+  frontierResources?: { depositTypeId: string; chance: number | null; minLevel: number | null; minRichness: number | null; maxRichness: number | null }[];
 }
 
 /** "gold:500" ← { gold: 500 }؛ الأرقام العربية مقبولة / "gold:500" → { gold: 500 }; Arabic digits accepted */
@@ -97,6 +98,11 @@ const BACKWARD_COMPATIBLE: Partial<WorldSettings> = {
   // مبنى الحكم مربع واحد، وموارد البداية خارج القرية كما كانت / A one-tile government building; starter resources outside the village as before
   governmentRadius: 0,
   starterDepositDistance: 0,
+  // بلا غابة محيطة: الضم الفوري بالذهب كما كان / No surrounding forest: instant annexing for gold as before
+  clearingSeconds: 0,
+  clearingWood: 0,
+  frontierDepth: 0,
+  frontierGap: 0,
 };
 
 const WALL_STYLES: WallStyle[] = ['stakes', 'palisade', 'stone'];
@@ -236,5 +242,11 @@ export function assembleDefinitions(raw: RawTables, version: string): GameDefini
     governmentLevels: governmentLevels(raw.governmentLevels, stages),
     buildingLevels: buildingLevels(raw.buildingLevels),
     startBuildings: [...(raw.startBuildings ?? [])].sort(byOrder).map((r) => r.buildingId).filter((id) => raw.buildings.some((b) => b.id === id)),
+    frontierResources: (raw.frontierResources ?? [])
+      .filter((r) => (raw.depositTypes ?? []).some((d) => d.id === r.depositTypeId) && (r.chance ?? 0) > 0)
+      .map((r) => {
+        const min = r.minRichness ?? 1;
+        return { depositTypeId: r.depositTypeId, chance: r.chance!, minLevel: Math.max(1, r.minLevel ?? 1), minRichness: min, maxRichness: Math.max(min, r.maxRichness ?? min) };
+      }),
   };
 }

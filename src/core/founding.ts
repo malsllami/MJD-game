@@ -5,7 +5,7 @@
 // to reach them, all standing and free
 
 import {
-  autoRoadPath, buildingAt, depositAt, edgeBetween, isRoad, isSettlementTile, placeRoadPath, tileKey,
+  autoRoadPath, buildingAt, depositAt, edgeBetween, edgeCorners, isRoad, isSettlementTile, placeRoadPath, tileKey,
 } from './economy';
 import { housingAt, levelRow } from './levels';
 import { zoneTest } from './placement-guide';
@@ -43,8 +43,39 @@ export function foundVillage(state: GameState, defs: GameDefinitions, world: Wor
     // كل مبنى ابتدائي يصله طريق، ولو لم يحتجه للعمل، حتى تصل إليه الحركة والنقل / Every starting building gets a road, even when it runs without one, so movement and hauling reach it
     if (road) current = layRoad(current, defs, world, road, autoRoadPath(defs, world, current, road, tile, now) ?? [], now, uid);
   }
+  current = buildWall(current, defs, now, uid);
   const population = current.buildings.reduce((sum, b) => sum + (b.residents ?? 0), 0);
   return { ...current, resources, population };
+}
+
+/**
+ * سور القرية الأولى على حدودها كقطع سور عادية يهدمها اللاعب أو يعيد رسمها، وبوابتان حيث ينتهي الطريق الرئيسي؛
+ * التوسع بعد ذلك لا يبني سورًا تلقائيًا
+ * The first village's wall on its border as ordinary wall pieces the player can bulldoze or redraw, and a gate where the main
+ * road ends; later growth builds no wall automatically
+ */
+function buildWall(state: GameState, defs: GameDefinitions, now: number, uid: () => string): GameState {
+  const wall = defs.buildings.find((b) => b.model === 'wall');
+  const gate = defs.buildings.find((b) => b.model === 'gate');
+  if (!wall) return state;
+  const owned = new Set(state.territory);
+  const roads = new Set(state.roads.map((r) => r.edge));
+  const border: string[] = [];
+  for (const key of owned) {
+    const [x, z] = key.split(',').map(Number);
+    if (!owned.has(tileKey(x, z - 1))) border.push(`h:${x},${z}`);
+    if (!owned.has(tileKey(x, z + 1))) border.push(`h:${x},${z + 1}`);
+    if (!owned.has(tileKey(x - 1, z))) border.push(`v:${x},${z}`);
+    if (!owned.has(tileKey(x + 1, z))) border.push(`v:${x + 1},${z}`);
+  }
+  // البوابة على ضلعي الحدود عند نهاية الطريق الرئيسي (أقصى الجنوب على خطه) / The gate on the two border edges at the main road's end (its southmost corner)
+  const south = Math.min(...state.territory.map((k) => Number(k.split(',')[1])));
+  const end = tileKey(state.settlement.x, south);
+  const atGate = (edge: string) => !!gate && edgeCorners(edge).some(([x, z]) => tileKey(x, z) === end);
+  const walls = border.filter((e) => !roads.has(e)).sort().map((edge) => ({
+    uid: uid(), buildingId: atGate(edge) ? gate!.id : wall.id, edge, startedAt: now, completesAt: now,
+  }));
+  return { ...state, walls: [...state.walls, ...walls] };
 }
 
 /**

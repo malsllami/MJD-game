@@ -8,7 +8,8 @@
 
 import type { BuildingDef, Deposit, GameDefinitions, GameState, PlacedBuilding, Stage, Tile, World } from './types';
 import { foundVillage } from './founding';
-import { factorsOf, housingAt, isUpgrading } from './levels';
+import { activeWorks, isForestMode, settleClearings } from './frontier';
+import { factorsOf, housingAt } from './levels';
 import { addCapped, capacities, seedResidents, settle, staffing } from './workforce';
 
 /** مفتاح مربع أو زاوية / Tile or corner key */
@@ -117,7 +118,8 @@ export function createInitialState(defs: GameDefinitions, world: World, site: { 
 export function enterStage(state: GameState, defs: GameDefinitions, world: World, stageId: string): GameState {
   const reached = stageById(defs, stageId);
   const territory = new Set(state.territory);
-  for (const k of landAround(defs, world, state.settlement.x, state.settlement.z, reached.territoryRadius)) territory.add(k);
+  // مع الغابة المحيطة لا تتسع الحدود إلا بقطعها / With the surrounding forest the borders grow only by clearing it
+  if (!isForestMode(defs)) for (const k of landAround(defs, world, state.settlement.x, state.settlement.z, reached.territoryRadius)) territory.add(k);
   return discoverNearTerritory({ ...state, stage: stageId, territory: [...territory] }, defs, world);
 }
 
@@ -172,7 +174,23 @@ function discoverWhere(state: GameState, world: World, near: (x: number, z: numb
 /** المكمن المكتشف في المربع لمورد معيّن / The discovered deposit on a tile for a resource */
 export function depositAt(world: World, state: GameState, x: number, z: number, resourceId?: string): Deposit | undefined {
   const key = tileKey(x, z);
-  return world.deposits.find((d) => state.discovered.includes(d.id) && (!resourceId || d.resourceId === resourceId) && d.tiles.includes(key));
+  const fits = (d: Deposit) => (!resourceId || d.resourceId === resourceId) && d.tiles.includes(key);
+  return world.deposits.find((d) => state.discovered.includes(d.id) && fits(d)) ?? state.foundDeposits?.find(fits);
+}
+
+/** كل المكامن المعروفة: المكتشفة من العالم وما كشفه قطع الغابة / Every known deposit: discovered world ones and those clearing revealed */
+export function knownDeposits(world: World, state: GameState): Deposit[] {
+  return [...world.deposits.filter((d) => state.discovered.includes(d.id)), ...(state.foundDeposits ?? [])];
+}
+
+/**
+ * غنى مكمن المنشأة: يضرب إنتاجها؛ مكامن العالم والبداية غناها 1، وما كشفه القطع متفاوت
+ * The facility's deposit richness: multiplies its output; world and starter deposits are 1, those revealed by clearing vary
+ */
+export function richnessOf(state: GameState, placed: PlacedBuilding, def: BuildingDef | undefined): number {
+  if (!def?.requiresDeposit) return 1;
+  const key = tileKey(placed.x, placed.z);
+  return state.foundDeposits?.find((d) => d.resourceId === def.requiresDeposit && d.tiles.includes(key))?.richness ?? 1;
 }
 
 /** تكلفة مسح الموارد / Survey cost */
@@ -546,9 +564,8 @@ export function checkPlacement(defs: GameDefinitions, world: World, state: GameS
     return { ok: false, reason: `${building.name} يحتاج طريقًا متصلًا بمبنى الحكم على أحد جوانبه` };
   }
   if (!opts.alreadyBuilt) {
-    // الترقيات الجارية تُحسب من البناء المتزامن / Running upgrades count as concurrent builds
-    const active = state.buildings.filter((b) => isUnderConstruction(b, now) || isUpgrading(b, now)).length;
-    if (active >= defs.world.maxConcurrentBuilds) {
+    // الترقيات وقطع الغابة الجارية تُحسب من البناء المتزامن / Running upgrades and clearings count as concurrent builds
+    if (activeWorks(state, now) >= defs.world.maxConcurrentBuilds) {
       return { ok: false, reason: `وصلت للحد الأقصى من البناء المتزامن (${defs.world.maxConcurrentBuilds})؛ انتظر اكتمال مبنى` };
     }
   }
@@ -619,7 +636,7 @@ export function moveBuilding(state: GameState, defs: GameDefinitions, uid: strin
  * Advance time to now in steps of at most a minute: a building runs only with its inputs in stock and a road when needed;
  * population moves toward the capacity of operating housing, then stage progress is checked
  */
-export function advance(state: GameState, defs: GameDefinitions, _world: World, now: number): GameState {
+export function advance(state: GameState, defs: GameDefinitions, world: World, now: number): GameState {
   if (now <= state.lastTick) return state;
   const byId = new Map(defs.buildings.map((b) => [b.id, b]));
   const resources = { ...state.resources };
@@ -641,7 +658,7 @@ export function advance(state: GameState, defs: GameDefinitions, _world: World, 
       const start = Math.max(from, placed.completesAt);
       if (!def || start >= to || !active(placed)) continue;
       // الإنتاج والاستهلاك بقدر العمال المتوفرين ومستوى المبنى / Output and input scale with the available workers and the building's level
-      const minutes = ((to - start) / MINUTE_MS) * (crew.get(placed.uid)?.efficiency ?? 1) * factor(placed).production;
+      const minutes = ((to - start) / MINUTE_MS) * (crew.get(placed.uid)?.efficiency ?? 1) * factor(placed).production * richnessOf(state, placed, def);
       for (const [id, n] of Object.entries(def.production)) resources[id] = addCapped(resources[id] ?? 0, n * minutes, caps[id] ?? Infinity);
       for (const [id, n] of Object.entries(def.consumption)) resources[id] = Math.max(0, (resources[id] ?? 0) - n * minutes);
     }
@@ -650,7 +667,8 @@ export function advance(state: GameState, defs: GameDefinitions, _world: World, 
     buildings = settle(buildings, byId, (b) => (active(b) ? housingAt(byId.get(b.buildingId)!, factor(b).population) : 0), change);
   }
   const population = buildings.reduce((sum, b) => sum + (b.residents ?? 0), 0);
-  return { ...state, buildings, resources, population, lastTick: now };
+  // قطع الغابة المكتمل ينضم للدولة / Completed forest clearings join the nation
+  return settleClearings({ ...state, buildings, resources, population, lastTick: now }, defs, world, now);
 }
 
 /**
@@ -672,7 +690,7 @@ export function rateBreakdown(state: GameState, defs: GameDefinitions, now: numb
   for (const placed of state.buildings) {
     if (buildingStatus(placed, state, defs, now).kind !== 'operating') continue;
     const def = defs.buildings.find((b) => b.id === placed.buildingId)!;
-    const efficiency = (crew.get(placed.uid)?.efficiency ?? 1) * factorsOf(defs, placed, now).production;
+    const efficiency = (crew.get(placed.uid)?.efficiency ?? 1) * factorsOf(defs, placed, now).production * richnessOf(state, placed, def);
     for (const [id, n] of Object.entries(def.production)) production[id] = (production[id] ?? 0) + n * efficiency;
     for (const [id, n] of Object.entries(def.consumption)) consumption[id] = (consumption[id] ?? 0) + n * efficiency;
   }

@@ -21,6 +21,17 @@ const COMPACT_VILLAGE = {
   stageRadius: { village: 6, town: 12, city: 20 },
 };
 
+/**
+ * الغابة المحيطة: قرية أولى 9 × 9 مربعات (نصف قطر 4) بقدر منازلها ومواردها، وقطع غابة 3 × 3 تنتظم مع مجمع الحكم، وموارد البداية
+ * أقرب؛ يستخدمه الإعداد الأول وapplyForestFrontier
+ * The surrounding forest: a 9 × 9 first village (radius 4) just fitting its homes and resources, 3 × 3 forest parcels aligned with
+ * the government compound, and closer starter resources; used by the first setup and applyForestFrontier
+ */
+const FOREST_FRONTIER = {
+  world: { annexBlockSize: 3, starterDepositDistance: 3 },
+  stageRadius: { village: 4 },
+};
+
 /** قيم إعدادات العالم الأولية حسب الحقل / Initial world settings by field */const SEED_WORLD = {
   seed: 1447,
   tilesX: CAPITAL_SCALE.world.tilesX,
@@ -46,7 +57,7 @@ const COMPACT_VILLAGE = {
   offlineCapHours: 8,
   annexResource: 'gold',
   annexCost: 150,
-  annexBlockSize: COMPACT_VILLAGE.world.annexBlockSize,
+  annexBlockSize: FOREST_FRONTIER.world.annexBlockSize,
   flatZoneRadius: COMPACT_VILLAGE.world.flatZoneRadius,
   massifCount: 14,
   massifRadius: 10,
@@ -64,8 +75,26 @@ const COMPACT_VILLAGE = {
   residentialZoneRadius: 4,
   industrialRoadDistance: 1,
   governmentRadius: 1,
-  starterDepositDistance: 4,
+  starterDepositDistance: FOREST_FRONTIER.world.starterDepositDistance,
+  clearingSeconds: 60,
+  clearingWood: 120,
+  frontierDepth: 10,
+  frontierGap: 1,
 };
+
+/** السور والبوابة مفتوحان من البداية فيبني اللاعب سوره بنفسه / The wall and gate are open from the start so the player builds the wall himself */
+const OPEN_WALLS = ['wooden_wall', 'gate'];
+
+/**
+ * موارد الغابة: [نوع المكمن، الاحتمال ٪، أدنى مستوى للحكم، أدنى غنى، أعلى غنى]. كل قطعة تُقطع تُسحب لها نتيجة واحدة، وما تبقى
+ * من المئة أرض فارغة؛ والغنى يضرب إنتاج المنشأة المبنية على المكمن
+ * Forest resources: [deposit type, chance %, minimum government level, minimum richness, maximum richness]. Each cleared parcel
+ * draws one result, the rest of the hundred being empty land; richness multiplies the output of the facility built on the deposit
+ */
+const SEED_FRONTIER_RESOURCES = [
+  ['gold_ore', 10, 1, 0.5, 1.4], ['silver_ore', 8, 1, 0.5, 1.4], ['stone_quarry', 14, 1, 0.7, 1.5], ['iron_ore', 12, 1, 0.6, 1.5],
+  ['copper_ore', 10, 6, 0.6, 1.5], ['oil_field', 8, 10, 0.6, 1.6],
+];
 
 
 /**
@@ -157,7 +186,7 @@ const SEED_JOBS = {
   farmers_house: ['farmer', 0, 0, ''], carpenters_house: ['carpenter', 0, 0, ''], smiths_house: ['smith', 0, 10, ''],
   miners_house: ['miner', 0, 0, ''], traders_house: ['trader', 0, 15, ''], herders_house: ['herder', 0, 10, ''],
   farm_storage: ['', 0, 0, 'farm'], materials_storage: ['', 0, 10, ''], bank: ['', 0, 40, 'market'],
-  village_garden: ['', 0, 25, ''], wooden_wall: ['', 0, 30, 'development_center'], gate: ['', 0, 30, 'development_center'],
+  village_garden: ['', 0, 25, ''], wooden_wall: ['', 0, 0, ''], gate: ['', 0, 0, ''],
   pond: ['', 0, 10, ''], stream: ['', 0, 10, ''],
 };
 
@@ -351,7 +380,7 @@ const SEED_ROWS = {
     return { 'المعرف': d[0], 'الاسم': d[1], 'معرف المورد': d[2], 'المكان': d[3], 'العدد في العالم': d[4], 'الأيقونة': d[5], 'اللون': d[6] };
   }),
   stages: [
-    ['village', 'قرية', 0, COMPACT_VILLAGE.stageRadius.village, PRIMITIVE_ERA.villageDescription],
+    ['village', 'قرية', 0, FOREST_FRONTIER.stageRadius.village, PRIMITIVE_ERA.villageDescription],
     ['town', 'بلدة', 150, COMPACT_VILLAGE.stageRadius.town, 'الخدمات العامة والأمن وتطوير الطرق ومركز القرية'],
     ['city', 'مدينة', 600, COMPACT_VILLAGE.stageRadius.city, 'الحكومة والصناعة والميناء والمطار والقطار والقواعد العسكرية'],
   ].map(function (s, i) {
@@ -373,6 +402,9 @@ const SEED_ROWS = {
     return { 'المستوى': l[0], 'مضاعف الإنتاج': l[1], 'مضاعف السكان': l[2], 'نسبة تكلفة الترقية': l[3], 'نسبة مدة الترقية': l[4], 'الطراز': l[5] };
   }),
   startBuildings: SEED_START_BUILDINGS.map(function (id, i) { return { 'معرف المبنى': id, 'الترتيب': i + 1 }; }),
+  frontierResources: SEED_FRONTIER_RESOURCES.map(function (r) {
+    return { 'معرف نوع المكمن': r[0], 'الاحتمال': r[1], 'أدنى مستوى للحكم': r[2], 'أدنى غنى': r[3], 'أعلى غنى': r[4] };
+  }),
   ministries: [
     ['finance', 'المالية', 'الموارد والميزانية والضرائب'],
     ['interior', 'الداخلية', 'السكان والأمن الداخلي والرضا'],
@@ -383,7 +415,7 @@ const SEED_ROWS = {
   ].map(function (m, i) { return { 'المعرف': m[0], 'الاسم': m[1], 'الوصف': m[2], 'الترتيب': i + 1 }; }),
   contextCommands: [].concat(
     cmds_('city', [['build', 'بناء', 'build'], ['upgrade', 'ترقية', 'up'], ['taxes', 'ضرائب', 'gold'], ['tasks', 'مهام السكان', 'pop'], ['roads', 'طرق', 'road']]),
-    cmds_('empty_tile', [['build', 'بناء', 'build'], ['annex', 'ضم للدولة', 'map'], ['road', 'طريق', 'road'], ['survey', 'مسح الموارد', 'lab'], ['info', 'معلومات', 'info']]),
+    cmds_('empty_tile', [['build', 'بناء', 'build'], ['annex', 'قطع الغابة', 'wood'], ['road', 'طريق', 'road'], ['survey', 'مسح الموارد', 'lab'], ['info', 'معلومات', 'info']]),
     cmds_('mine', [['upgrade', 'ترقية', 'up'], ['workers', 'العمال', 'pop'], ['road', 'طريق', 'road'], ['protect', 'حماية', 'shield'], ['output', 'الإنتاج', 'iron']]),
     cmds_('port', [['trade', 'تجارة', 'trade'], ['transport', 'نقل', 'road'], ['upgrade', 'ترقية', 'up'], ['protect', 'حماية', 'shield'], ['traffic', 'الحركة', 'info']]),
     cmds_('unit', [['move', 'تحرك', 'map'], ['attack', 'هجوم', 'army'], ['defend', 'دفاع', 'shield'], ['reinforce', 'تعزيز', 'pop'], ['merge', 'دمج', 'ally']]),

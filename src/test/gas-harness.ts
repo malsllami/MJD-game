@@ -79,7 +79,7 @@ export function loadGas(ss = new FakeSpreadsheet()) {
 ;globalThis.__gas = { TABLES, SEED_ROWS, SEED_WORLD, WORLD_SETTINGS, SEED_BUILDING_COMMANDS, readTable_, convert_, getDefinitionsDelta_,
   cachedJson_, invalidateCache_, getChunked_, resetRequestMemo_, setupDatabase, addVillageProgression, addResourceBuildings,
   SEED_RESOURCE_PRODUCTION, setStartAmountsForTesting, TEST_START_AMOUNT, addWorldAndDeposits, applyCapitalScale, CAPITAL_SCALE,
-  addFlatWorld, addPrimitiveEra, applyPrimitiveEra, PRIMITIVE_ERA, SEED_PRIMITIVE_IDS, applyCompactVillage, COMPACT_VILLAGE, addLivingEconomy, SEED_ECONOMY_IDS, addPlacementGuidance, addVillageLevels };`, ctx);
+  addFlatWorld, addPrimitiveEra, applyPrimitiveEra, PRIMITIVE_ERA, SEED_PRIMITIVE_IDS, applyCompactVillage, COMPACT_VILLAGE, addLivingEconomy, SEED_ECONOMY_IDS, addPlacementGuidance, addVillageLevels, applyForestFrontier, FOREST_FRONTIER, OPEN_WALLS };`, ctx);
   return { gas: (ctx as unknown as { __gas: any }).__gas, ss };
 }
 
@@ -98,16 +98,19 @@ export function seedDefinitions(): GameDefinitions {
 }
 
 /**
- * تعريفات بقواعد ما قبل مستويات القرية: بلا مبانٍ ابتدائية، ومبنى حكم بمربع واحد، وموارد البداية خارج القرية، ومستوى حكم لكل مرحلة.
+ * تعريفات بقواعد ما قبل مستويات القرية: بلا مبانٍ ابتدائية، ومبنى حكم بمربع واحد، وموارد البداية خارج القرية، ومستوى حكم لكل مرحلة،
+ * والضم الفوري بدل قطع الغابة.
  * تُختبر بها القواعد الأساسية (الوضع والإنتاج والطرق) على قرية فارغة
  * Definitions with the rules before village levels: no starting buildings, a one-tile government building, starter resources outside
- * the village, and one government level per stage. The core rules (placement, output, roads) are tested on an empty village with them
+ * the village, one government level per stage, and instant annexing instead of forest clearing. The core rules (placement, output, roads) are tested on an empty village with them
  */
 export function classicDefinitions(): GameDefinitions {
   const defs = seedDefinitions();
   return {
     ...defs,
-    world: { ...defs.world, governmentRadius: 0, starterDepositDistance: 0 },
+    world: { ...defs.world, governmentRadius: 0, starterDepositDistance: 0, clearingSeconds: 0 },
+    // حدود القرية كما كانت قبل الغابة المحيطة / The village border as it was before the surrounding forest
+    stages: defs.stages.map((st, i) => (i ? st : { ...st, territoryRadius: 6 })),
     startBuildings: [],
     governmentLevels: defs.stages.map((s, i) => ({
       level: i + 1, name: s.name, stage: s.id, population: s.population, requiredBuildings: s.requiredBuildings, upgradeCost: s.upgradeCost,

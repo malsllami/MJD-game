@@ -116,6 +116,21 @@ interface Actor {
   crate: TransformNode | null;
 }
 
+/** بُعد البحث عن غابة حول معسكر الحطابين بالمربعات / How far around a lumber camp to look for forest, in tiles */
+const FOREST_REACH = 5;
+
+/** أقرب مربع غابة حول المبنى، أو null / The nearest forest tile around the building, or null */
+function nearestForest(b: { x: number; z: number }, forest: (x: number, z: number) => boolean): { x: number; z: number } | null {
+  for (let r = 1; r <= FOREST_REACH; r++) {
+    for (let dz = -r; dz <= r; dz++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) === r && forest(b.x + dx, b.z + dz)) return { x: b.x + dx, z: b.z + dz };
+      }
+    }
+  }
+  return null;
+}
+
 /** مربعات مجمع الحكم؛ يصله الحمّال عند أي زاوية من محيطه / The compound's tiles; a carrier reaches it at any corner around it */
 function compoundTiles(state: GameState): { x: number; z: number }[] {
   const r = state.settlement.radius ?? 0;
@@ -167,7 +182,7 @@ export class People {
    * Match people to the state: workers at operating buildings near the camera by their staff, carriers for their output,
    * and passers-by on the roads by population
    */
-  sync(state: GameState, defs: GameDefinitions, now: number, focus: { x: number; z: number }): void {
+  sync(state: GameState, defs: GameDefinitions, now: number, focus: { x: number; z: number }, forest: (x: number, z: number) => boolean = () => false): void {
     if (!this.motions) return;
     const byId = new Map(defs.buildings.map((b) => [b.id, b]));
     const near = (x: number, z: number) => Math.hypot(x - focus.x, z - focus.z) <= VIEW_TILES;
@@ -193,10 +208,22 @@ export class People {
       if (job) {
         // عدد العمال الظاهر هو عدد عمال المبنى الحقيقي / The shown workers are the building's real staff
         const staff = def.workers > 0 && def.profession ? (crew.get(b.uid)?.assigned ?? 0) : job.count;
-        for (let i = 0; i < Math.min(MAX_SHOWN_PER_BUILDING, staff); i++) work.push({ id: `${b.uid}:${i}`, role: job.role, x: b.x, z: b.z, area: job.area });
+        // الحطاب يقطع في أقرب غابة خارج الحدود إن وُجدت قريبة / A woodcutter chops in the nearest forest past the border when one is close
+        const woods = job.role === 'woodcutter' ? nearestForest(b, forest) : null;
+        for (let i = 0; i < Math.min(MAX_SHOWN_PER_BUILDING, staff); i++) {
+          const at = woods && i % 2 === 0 ? woods : b;
+          work.push({ id: `${b.uid}:${i}`, role: job.role, x: at.x, z: at.z, area: at === b ? job.area : 'inside' });
+        }
       }
       const route = this.haulRoute(b, def, operating, byId, state);
       if (route) hauls.push({ id: `carry:${b.uid}`, role: 'carrier', x: b.x, z: b.z, route });
+    }
+    // قطع الغابة: ثلاثة حطابين في وسط كل قطعة جارية / Forest clearing: three woodcutters in the middle of each running parcel
+    for (const c of state.clearings ?? []) {
+      if (now >= c.completesAt) continue;
+      const [x, z] = c.tiles[Math.floor(c.tiles.length / 2)].split(',').map(Number);
+      if (!near(x, z)) continue;
+      for (let i = 0; i < 3; i++) work.push({ id: `clear:${c.uid}:${i}`, role: 'woodcutter', x, z, area: 'inside' });
     }
     work.sort(byDistance);
     hauls.sort(byDistance);

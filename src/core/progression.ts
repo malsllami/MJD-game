@@ -4,6 +4,7 @@
 // change at its thresholds), and each building for a cost and time up to the level the government allows
 
 import { builtIds, enterStage, isUnderConstruction, missingResources, pay, type Check } from './economy';
+import { activeWorks } from './frontier';
 import { governmentLevel, governmentLevelOf, isUpgradable, isUpgrading, levelRow } from './levels';
 import type { GameDefinitions, GameState, World } from './types';
 import { formatNumber } from '../utils/format';
@@ -68,8 +69,7 @@ export function checkBuildingUpgrade(defs: GameDefinitions, state: GameState, ui
   if (next > defs.buildingLevels.length) return { ok: false, reason: `${def.name} في أعلى مستوى` };
   const government = governmentLevel(defs, state);
   if (next > government.maxBuildingLevel) return { ok: false, reason: `رقِّ مبنى الحكم أولًا؛ يسمح «${government.name}» بالمستوى ${formatNumber(government.maxBuildingLevel)} للمباني` };
-  const active = state.buildings.filter((b) => isUnderConstruction(b, now) || isUpgrading(b, now)).length;
-  if (active >= defs.world.maxConcurrentBuilds) return { ok: false, reason: `وصلت للحد الأقصى من البناء المتزامن (${defs.world.maxConcurrentBuilds})؛ انتظر اكتمال مبنى` };
+  if (activeWorks(state, now) >= defs.world.maxConcurrentBuilds) return { ok: false, reason: `وصلت للحد الأقصى من البناء المتزامن (${defs.world.maxConcurrentBuilds})؛ انتظر اكتمال مبنى` };
   const shortage = missingResources(defs, state, buildingUpgradeCost(defs, def.id, next).cost);
   if (shortage) return { ok: false, reason: `الموارد غير كافية؛ ينقص ${shortage}` };
   return { ok: true };

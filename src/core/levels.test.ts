@@ -80,7 +80,8 @@ describe('ترقية مبنى الحكم بالمستويات / government upgra
     const ready = { ...s, buildings: [...s.buildings, ...town.requiredBuildings.map((id, i) => ({ uid: `t${i}`, buildingId: id, x: -1, z: -1, startedAt: 0, completesAt: 0 }))] };
     const upgraded = upgradeGovernment(ready, defs, world);
     expect(upgraded.stage).toBe(town.stage);
-    expect(upgraded.territory.length).toBeGreaterThan(ready.territory.length);
+    // مع الغابة المحيطة لا تتسع الحدود بالترقية، بل بقطع الغابة / With the surrounding forest borders grow by clearing, not by upgrading
+    expect(upgraded.territory.length).toBe(ready.territory.length);
   });
 
   it('حفظ أقدم بلا مستوى يُستنتج من مرحلته / an older save without a level derives it from its stage', () => {

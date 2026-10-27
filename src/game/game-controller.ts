@@ -9,8 +9,9 @@ import { COMPOUND_ENTRANCE_X, compoundPlaza, TILE_METRES } from '../assets/villa
 import { APP_CONFIG } from '../config/app.config';
 import {
   buildingAt, buildingStatus, checkMove, checkPlacement, cornerPath, costShare, depositAt, edgeTiles, housingCapacity, isRoad,
-  autoRoadPath, capacityAt, isSettlementTile, isUnderConstruction, isWall, netRates, placeWallPath, wallAt, nextStage, pathEdges, placeRoadPath, roadAt, stageById, surveyCost, tileKey,
+  autoRoadPath, capacityAt, isSettlementTile, isUnderConstruction, isWall, netRates, placeWallPath, wallAt, nextStage, pathEdges, placeRoadPath, roadAt, stageById, surveyCost, tileKey, annexCost, knownDeposits,
 } from '../core/economy';
+import { isForestMode, runningClearings } from '../core/frontier';
 import { governmentLevel, governmentLevelOf, levelOf, levelRow } from '../core/levels';
 import { placementAdvice, zoneTest } from '../core/placement-guide';
 import type { BuildingDef, ContextCommand, EntityType, GameDefinitions, Tile, World } from '../core/types';
@@ -78,6 +79,12 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const radial = new RadialMenu(hud.radial, (p) => game.project(p), () => mobile.matches);
   const borders = new TileSetOutline(game.scene, world, new Color3(0.9, 0.8, 0.5), 0.35);
   const allowed = new TileSetOutline(game.scene, world, new Color3(0.45, 0.95, 0.6), 0.45);
+  // إطار ذهبي حول قطع الغابة الجاري / A gold outline around the forest being cleared
+  const clearingOutline = new TileSetOutline(game.scene, world, new Color3(1, 0.82, 0.4), 0.5);
+  const forest = isForestMode(defs);
+  const firstRadius = defs.stages[0]?.territoryRadius ?? 0;
+  let seenClearings = new Set<string>();
+  let seenFound = session.state.foundDeposits?.length ?? 0;
   // المواقع المقترحة للمبنى ملوّنة بالذهبي داخل المسموح / The building's suggested spots tinted gold within the allowed ones
   const suggested = new TileSetFill(game.scene, world, new Color3(0.98, 0.8, 0.35), 0.22, 0.1);
   // شبكة خضراء تظهر عند البناء والرسم، أو دائمًا بزر الشبكة / A green grid shown while building and drawing, or always via the grid button
@@ -86,8 +93,8 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   // الطريق الترابي ترسمه خامة الأرض حين تتوفر / The dirt road is painted by the ground texture when available
   const roads = new RoadNetwork(game.scene, world, byId, game.dayNight.lights, game.ground ? new Set(['road']) : new Set());
   const traffic = new Traffic(game.scene, world, game.library);
-  const walls = new WallNetwork(game.scene, world, game.library, byId, game.shadows);
-  const villageWall = new VillageWall(game.scene, world, game.shadows);
+  const walls = new WallNetwork(game.scene, world, byId);
+  const villageWall = new VillageWall(game.scene, world, byId, game.dayNight.lights, game.shadows);
   const animals = new Animals(game.scene, world, game.library, game.shadows);
   const models = new BuildingModels(
     game.scene, world, game.library, byId, game.shadows,
@@ -520,6 +527,14 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
         return toast.show(names ? `اكتشف المسح: ${names}` : `لم يجد المسح مكامن جديدة حول هذا المربع · ${costText(surveyCost(defs))}`, 6000);
       }
       case 'annex': {
+        if (forest) {
+          const cut = session.clear(tile, now);
+          toast.show(cut.ok
+            ? `بدأ قطع الغابة · ${formatDuration(defs.world.clearingSeconds)} · ${costText(annexCost(defs))}؛ تنضم القطعة مع ${formatNumber(defs.world.clearingWood)} خشب وقد تكشف موردًا`
+            : cut.reason, 6000);
+          if (cut.ok) refresh(true);
+          return;
+        }
         const result = session.annex(tile, now);
         toast.show(result.ok ? `انضمت قطعة أرض جديدة إلى الدولة مقابل ${formatNumber(defs.world.annexCost)} ${resourceName(defs.world.annexResource)}` : result.reason);
         if (result.ok) {
@@ -576,6 +591,13 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     game.surface.level(built);
     const cleared = new Set(built);
     for (const r of state.roads) for (const [x, z] of edgeTiles(r.edge)) cleared.add(tileKey(x, z));
+    // ما قُطع من الغابة المحيطة يصبح أرضًا مفتوحة / What was cleared of the surrounding forest becomes open land
+    if (forest) {
+      for (const k of state.territory) {
+        const [x, z] = k.split(',').map(Number);
+        if (Math.max(Math.abs(x - settlementTile.x), Math.abs(z - settlementTile.z)) > firstRadius) cleared.add(k);
+      }
+    }
     nature.hide(cleared);
     // تراب تحت الطرق والمباني، وتربة محروثة تحت الحقول / Dirt under roads and buildings, tilled soil under fields
     const isField = (id: string) => byId.get(id)?.model === 'field';
@@ -587,7 +609,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     });
     syncSettlement();
     models.sync(state, now, (placed) => levelEra(levelOf(placed, now)));
-    villageWall.sync(state, governmentLevel(defs, state).wallStyle);
+    villageWall.sync(state, now, governmentLevel(defs, state).wallStyle);
     roads.sync(state);
     walls.sync(state, now);
     animals.sync(state, defs, now);
@@ -600,11 +622,32 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     // Labels: the government building, discovered deposits, construction timers, stopped warnings
     const keep = new Set<string>(['settlement']);
     labels.set('settlement', `${governmentName} · ${governmentLevel(defs, state).name}`, labelAbove(settlementTile.x, settlementTile.z, compoundTiles > 1 ? 2.2 : 1.5));
-    for (const d of world.deposits) {
-      if (!showDeposits(now) || !state.discovered.includes(d.id)) continue;
+    for (const d of knownDeposits(world, state)) {
+      if (!showDeposits(now)) continue;
       keep.add(`d-${d.id}`);
-      labels.set(`d-${d.id}`, depositTypeById.get(d.typeId)?.name ?? d.typeId, labelAbove(d.x, d.z, 1.4), 'pin-deposit');
+      const rich = d.richness && d.richness !== 1 ? ` · غنى ${formatNumber(d.richness)}` : '';
+      labels.set(`d-${d.id}`, `${depositTypeById.get(d.typeId)?.name ?? d.typeId}${rich}`, labelAbove(d.x, d.z, 1.4), 'pin-deposit');
     }
+    // قطع الغابة الجاري: إطار وعدّاد، وإشعار عند اكتماله بما كشفه / Running clearings: an outline and a timer, and a notice of what each revealed
+    const running = runningClearings(state, now);
+    clearingOutline.show(running.flatMap((c) => c.tiles));
+    for (const c of running) {
+      keep.add(`cut-${c.uid}`);
+      const [x, z] = c.tiles[Math.floor(c.tiles.length / 2)].split(',').map(Number);
+      labels.set(`cut-${c.uid}`, `قطع الغابة · ${formatDuration(Math.ceil((c.completesAt - now) / 1000))}`, labelAbove(x, z, 1.2), 'pin-build');
+    }
+    const ids = new Set(running.map((c) => c.uid));
+    const finished = [...seenClearings].filter((id) => !ids.has(id)).length;
+    seenClearings = ids;
+    const found = state.foundDeposits ?? [];
+    if (found.length > seenFound) {
+      const fresh = found.slice(seenFound).map((d) => `${depositTypeById.get(d.typeId)?.name ?? d.typeId} (غنى ${formatNumber(d.richness ?? 1)})`).join('، ');
+      depositsUntil = now + SURVEY_LABELS_MS;
+      toast.show(`اكتمل قطع الغابة وكشف: ${fresh}`, 7000);
+    } else if (finished) {
+      toast.show(`اكتمل قطع الغابة وانضمت القطعة مع ${formatNumber(defs.world.clearingWood)} خشب؛ أرض بلا موارد`, 5000);
+    }
+    seenFound = found.length;
     for (const b of state.buildings) {
       const def = byId.get(b.buildingId);
       const status = buildingStatus(b, state, defs, now);
@@ -636,8 +679,15 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
       // الناس قرب ما تنظر إليه الكاميرا / People near what the camera looks at
       const look = game.camera.camera.target;
       const focus = tileAtPoint(world, look.x, look.z) ?? settlementTile;
-      game.people.sync(state, defs, now, focus);
-      const deposits = world.deposits.filter((d) => state.discovered.includes(d.id)).map((d) => ({ x: d.x, z: d.z, emphasis: false }));
+      // الغابة المحيطة خارج الحدود يقصدها الحطابون / The surrounding forest past the border is where woodcutters go
+      const owned = new Set(state.territory);
+      const inner = firstRadius + defs.world.frontierGap;
+      const woods = (x: number, z: number) => {
+        const d = Math.max(Math.abs(x - settlementTile.x), Math.abs(z - settlementTile.z));
+        return forest && !owned.has(tileKey(x, z)) && d > inner && d <= inner + defs.world.frontierDepth;
+      };
+      game.people.sync(state, defs, now, focus, woods);
+      const deposits = knownDeposits(world, state).map((d) => ({ x: d.x, z: d.z, emphasis: false }));
       minimap.setOverlay(state.territory, [{ x: settlementTile.x, z: settlementTile.z, emphasis: true }, ...deposits]);
     }
   }

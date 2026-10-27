@@ -297,12 +297,12 @@ describe('الطرق على حدود المربعات / roads on tile edges', ()
     expect(placeRoadPath(state, defs, world, road, edgesTo(far), T0, uid).stoppedBy).toBeNull();
   });
 
-  it('السور لا يفتح إلا بشروطه، ولا يُرسم فوق طريق، ولا يدخل في اتصال الطرق / walls need their conditions, avoid roads and never connect', () => {
+  it('السور مفتوح من البداية، ولا يُرسم فوق طريق، ولا يدخل في اتصال الطرق / walls are open from the start, avoid roads and never connect', () => {
     const wall = building('wooden_wall');
     const edges = edgesTo(far);
-    expect(placeWallPath(s, defs, world, wall, edges, T0, uid).placed).toBe(0);
-    // نفتح السور بشروطه: السكان ومركز التطوير / Unlock it: population and the development centre
-    const open = { ...built(s, 'development_center'), population: wall.requiredPopulation, resources: s.resources };
+    expect(wall.requiredPopulation).toBe(0);
+    expect(wall.requiredBuildings).toEqual([]);
+    const open = s;
     const walled = placeWallPath(open, defs, world, wall, edges.slice(0, 2), T0, uid);
     expect(walled.placed).toBe(2);
     expect(connectedRoads(walled.state, T0, true).size).toBe(0);
