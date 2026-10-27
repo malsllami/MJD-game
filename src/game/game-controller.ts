@@ -9,7 +9,7 @@ import { COMPOUND_ENTRANCE_X, compoundPlaza, TILE_METRES } from '../assets/villa
 import { APP_CONFIG } from '../config/app.config';
 import {
   buildingAt, buildingStatus, checkMove, checkPlacement, cornerPath, costShare, depositAt, edgeTiles, housingCapacity, isRoad,
-  autoRoadPath, capacityAt, isSettlementTile, isUnderConstruction, isWall, netRates, placeWallPath, wallAt, nextStage, pathEdges, placeRoadPath, roadAt, stageById, surveyCost, tileKey, annexCost, knownDeposits, isTorch, movePercent, placeTorches,
+  autoRoadPath, capacityAt, isSettlementTile, isUnderConstruction, isWall, netRates, placeWallPath, wallAt, nextStage, pathEdges, placeRoadPath, roadAt, stageById, surveyCost, tileKey, annexCost, knownDeposits, isTorch, movePercent, checkTorch, torchNear, torchPoint, wallNear, wallLine, innerWalls,
 } from '../core/economy';
 import { checkClearing, clearingParcel, isForestMode, runningClearings } from '../core/frontier';
 import { governmentLevel, governmentLevelOf, levelOf, levelRow } from '../core/levels';
@@ -46,6 +46,10 @@ const TICK_MS = 250;
 const HUD_MS = 500;
 const AUTOSAVE_MS = 5000;
 const CONFIRM_MS = 4000;
+/** بُعد الضغط عن الشعلة الذي يختارها، بالمربعات / How close a tap must be to pick a torch, in tiles */
+const TORCH_PICK_TILES = 0.22;
+/** بُعد الضغط عن قطعة السور الذي يختارها، بالمربعات / How close a tap must be to pick a wall piece, in tiles */
+const WALL_PICK_TILES = 0.14;
 /** مدة ظهور أسماء المكامن بعد المسح / How long deposit names show after a survey */
 const SURVEY_LABELS_MS = 10000;
 
@@ -55,7 +59,9 @@ type Mode =
   | { kind: 'place'; building: BuildingDef }
   | { kind: 'road'; building: BuildingDef }
   | { kind: 'bulldoze' }
-  | { kind: 'move'; uid: string };
+  | { kind: 'move'; uid: string }
+  /** وضع شعلة بالضغط على موضعها، أو نقل شعلة قائمة / Place a torch by tapping its spot, or move an existing one */
+  | { kind: 'torch'; building: BuildingDef; movingUid?: string };
 
 /**
  * يشغّل اللعبة فوق مشهد وجلسة جاهزين
@@ -261,7 +267,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   function setMode(next: Mode): void {
     mode = next;
     grid.setVisible(gridAlways || next.kind !== 'idle');
-    buildBar.setArmed(next.kind === 'place' || next.kind === 'road' ? next.building.id : null);
+    buildBar.setArmed(next.kind === 'place' || next.kind === 'road' || next.kind === 'torch' ? next.building.id : null);
     roadPreview.clear();
     clearPreview();
     game.setTileDrag(next.kind === 'road' ? gridDrawing(next.building) : next.kind === 'bulldoze' ? gridDrawing(null) : null);
@@ -297,11 +303,11 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
 
   /** اختيار بطاقة: طريق للرسم، أو مبنى يُعاين على المربع المحدد أو ينتظر مربعًا / Card pick: a road to draw, or a building */
   function pickBuilding(b: BuildingDef): void {
-    if ((mode.kind === 'place' || mode.kind === 'road') && mode.building.id === b.id) return setMode({ kind: 'idle' });
+    if ((mode.kind === 'place' || mode.kind === 'road' || mode.kind === 'torch') && mode.building.id === b.id) return setMode({ kind: 'idle' });
     closeSelection();
     if (isTorch(b)) {
-      setMode({ kind: 'road', building: b });
-      toast.show(`اضغط على زاوية من زوايا الشبكة لوضع ${b.name}، أو اسحب لوضع شعلة عند كل زاوية في المسار، ثم أكّد بعلامة ✓`, 6000);
+      setMode({ kind: 'torch', building: b });
+      toast.show(`اضغط على أي موضع داخل القرية لوضع ${b.name}، ثم أكّد بعلامة ✓؛ والضغط على شعلة قائمة ينقلها أو يزيلها`, 6000);
       return;
     }
     if (isRoad(b) || isWall(b)) {
@@ -365,9 +371,6 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     let corners: { x: number; z: number }[] = [];
     // السور والبوابة يُرسمان بنفس الأداة لكن بقواعدهما / Walls and gates use the same tool with their own rules
     const wall = !!road && isWall(road);
-    const torch = !!road && isTorch(road);
-    const cornerKeys = () => corners.map((c) => tileKey(c.x, c.z));
-    const torchesOn = () => cornerKeys().filter((k) => (session.state.torches ?? []).some((t) => t.corner === k));
     const edges = () => {
       const all = pathEdges(corners);
       return road ? all : all.filter((e) => roadAt(session.state, e) || wallAt(session.state, e));
@@ -403,29 +406,22 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
         if (!corners.length) return;
         const hint = 'اسحب من طرف المسار لتعديله، أو ارسم مسارًا جديدًا';
         if (!road) {
-          // الجرافة تزيل الطرق والأسوار على الحواف والشعلات على زوايا المسار / The bulldozer removes edge roads and walls and the path's corner torches
-          const lights = torchesOn();
-          const parts = [list.length ? `${formatNumber(list.length)} قطعة طريق أو سور` : '', lights.length ? `${formatNumber(lights.length)} شعلة` : ''].filter(Boolean).join(' و');
-          return confirm.show(null, 'هدم', parts || 'لا شيء يُهدم في هذا المسار', !!parts, () => {
-            const removed = session.demolishRoads(list, Date.now(), lights);
+          return confirm.show(null, 'هدم', list.length ? `${formatNumber(list.length)} قطعة طريق أو سور` : 'لا طرق ولا أسوار في هذا المسار', list.length > 0, () => {
+            const removed = session.demolishRoads(list, Date.now());
             toast.show(`أُزيلت ${formatNumber(removed)} قطعة واسترددت ${formatNumber(defs.world.demolishRefundPercent)}٪ من تكلفتها`);
             reset();
             refresh(true);
           }, reset, hint);
         }
-        const dry = torch
-          ? placeTorches(session.state, defs, road, cornerKeys(), Date.now(), () => 'preview')
-          : wall
-            ? placeWallPath(session.state, defs, world, road, list, Date.now(), () => 'preview')
-            : placeRoadPath(session.state, defs, world, road, list, Date.now(), () => 'preview');
+        const dry = wall
+          ? placeWallPath(session.state, defs, world, road, list, Date.now(), () => 'preview')
+          : placeRoadPath(session.state, defs, world, road, list, Date.now(), () => 'preview');
         const total = Object.fromEntries(Object.entries(road.cost).map(([id, n]) => [id, n * dry.placed]));
         const detail = dry.placed
           ? `${formatNumber(dry.placed)} قطعة · ${costText(total)}${dry.stoppedBy ? ` · يتوقف: ${dry.stoppedBy}` : ''}`
           : (dry.stoppedBy ?? 'لا قطع جديدة في هذا المسار');
         confirm.show(null, road.name, detail, dry.placed > 0, () => {
-          const result = torch
-            ? session.placeTorches(road, cornerKeys(), Date.now())
-            : wall ? session.placeWall(road, list, Date.now()) : session.placeRoad(road, list, Date.now());
+          const result = wall ? session.placeWall(road, list, Date.now()) : session.placeRoad(road, list, Date.now());
           if (result.placed) toast.show(`بدأ بناء ${formatNumber(result.placed)} قطعة ${road.name}`);
           else if (result.stoppedBy) toast.show(result.stoppedBy);
           reset();
@@ -437,13 +433,20 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
 
   // ===== التحديد والأوامر / Selection and commands =====
 
-  game.onTileClick((tile) => {
+  game.onTileClick((tile, at) => {
+    if (mode.kind === 'torch') return previewTorch(mode.building, at, mode.movingUid);
     if (mode.kind === 'place') return previewBuild(mode.building, tile);
     if (mode.kind === 'move') return previewMove(mode.uid, tile);
     if (mode.kind === 'road' || mode.kind === 'bulldoze') return;
     selected = tile;
     game.highlight(tile);
     parcelPreview.clear();
+    // الضغط قرب شعلة يفتح أوامرها: نقل أو إزالة / Tapping near a torch opens its commands: move or remove
+    const lit = torchNear(session.state, at, TORCH_PICK_TILES);
+    if (lit) return openTorch(lit.uid);
+    // الضغط على قطعة سور أو بوابة يفتح أوامرها / Tapping a wall or gate piece opens its commands
+    const piece = wallNear(session.state, defs, at, WALL_PICK_TILES);
+    if (piece) return openWall(piece.edge, at);
     // الضغط على مبنى يدخل إليه: تقترب الكاميرا وتفتح لوحته؛ والمربع الفارغ يفتح القائمة الدائرية
     // Tapping a building enters it: the camera closes in and its panel opens; an empty tile opens the radial menu
     const placed = buildingAt(session.state, tile.x, tile.z);
@@ -462,6 +465,77 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     }
     radial.open(game.tileAnchor(tile), describe(tile), (cmd) => runCommand(cmd, tile));
   });
+
+  /** موضع نقطة حرة فوق الأرض / A free point's spot above the ground */
+  const pointAbove = (p: { x: number; z: number }, lift: number) => {
+    const v = game.tileAnchor({ x: p.x - 0.5, z: p.z - 0.5 });
+    v.y += world.settings.tileSize * lift;
+    return v;
+  };
+
+  /** معاينة وضع شعلة (أو نقلها) في النقطة مع شريط التأكيد / Preview placing (or moving) a torch at the point with the confirm bar */
+  function previewTorch(torch: BuildingDef, at: { x: number; z: number }, movingUid?: string): void {
+    const check = checkTorch(defs, session.state, torch, at, Date.now(), movingUid);
+    const detail = check.ok ? (movingUid ? 'نقل بلا تكلفة' : `${formatDuration(torch.buildSeconds)} · ${costText(torch.cost)}`) : check.reason;
+    confirm.show(pointAbove(at, 0.45), movingUid ? `نقل ${torch.name}` : torch.name, detail, check.ok, () => {
+      const result = session.placeTorch(torch, at, Date.now(), movingUid);
+      if (!result.ok) return toast.show(result.reason);
+      confirm.hide();
+      toast.show(movingUid ? `نُقلت ${torch.name}` : `وُضعت ${torch.name}؛ اضغط موضعًا آخر لشعلة جديدة`);
+      // بعد النقل يعود الوضع العادي، وبعد الوضع يبقى لشعلات أخرى / After a move the normal mode returns; after placing it stays for more
+      if (movingUid) setMode({ kind: 'idle' });
+      refresh(true);
+    }, () => confirm.hide());
+  }
+
+  /**
+   * أوامر قطعة السور: إزالتها، أو إزالة خطها المستقيم كاملًا، أو تحويلها إلى بوابة أو إلى سور
+   * A wall piece's commands: remove it, remove its whole straight line, or turn it into a gate or back into a wall
+   */
+  function openWall(edge: string, at: { x: number; z: number }): void {
+    const piece = session.state.walls.find((w) => w.edge === edge);
+    const def = piece && byId.get(piece.buildingId);
+    if (!piece || !def) return;
+    const line = wallLine(session.state, edge);
+    const other = defs.buildings.find((b) => b.model === (def.model === 'gate' ? 'wall' : 'gate'));
+    const commands: ContextCommand[] = [
+      { id: 'wall-remove', name: 'إزالة القطعة', icon: 'demolish' },
+      ...(line.length > 1 ? [{ id: 'wall-line', name: `إزالة الخط (${formatNumber(line.length)})`, icon: 'demolish' }] : []),
+      ...(other ? [{ id: 'wall-swap', name: `تحويل إلى ${other.name}`, icon: other.model === 'gate' ? 'shield' : 'build' }] : []),
+    ];
+    const subtitle = `الإزالة تسترد ${formatNumber(defs.world.demolishRefundPercent)}٪ · ارسم سورًا جديدًا من قائمة المرافق`;
+    radial.open(pointAbove(at, 0.1), { title: def.name, subtitle, commands }, (cmd) => {
+      radial.close();
+      if (cmd.id === 'wall-swap' && other) {
+        const result = session.swapWall(edge, other, Date.now());
+        toast.show(result.ok ? `تحولت القطعة إلى ${other.name}` : result.reason);
+      } else {
+        const edges = cmd.id === 'wall-line' ? line : [edge];
+        const removed = session.demolishRoads(edges, Date.now());
+        toast.show(`أُزيلت ${formatNumber(removed)} قطعة واسترددت ${formatNumber(defs.world.demolishRefundPercent)}٪ من تكلفتها`);
+      }
+      refresh(true);
+    });
+  }
+
+  /** أوامر الشعلة: نقل أو إزالة / A torch's commands: move or remove */
+  function openTorch(uid: string): void {
+    const placed = (session.state.torches ?? []).find((t) => t.uid === uid);
+    const def = placed && byId.get(placed.buildingId);
+    if (!placed || !def) return;
+    const refund = costText(costShare(def.cost, defs.world.demolishRefundPercent));
+    const commands: ContextCommand[] = [{ id: 'torch-move', name: 'نقل', icon: 'move' }, { id: 'torch-remove', name: 'إزالة', icon: 'demolish' }];
+    radial.open(pointAbove(torchPoint(placed), 0.1), { title: def.name, subtitle: refund ? `الإزالة تسترد ${refund}` : '', commands }, (cmd) => {
+      radial.close();
+      if (cmd.id === 'torch-move') {
+        setMode({ kind: 'torch', building: def, movingUid: uid });
+        return toast.show(`اضغط الموضع الجديد لـ${def.name}، ثم أكّد بعلامة ✓`, 5000);
+      }
+      session.removeTorch(uid, Date.now());
+      toast.show(`أُزيلت ${def.name}${refund ? ` واسترددت ${refund}` : ''}`);
+      refresh(true);
+    });
+  }
 
   /** معاينة نقل المبنى إلى مربع جديد مع تكلفة النقل / Preview moving a building to a new tile with its cost */
   function previewMove(uid: string, tile: Tile): void {
@@ -660,7 +734,9 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     const keep = new Set<string>(['settlement']);
     labels.set('settlement', `${governmentName} · ${governmentLevel(defs, state).name}`, labelAbove(settlementTile.x, settlementTile.z, compoundTiles > 1 ? 2.2 : 1.5));
     for (const d of knownDeposits(world, state)) {
-      if (!showDeposits(now)) continue;
+      // ما كشفه قطع الغابة يبقى اسمه ظاهرًا حتى تُبنى عليه منشأته / What clearing revealed keeps its name shown until a facility is built on it
+      const revealed = state.foundDeposits?.includes(d) && !d.tiles.some((k) => { const [x, z] = k.split(',').map(Number); return !!buildingAt(state, x, z); });
+      if (!showDeposits(now) && !revealed) continue;
       keep.add(`d-${d.id}`);
       const rich = d.richness && d.richness !== 1 ? ` · غنى ${richText(d.richness)}` : '';
       labels.set(`d-${d.id}`, `${depositTypeById.get(d.typeId)?.name ?? d.typeId}${rich}`, labelAbove(d.x, d.z, 1.4), 'pin-deposit');
@@ -683,6 +759,9 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
       toast.show(`اكتمل قطع الغابة وكشف: ${fresh}`, 7000);
     } else if (finished) {
       toast.show(`اكتمل قطع الغابة وانضمت القطعة مع ${formatNumber(defs.world.clearingWood)} خشب؛ أرض بلا موارد`, 5000);
+    }
+    if (finished && innerWalls(state, defs).length) {
+      window.setTimeout(() => toast.show('صار جزء من السور القديم داخل القرية؛ اضغط عليه لإزالته أو أزل خطه كاملًا، ثم ابنِ السور على الحدود الجديدة', 8000), 7200);
     }
     seenFound = found.length;
     for (const b of state.buildings) {

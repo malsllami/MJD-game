@@ -164,7 +164,7 @@ export class RoadNetwork {
       if (mesh) this.meshes.push(mesh);
     }
     if (lamps.length) this.meshes.push(...this.buildLamps(lamps, this.postMat, this.lampMat));
-    // الشعلات التي يضعها اللاعب على زوايا الشبكة / The torches the player places on grid corners
+    // الشعلات التي يضعها اللاعب في مواضع حرة / The torches the player places at free spots
     const torches = torchCorners.map((k) => {
       const [x, z] = k.split(',').map(Number);
       return at(x, z);

@@ -3,7 +3,8 @@
 
 import {
   advance, annexTile, checkAnnex, checkMove, checkPlacement, createInitialState, demolishBuilding, demolishRoads, moveBuilding,
-  placeBuilding, placeRoadPath, placeTorches, placeWallPath, resumeAfterAbsence, surveyTile, type Check, type Resume, type RoadPathResult,
+  checkTorch, checkWallSwap, moveTorch, swapWall, placeBuilding, placeRoadPath, placeTorch, placeWallPath, removeTorch, resumeAfterAbsence, surveyTile,
+  type Check, type Resume, type RoadPathResult,
 } from '../core/economy';
 import { checkClearing, startClearing } from '../core/frontier';
 import { checkTrade, trade, type Side } from '../core/market';
@@ -65,10 +66,10 @@ export class GameSession {
     return result;
   }
 
-  /** هدم الطرق والأسوار على حواف والشعلات على زوايا / Remove the roads and walls on edges and the torches on corners */
-  demolishRoads(edges: string[], now: number, corners: string[] = []): number {
+  /** هدم الطرق والأسوار على حواف / Remove the roads and walls on edges */
+  demolishRoads(edges: string[], now: number): number {
     this.tick(now);
-    const { state, removed } = demolishRoads(this.current, this.defs, edges, corners);
+    const { state, removed } = demolishRoads(this.current, this.defs, edges);
     this.current = state;
     if (removed) this.persist();
     return removed;
@@ -124,14 +125,33 @@ export class GameSession {
     return check;
   }
 
-  /** وضع شعلات على زوايا الشبكة / Place torches on grid corners */
-  placeTorches(torch: BuildingDef, corners: string[], now: number): RoadPathResult {
+  /** وضع شعلة في نقطة، أو نقل شعلة إليها حين يُعطى uid / Place a torch at a point, or move one there when a uid is given */
+  placeTorch(torch: BuildingDef, at: { x: number; z: number }, now: number, movingUid?: string): Check {
     this.tick(now);
-    let n = 0;
-    const result = placeTorches(this.current, this.defs, torch, corners, now, () => `t${now.toString(36)}-${n++}`);
-    this.current = result.state;
-    if (result.placed) this.persist();
-    return result;
+    const check = checkTorch(this.defs, this.current, torch, at, now, movingUid);
+    if (check.ok) {
+      this.current = movingUid ? moveTorch(this.current, movingUid, at) : placeTorch(this.current, torch, at, now, crypto.randomUUID());
+      this.persist();
+    }
+    return check;
+  }
+
+  /** تحويل قطعة سور إلى بوابة أو العكس / Turn a wall piece into a gate or back */
+  swapWall(edge: string, to: BuildingDef, now: number): Check {
+    this.tick(now);
+    const check = checkWallSwap(this.defs, this.current, edge, to);
+    if (check.ok) {
+      this.current = swapWall(this.current, this.defs, edge, to);
+      this.persist();
+    }
+    return check;
+  }
+
+  /** إزالة شعلة / Remove a torch */
+  removeTorch(uid: string, now: number): void {
+    this.tick(now);
+    this.current = removeTorch(this.current, this.defs, uid);
+    this.persist();
   }
 
   /** ترقية مبنى مستوى واحدًا / Upgrade a building one level */

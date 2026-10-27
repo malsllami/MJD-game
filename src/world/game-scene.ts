@@ -56,8 +56,11 @@ export interface GameScene {
   /** ربط مجسم بمربعه حتى يحدد النقر عليه ذلك المربع / Bind a mesh to its tile so clicking it selects that tile */
   registerPickable(mesh: AbstractMesh, tile: Tile): void;
   unregisterPickable(mesh: AbstractMesh): void;
-  /** يُستدعى عند النقر على مربع (وليس عند السحب) / Fires on a tile click (not a drag) */
-  onTileClick(handler: (tile: Tile) => void): void;
+  /**
+   * يُستدعى عند النقر على مربع (وليس عند السحب)، مع نقطة النقر على الأرض بإحداثيات المربعات (كسرية)
+   * Fires on a tile click (not a drag), with the clicked ground point in tile coordinates (fractional)
+   */
+  onTileClick(handler: (tile: Tile, at: { x: number; z: number }) => void): void;
   /**
    * وضع السحب: السحب يرسم مسارًا على المربعات بدل تدوير الكاميرا؛ null يعيد الكاميرا
    * Drag mode: dragging traces tiles instead of rotating the camera; null restores the camera
@@ -116,10 +119,15 @@ export function createGameScene(canvas: HTMLCanvasElement, world: World, defs: G
   const highlighter = new TileHighlight(scene, world);
 
   /** المربع تحت المؤشر؛ النقر على مبنى يحدد مربعه / Tile under the pointer; clicking a building selects its tile */
-  const pickTile = (): Tile | null => {
+  const pickTile = (): { tile: Tile; at: { x: number; z: number } } | null => {
     const pick = scene.pick(scene.pointerX, scene.pointerY, (m) => m === terrain || tileOfMesh.has(m));
     if (!pick?.hit || !pick.pickedMesh) return null;
-    return tileOfMesh.get(pick.pickedMesh) || (pick.pickedPoint ? tileAtPoint(world, pick.pickedPoint.x, pick.pickedPoint.z) : null);
+    const tile = tileOfMesh.get(pick.pickedMesh) || (pick.pickedPoint ? tileAtPoint(world, pick.pickedPoint.x, pick.pickedPoint.z) : null);
+    if (!tile) return null;
+    const { tileSize } = world.settings;
+    const p = pick.pickedPoint;
+    const at = p ? { x: (p.x + halfX) / tileSize, z: (p.z + halfZ) / tileSize } : { x: tile.x + 0.5, z: tile.z + 0.5 };
+    return { tile, at };
   };
 
   /** المربع وأقرب زاوية شبكة تحت المؤشر / Tile and nearest grid corner under the pointer */
@@ -138,7 +146,7 @@ export function createGameScene(canvas: HTMLCanvasElement, world: World, defs: G
 
   // تمييز النقر عن السحب: النقر فقط يحدد المربع، والسحب يرسم في وضع السحب
   // Tell clicks from drags: a click selects; in drag mode a drag traces the grid
-  const clickHandlers: ((tile: Tile) => void)[] = [];
+  const clickHandlers: ((tile: Tile, at: { x: number; z: number }) => void)[] = [];
   let drag: TileDragHandler | null = null;
   let dragging = false;
   let lastDragKey = '';
@@ -168,8 +176,8 @@ export function createGameScene(canvas: HTMLCanvasElement, world: World, defs: G
         return;
       }
       if (moved > APP_CONFIG.selection.clickTolerancePx) return;
-      const tile = pickTile();
-      if (tile) for (const h of clickHandlers) h(tile);
+      const hit = pickTile();
+      if (hit) for (const h of clickHandlers) h(hit.tile, hit.at);
     }
   });
 

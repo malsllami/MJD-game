@@ -2,7 +2,7 @@
 // Surrounding forest tests: a first village fitting its facilities, clearing for a time, a cost and wood, and the random resources it reveals by level
 import { describe, expect, it } from 'vitest';
 import { seedDefinitions } from '../test/gas-harness';
-import { advance, annexCost, checkTorch, createInitialState, demolishRoads, depositAt, placeTorches, tileKey } from './economy';
+import { advance, annexCost, checkTorch, createInitialState, demolishRoads, depositAt, innerWalls, moveTorch, placeTorch, removeTorch, swapWall, tileKey, torchNear, wallLine, wallNear } from './economy';
 import { checkClearing, clearingParcel, drawDeposit, isForestMode, startClearing } from './frontier';
 import { suggestStartSites } from './start-sites';
 import type { GameState, Tile } from './types';
@@ -34,6 +34,24 @@ describe('الغابة المحيطة / the surrounding forest', () => {
     expect(start.walls.every((w) => w.completesAt === T0)).toBe(true);
     // ضلعا البوابة متجاوران على خط الحدود الجنوبي / The two gate edges sit side by side on the southern border line
     expect(new Set(gates.map((g) => g.edge.split(',')[1])).size).toBe(1);
+  });
+
+  it('السور يُختار بالضغط عليه، ويُزال خطه كاملًا، ويتحول إلى بوابة / the wall is picked by tapping, its whole line removed, and turned into a gate', () => {
+    const north = site.z + R + 1;
+    const piece = wallNear(start, defs, { x: site.x + 2.5, z: north + 0.05 }, 0.14)!;
+    expect(piece.edge).toBe(`h:${site.x + 2},${north}`);
+    expect(wallNear(start, defs, { x: site.x + 2.5, z: north - 0.5 }, 0.14)).toBeUndefined();
+    const line = wallLine(start, piece.edge);
+    expect(line).toHaveLength(2 * R + 1);
+    expect(demolishRoads(start, defs, line).state.walls).toHaveLength(start.walls.length - line.length);
+    const gate = defs.buildings.find((b) => b.model === 'gate')!;
+    expect(swapWall(start, defs, piece.edge, gate).walls.find((w) => w.edge === piece.edge)!.buildingId).toBe(gate.id);
+  });
+
+  it('بعد القطع يُعرف السور القديم الذي صار داخل القرية / after clearing, the old wall now inside the village is known', () => {
+    expect(innerWalls(start, defs)).toEqual([]);
+    const done = advance(startClearing(start, defs, world, outside, T0, 'c2'), defs, world, T0 + defs.world.clearingSeconds * 1000);
+    expect(innerWalls(done, defs).length).toBeGreaterThan(0);
   });
 
   it('قطع الغابة 3 × 3 تنتظم مع مجمع الحكم / forest parcels are 3 × 3 aligned with the compound', () => {
@@ -100,17 +118,18 @@ describe('الغابة المحيطة / the surrounding forest', () => {
 describe('الشعلات والقوائم / torches and menus', () => {
   const torch = defs.buildings.find((b) => b.model === 'torch')!;
 
-  it('الشعلة على زاوية داخل الدولة، مرة واحدة لكل زاوية، وتُهدم فتعود قيمتها / one torch per corner inside the nation, removable with a refund', () => {
-    const corner = tileKey(site.x + 3, site.z + 3);
-    expect(checkTorch(defs, start, torch, corner, T0)).toEqual({ ok: true });
-    expect(checkTorch(defs, start, torch, tileKey(site.x, site.z), T0).ok).toBe(false);
-    expect(checkTorch(defs, start, torch, tileKey(site.x + R + 4, site.z), T0).ok).toBe(false);
-    const lit = placeTorches(start, defs, torch, [corner, tileKey(site.x + 3, site.z + 4)], T0, () => 'x');
-    expect(lit.placed).toBe(2);
-    expect(checkTorch(defs, lit.state, torch, corner, T0).ok).toBe(false);
-    const gone = demolishRoads(lit.state, defs, [], [corner]);
-    expect(gone.removed).toBe(1);
-    expect(gone.state.torches).toHaveLength(1);
+  it('الشعلة في أي موضع داخل الدولة، لا تلاصق أخرى، وتُنقل وتُزال / a torch anywhere inside the nation, never touching another, movable and removable', () => {
+    const spot = { x: site.x + 1.83, z: site.z - 1.47 };
+    expect(checkTorch(defs, start, torch, spot, T0)).toEqual({ ok: true });
+    expect(checkTorch(defs, start, torch, { x: site.x + R + 3.5, z: site.z }, T0).ok).toBe(false);
+    const lit = placeTorch(start, torch, spot, T0, 't1');
+    for (const [id, n] of Object.entries(torch.cost)) expect(lit.resources[id]).toBe(start.resources[id] - n);
+    expect(checkTorch(defs, lit, torch, { x: spot.x + 0.05, z: spot.z }, T0).ok).toBe(false);
+    expect(torchNear(lit, { x: spot.x + 0.1, z: spot.z + 0.1 }, 0.22)?.uid).toBe('t1');
+    const moved = moveTorch(lit, 't1', { x: spot.x + 1, z: spot.z });
+    expect(torchNear(moved, spot, 0.22)).toBeUndefined();
+    expect(checkTorch(defs, moved, torch, { x: spot.x + 1.02, z: spot.z }, T0, 't1')).toEqual({ ok: true });
+    expect(removeTorch(moved, defs, 't1').torches).toEqual([]);
   });
 
   it('القوائم الست بالترتيب، وكل مبنى في فئته / the six menus in order, each building in its own', () => {

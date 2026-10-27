@@ -358,7 +358,7 @@ export interface PlacedRoad {
   completesAt: number;
 }
 
-/** شعلة على زاوية من زوايا الشبكة "x,z" / A torch on a grid corner "x,z" */
+/** شعلة في نقطة حرة "x,z" بإحداثيات المربعات (قد تكون كسرية) / A torch at a free point "x,z" in tile coordinates (may be fractional) */
 export interface PlacedTorch {
   uid: string;
   buildingId: string;
@@ -390,7 +390,7 @@ export interface GameState {
   /** قطع الغابة الجارية، والمكامن التي كشفها القطع (تغيب في حفظ أقدم) / Running forest clearings, and the deposits clearing revealed (absent in older saves) */
   clearings?: Clearing[];
   foundDeposits?: Deposit[];
-  /** الشعلات على زوايا الشبكة (تغيب في حفظ أقدم) / Torches on grid corners (absent in older saves) */
+  /** الشعلات في نقاط حرة (تغيب في حفظ أقدم) / Torches at free points (absent in older saves) */
   torches?: PlacedTorch[];
   /** آخر وقت حُسب عنده الإنتاج / Last time production was applied */
   lastTick: number;
