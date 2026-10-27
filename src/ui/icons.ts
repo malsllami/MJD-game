@@ -32,6 +32,7 @@ export const ICON_SPRITE = `
   <symbol id="i-rotr" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.8" d="M13 8a5 5 0 1 1-2-4"/><path fill="currentColor" d="M14 1v5H9z"/></symbol>
   <symbol id="i-plus" viewBox="0 0 16 16"><path fill="currentColor" d="M7 2h2v5h5v2H9v5H7V9H2V7h5z"/></symbol>
   <symbol id="i-minus" viewBox="0 0 16 16"><path fill="currentColor" d="M2 7h12v2H2z"/></symbol>
+  <symbol id="i-more" viewBox="0 0 16 16"><circle cx="3" cy="8" r="1.6" fill="currentColor"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/><circle cx="13" cy="8" r="1.6" fill="currentColor"/></symbol>
   <symbol id="i-overview" viewBox="0 0 16 16"><path fill="currentColor" d="M1 1h6v6H1zm8 0h6v6H9zM1 9h6v6H1zm8 0h6v6H9z"/></symbol>
   <symbol id="i-tasks" viewBox="0 0 16 16"><path fill="currentColor" d="M6 2h9v2H6zm0 5h9v2H6zm0 5h9v2H6zM1 2.5l1 1 2-2 .8.8L2 5.1.2 3.3zm0 5l1 1 2-2 .8.8L2 10.1.2 8.3zM1 12h3v3H1z"/></symbol>
   <symbol id="i-bell" viewBox="0 0 16 16"><path fill="currentColor" d="M8 1a4 4 0 0 1 4 4v4l2 3H2l2-3V5a4 4 0 0 1 4-4zM6 13h4a2 2 0 0 1-4 0z"/></symbol>

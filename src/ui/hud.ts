@@ -1,5 +1,7 @@
-// مسؤولية الملف: هيكل واجهة القيادة — شريط الموارد العلوي، أدوات القيادة يسارًا، الخريطة المصغرة، شريط البناء، الوزارات يمينًا، وأزرار الكاميرا
-// File responsibility: command HUD skeleton — top resource bar, command tools on the left, minimap, build bar, ministries on the right, camera buttons
+// مسؤولية الملف: هيكل واجهة القيادة — شريط الموارد العلوي، أدوات القيادة، الخريطة المصغرة، شريط البناء، الوزارات، أزرار الكاميرا،
+// وعلى الجوال شريط سفلي يفتح الخريطة والوزارات والمزيد عند الطلب
+// File responsibility: command HUD skeleton — top resource bar, command tools, minimap, build bar, ministries, camera buttons,
+// and on phones a bottom dock opening the map, ministries and more on demand
 
 import type { GameDefinitions, GameState } from '../core/types';
 import { APP_CONFIG } from '../config/app.config';
@@ -11,8 +13,6 @@ import { ICON_SPRITE, icon } from './icons';
 export interface HudElements {
   ministries: HTMLElement;
   buildBar: HTMLElement;
-  sheet: HTMLElement;
-  sheetHandle: HTMLElement;
   minimap: HTMLCanvasElement;
   toolNav: HTMLElement;
   drawer: HTMLElement;
@@ -28,9 +28,14 @@ export interface HudActions {
   zoom(direction: 1 | -1): void;
 }
 
+/** لوحات الجوال التي يفتحها الشريط السفلي، واحدة في كل مرة / Phone panels the bottom dock opens, one at a time */
+export const DOCK_PANELS = ['map-open', 'ministries-open', 'more-open'] as const;
+
 /**
- * يبني هيكل الواجهة: الكمبيوتر (لوحة جانبية + شريط بناء سفلي) والجوال (لوحة سفلية بتبويبين)
- * Builds the HUD: desktop (side panel + bottom build bar) and mobile (bottom sheet with two tabs)
+ * يبني هيكل الواجهة: الكمبيوتر (لوحة جانبية + شريط بناء سفلي) والجوال (شريط موارد علوي، وشريط سفلي بفئات البناء
+ * وأزرار تفتح الخريطة والوزارات والمزيد عند الطلب)
+ * Builds the HUD: desktop (side panel + bottom build bar) and phone (a top resource strip, and a bottom bar of build
+ * categories with buttons opening the map, ministries and more on demand)
  */
 export function createHud(root: HTMLElement, defs: GameDefinitions, actions: HudActions): HudElements {
   root.innerHTML = `${ICON_SPRITE}
@@ -44,15 +49,21 @@ export function createHud(root: HTMLElement, defs: GameDefinitions, actions: Hud
       <button type="button" class="icon-btn panel-toggle" data-action="toggle-panel" aria-label="طي لوحة الوزارات أو إظهارها">${icon('panel')}</button>
     </header>
 
-    <div class="sheet" data-sheet>
-      <div class="sheet-handle" data-sheet-handle aria-hidden="true"><span></span></div>
-      <nav class="sheet-switch" role="tablist">
-        <button type="button" role="tab" data-view="ministries" aria-selected="true">الوزارات</button>
-        <button type="button" role="tab" data-view="build" aria-selected="false">البناء</button>
-      </nav>
-      <section class="ministries glass" data-ministries aria-label="لوحة الوزارات"></section>
-      <section class="buildbar glass" data-buildbar aria-label="أدوات البناء"></section>
-    </div>
+    <section class="ministries glass" data-ministries aria-label="لوحة الوزارات"></section>
+    <section class="buildbar glass" data-buildbar aria-label="أدوات البناء"></section>
+    <nav class="dock glass" aria-label="لوحات اللعبة">
+      <button type="button" data-action="dock" data-panel="map-open" aria-pressed="false">الخريطة</button>
+      <button type="button" data-action="dock" data-panel="ministries-open" aria-pressed="false">الوزارات</button>
+      <button type="button" data-action="dock" data-panel="more-open" aria-pressed="false" aria-label="المزيد">${icon('more')}</button>
+    </nav>
+    <section class="more glass" aria-label="المزيد">
+      <div class="dates" data-dates></div>
+      <div class="more-row">
+        <button type="button" class="icon-btn" data-action="rot-l" aria-label="تدوير لليسار" title="تدوير">${icon('rotl')}</button>
+        <button type="button" class="icon-btn" data-action="rot-r" aria-label="تدوير لليمين" title="تدوير">${icon('rotr')}</button>
+        <button type="button" class="text-btn" data-action="new-nation">دولة جديدة</button>
+      </div>
+    </section>
 
     <nav class="toolnav glass" data-toolnav aria-label="أدوات القيادة"></nav>
     <section class="drawer glass" data-drawer hidden></section>
@@ -80,7 +91,6 @@ export function createHud(root: HTMLElement, defs: GameDefinitions, actions: Hud
     <div class="toast" data-toast hidden></div>`;
 
   const q = <T extends HTMLElement>(sel: string): T => root.querySelector<T>(sel)!;
-  const sheet = q('[data-sheet]');
 
   root.addEventListener('click', (e) => {
     const t = e.target as HTMLElement;
@@ -90,21 +100,15 @@ export function createHud(root: HTMLElement, defs: GameDefinitions, actions: Hud
     else if (action === 'zoom-in') actions.zoom(1);
     else if (action === 'zoom-out') actions.zoom(-1);
     else if (action === 'toggle-panel') root.classList.toggle('panel-collapsed');
-
-    const view = t.closest<HTMLElement>('[data-view]');
-    if (view) {
-      sheet.dataset.view = view.dataset.view;
-      sheet.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-selected', String(b === view)));
-    }
+    else if (action === 'dock') toggleDockPanel(root, t.closest<HTMLElement>('[data-panel]')!.dataset.panel!);
   });
-  sheet.dataset.view = 'ministries';
   // على الشاشات الكبيرة تبدأ لوحة الوزارات مطوية لتبقى الخريطة في المركز / On large screens the ministries panel starts folded, keeping the map central
   if (!window.matchMedia(APP_CONFIG.mobileLayoutQuery).matches) root.classList.add('panel-collapsed');
 
-  const datesEl = q('[data-dates]');
+  // التاريخ في الشريط العلوي، وعلى الجوال في «المزيد» / The date sits in the top bar, and on phones in "more"
   const renderDates = () => {
     const { gregorian, hijri } = formatDualDate(new Date());
-    datesEl.innerHTML = `<span>${esc(gregorian)}</span><span>${esc(hijri)}</span>`;
+    root.querySelectorAll('[data-dates]').forEach((el) => (el.innerHTML = `<span>${esc(gregorian)}</span><span>${esc(hijri)}</span>`));
   };
   renderDates();
   window.setInterval(renderDates, 60_000);
@@ -112,8 +116,6 @@ export function createHud(root: HTMLElement, defs: GameDefinitions, actions: Hud
   return {
     ministries: q('[data-ministries]'),
     buildBar: q('[data-buildbar]'),
-    sheet,
-    sheetHandle: q('[data-sheet-handle]'),
     minimap: q<HTMLCanvasElement>('[data-minimap]'),
     toolNav: q('[data-toolnav]'),
     drawer: q('[data-drawer]'),
@@ -182,8 +184,12 @@ export function renderClock(root: HTMLElement, fraction: number): void {
   if (el.textContent !== text) el.textContent = text;
 }
 
-/** فتح تبويب البناء في لوحة الجوال / Switch the mobile sheet to the build view */
-export function showBuildView(sheet: HTMLElement): void {
-  sheet.dataset.view = 'build';
-  sheet.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-selected', String((b as HTMLElement).dataset.view === 'build')));
+/**
+ * فتح لوحة من الشريط السفلي أو إغلاقها؛ فتح واحدة يغلق الأخريين، وpanel فارغ يغلق الكل
+ * Open or close a bottom-dock panel; opening one closes the others, and an empty panel closes them all
+ */
+export function toggleDockPanel(root: HTMLElement, panel: string): void {
+  const open = !!panel && !root.classList.contains(panel);
+  for (const p of DOCK_PANELS) root.classList.toggle(p, open && p === panel);
+  root.querySelectorAll<HTMLElement>('[data-panel]').forEach((b) => b.setAttribute('aria-pressed', String(root.classList.contains(b.dataset.panel!))));
 }

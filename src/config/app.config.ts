@@ -28,14 +28,14 @@ export const APP_CONFIG = {
   /** نظام الأرقام في العرض: arab (٠١٢) أو latn (012) / Display numbering system */
   numberingSystem: 'arab',
   /** نفس شرط التحول لتخطيط الجوال في main.css / Same mobile-layout condition as main.css */
-  mobileLayoutQuery: '(max-width: 899px), (pointer: coarse) and (orientation: portrait)',
+  mobileLayoutQuery: '(max-width: 899px), (pointer: coarse) and (orientation: portrait), (pointer: coarse) and (max-height: 500px)',
   camera: {
     /** تقريب حتى مستوى الشارع / Zoom down to street level */
     minRadius: 6,
     maxRadiusFactor: 1.15,
     startRadius: 60,
-    /** على الجوال تبدأ الكاميرا أقرب حتى تملأ القرية الشاشة الصغيرة / On phones the camera starts closer so the village fills the small screen */
-    startRadiusMobile: 34,
+    /** على الجوال تبدأ الكاميرا أقرب، بعدد المربعات، حتى تملأ القرية الشاشة الصغيرة / On phones the camera starts closer, in tiles, so the village fills the small screen */
+    startRadiusMobileTiles: { landscape: 4.5, portrait: 8.5 },
     /**
      * أبعد مسافة للكاميرا كنسبة من مدى الضباب (1 ÷ كثافته)، حتى لا يبيضّ المشهد عند الإبعاد
      * Farthest camera distance as a share of the fog range (1 ÷ its density), so the scene never washes out white when zooming out

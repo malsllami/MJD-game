@@ -12,10 +12,9 @@ import {
 } from '../core/economy';
 import type { BuildingDef, ContextCommand, EntityType, GameDefinitions, Tile, World } from '../core/types';
 import { tileAtPoint } from '../core/world-gen';
-import { BottomSheet } from '../ui/bottom-sheet';
 import { BuildBar } from '../ui/build-bar';
 import { ConfirmBar } from '../ui/confirm-bar';
-import { createHud, renderCivic, renderClock, renderResources, showBuildView } from '../ui/hud';
+import { createHud, renderCivic, renderClock, renderResources, toggleDockPanel } from '../ui/hud';
 import { MinistriesPanel } from '../ui/ministries-panel';
 import { Minimap } from '../ui/minimap';
 import { RadialMenu, type RadialContent } from '../ui/radial-menu';
@@ -68,7 +67,6 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
 
   const hud = createHud(root, defs, { rotate: (d) => game.camera.rotate(d), zoom: (d) => game.camera.zoom(d) });
   const toast = new Toast(hud.toast);
-  const sheet = new BottomSheet(hud.sheet, hud.sheetHandle);
   const ministries = new MinistriesPanel(hud.ministries, () => ({ defs, world, state: session.state, now: Date.now() }));
   const minimap = new Minimap(hud.minimap, world, defs.terrain, (x, z) => game.camera.focus(x, z));
   const labels = new WorldLabels(hud.labels, (p) => game.project(p));
@@ -95,6 +93,10 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const era = () => eraOf(stageById(defs, session.state.stage).order);
   const thumbnails = new Thumbnails(game.scene, game.library, world.settings.tileSize);
   const buildBar = new BuildBar(hud.buildBar, defs, (b) => pickBuilding(b), (style) => thumbnails.get(style, era()));
+  // على الجوال: فتح فئة بناء يغلق لوحات الشريط السفلي، وفتح إحداها يطوي بطاقات البناء
+  // On phones: opening a build category closes the dock panels, and opening one of them folds the build cards
+  hud.buildBar.addEventListener('click', (e) => (e.target as HTMLElement).closest('[data-cat]') && toggleDockPanel(root, ''));
+  root.addEventListener('click', (e) => (e.target as HTMLElement).closest('[data-action="dock"]') && buildBar.setOpen(false));
   // لوحة داخل المبنى وأوامرها / The inside-the-building panel and its commands
   const panel = new BuildingPanel(
     hud.buildingPanel,
@@ -415,10 +417,8 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
         if (isSettlementTile(state, tile.x, tile.z) || placed || !state.territory.includes(tileKey(tile.x, tile.z))) {
           return toast.show('اختر مربعًا فارغًا داخل حدود الدولة للبناء عليه');
         }
-        if (mobile.matches) {
-          showBuildView(hud.sheet);
-          sheet.reveal();
-        }
+        toggleDockPanel(root, '');
+        buildBar.setOpen(true);
         return toast.show('اختر مبنى من شريط البناء لبنائه على هذا المربع');
       }
       case 'road':
@@ -586,7 +586,11 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
 
   const start = game.tileAnchor(settlementTile);
   game.camera.focus(start.x, start.z);
-  if (mobile.matches) game.camera.camera.radius = APP_CONFIG.camera.startRadiusMobile;
+  if (mobile.matches) {
+    // زاوية الرؤية رأسية، فالشاشة العريضة القصيرة تحتاج كاميرا أقرب / The field of view is vertical, so a wide, short screen needs a closer camera
+    const tiles = APP_CONFIG.camera.startRadiusMobileTiles[window.innerWidth > window.innerHeight ? 'landscape' : 'portrait'];
+    game.camera.camera.radius = tiles * world.settings.tileSize;
+  }
   refresh(true);
   announceStart();
 

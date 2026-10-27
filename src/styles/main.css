@@ -35,7 +35,7 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
 
 #world { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
 #hud { position: fixed; inset: 0; pointer-events: none; }
-#hud > *, .sheet > * { pointer-events: auto; }
+#hud > * { pointer-events: auto; }
 #hud .labels, #hud .radial { pointer-events: none; }
 #hud .radial .opt { pointer-events: auto; }
 
@@ -70,8 +70,8 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
 .icon-btn:hover { background: rgba(255, 255, 255, 0.12); }
 
 /* ===== لوحة الوزارات (يمين) وشريط البناء (أسفل) / Ministries panel (right) and build bar (bottom) ===== */
-.sheet { display: contents; }
-.sheet-handle, .sheet-switch { display: none; }
+/* الشريط السفلي ولوحة «المزيد» للجوال فقط / The bottom dock and the "more" panel are phone-only */
+.dock, .more { display: none; }
 
 .ministries {
   position: absolute; top: calc(72px + var(--safe-t)); right: calc(var(--gap) + var(--safe-r)); bottom: calc(var(--gap) + var(--safe-b));
@@ -82,10 +82,10 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
 .panel-head small { color: var(--ink-soft); font-size: 12px; }
 .tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 .cats { display: flex; flex-wrap: wrap; gap: 5px; }
-.tabs button, .cats button, .sheet-switch button {
+.tabs button, .cats button {
   border: 0; border-radius: 9px; padding: 5px 11px; font-size: 12px; font-weight: 700; background: var(--chip); color: #c9d6cf;
 }
-.tabs button[aria-selected='true'], .cats button[aria-selected='true'], .sheet-switch button[aria-selected='true'] { background: var(--gold); color: var(--gold-ink); }
+.tabs button[aria-selected='true'], .cats button[aria-selected='true'] { background: var(--gold); color: var(--gold-ink); }
 .panel-body { min-height: 0; overflow: auto; display: grid; align-content: start; gap: 10px; }
 .panel-note { margin: 0; font-size: 12px; color: var(--ink-soft); }
 .empty { display: grid; justify-items: center; gap: 8px; padding: 28px 12px; text-align: center; color: var(--ink-soft); font-size: 13px; border: 1px dashed var(--line-soft); border-radius: 12px; }
@@ -307,52 +307,94 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
   @keyframes pulse { 50% { box-shadow: 0 0 0 12px rgba(255, 210, 122, 0.08), 0 0 30px #ffd27a; } }
 }
 
-/* ===== تخطيط الجوال — نفس الشرط في APP_CONFIG.mobileLayoutQuery / Mobile layout — same condition as APP_CONFIG.mobileLayoutQuery ===== */
-@media (max-width: 899px), (pointer: coarse) and (orientation: portrait) {
-  :root { --gap: 8px; }
-  .start-picker { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 58dvh; border-radius: 22px 22px 0 0; padding-bottom: calc(14px + var(--safe-b)); }
-  .sites { grid-auto-flow: column; grid-auto-columns: 78%; overflow-x: auto; }
-  .queue { flex-basis: 100%; overflow-x: auto; }
-  .topbar { flex-wrap: wrap; gap: 4px 12px; padding: 6px 10px; }
-  .nation { font-size: 14px; }
-  .res { order: 3; flex-basis: 100%; gap: 12px; }
-  .res small { display: none; }
-  .dates { flex-direction: row; display: flex; gap: 8px; margin-inline-start: auto; font-size: 10px; }
-  .panel-toggle { display: none; }
+/* ===== تخطيط الجوال — نفس الشرط في APP_CONFIG.mobileLayoutQuery / Mobile layout — same condition as APP_CONFIG.mobileLayoutQuery =====
+   العالم يأخذ الشاشة: شريط موارد رفيع أعلى، وأعمدة أوامر صغيرة يمينًا، وشريط سفلي بفئات البناء وأزرار تفتح الخريطة والوزارات
+   والمزيد عند الطلب فقط
+   The world takes the screen: a thin resource strip on top, a small command column on the right, and a bottom bar of build
+   categories with buttons that open the map, ministries and more only on demand */
+@media (max-width: 899px), (pointer: coarse) and (orientation: portrait), (pointer: coarse) and (max-height: 500px) {
+  :root { --gap: 6px; --top: calc(42px + var(--safe-t)); --dock: calc(50px + var(--safe-b)); --map: 128px; }
+  .icon-btn { width: 40px; height: 40px; }
 
-  .sheet {
-    display: grid; grid-template-rows: auto auto 1fr; gap: 8px; position: absolute; left: 0; right: 0; bottom: 0;
-    height: var(--sheet-h, 42dvh); padding: 6px max(12px, var(--safe-l)) calc(10px + var(--safe-b)) max(12px, var(--safe-r));
-    background: var(--glass-solid); border-top: 1px solid var(--line); border-radius: 22px 22px 0 0; transition: height 0.22s ease;
+  /* شريط الموارد: صف واحد يُمرَّر أفقيًا / Resource strip: one horizontally scrolling row */
+  .topbar {
+    top: 0; left: 0; right: 0; min-height: 0; height: var(--top); box-sizing: border-box; gap: 10px;
+    padding: var(--safe-t) max(10px, var(--safe-r)) 0 max(10px, var(--safe-l)); border-width: 0 0 1px; border-radius: 0 0 14px 14px;
   }
-  .sheet.dragging { transition: none; }
-  .sheet-handle { display: grid; place-items: center; height: 22px; touch-action: none; cursor: grab; }
-  .sheet-handle span { width: 44px; height: 5px; border-radius: 5px; background: #3a4a52; }
-  .sheet-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border-radius: 12px; background: var(--chip); }
-  .sheet-switch button { padding: 9px 0; font-size: 13px; }
-  .ministries, .buildbar { position: static; width: auto; background: none; border: 0; backdrop-filter: none; padding: 0; min-height: 0; overflow: auto; }
-  .sheet[data-view='ministries'] .buildbar, .sheet[data-view='build'] .ministries { display: none; }
-  .buildbar { align-content: start; }
-  .cards { grid-auto-columns: 128px; }
-  .tabs button, .cats button { padding: 8px 12px; }
+  .nation > span:last-child, .topbar .dates, .topbar [data-action='new-nation'], .panel-toggle, .pop small { display: none; }
+  .res { gap: 12px; }
+  .res small { display: none; }
+  .res b, .pop b { font-size: 12px; }
+  .clock { padding: 2px 8px; font-size: 11px; }
 
-  :root { --map: 112px; }
-  .mapbox { top: calc(100px + var(--safe-t)); bottom: auto; grid-auto-flow: column; align-items: start; width: auto; }
+  /* الشريط السفلي: فئات البناء، والبطاقات فوقها عند فتح فئة / The bottom bar: build categories, with cards above once one opens */
+  .buildbar {
+    left: calc(214px + var(--safe-l)); right: 0; bottom: 0; padding: 6px max(10px, var(--safe-r)) calc(6px + var(--safe-b)) 8px;
+    gap: 6px; border-width: 1px 0 0; border-radius: 14px 0 0 0;
+  }
+  .buildbar[data-open='true'] { left: 0; border-radius: 14px 14px 0 0; }
+  .buildbar .cards { order: -1; grid-auto-columns: 112px; }
+  .card .thumb { height: 48px; }
+  .bar-head { flex-wrap: nowrap; }
+  .cats { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .cats button, .dock button { height: 38px; padding: 0 13px; white-space: nowrap; }
+  .queue { display: none; }
+
+  .dock {
+    display: flex; position: absolute; left: 0; bottom: 0; width: calc(214px + var(--safe-l)); box-sizing: border-box; gap: 5px; z-index: 1;
+    padding: 6px 8px calc(6px + var(--safe-b)) max(8px, var(--safe-l)); border-width: 1px 1px 0 0; border-radius: 0 14px 0 0;
+  }
+  .dock button { border: 0; border-radius: 9px; font-size: 12px; font-weight: 700; background: var(--chip); color: #c9d6cf; display: grid; place-items: center; }
+  .dock button[aria-pressed='true'] { background: var(--gold); color: var(--gold-ink); }
+  .buildbar[data-open='true'] ~ .dock { display: none; }
+
+  /* لوحات الشريط السفلي تظهر عند الطلب فوقه / The dock panels show on demand above it */
+  .ministries {
+    display: none; top: calc(var(--top) + var(--gap)); bottom: calc(var(--dock) + var(--gap)); left: calc(var(--gap) + var(--safe-l)); right: auto;
+    width: min(var(--panel), calc(100vw - 80px)); z-index: 3; background: var(--glass-solid);
+  }
+  .ministries-open .ministries { display: grid; }
+  .more {
+    display: none; position: absolute; left: calc(var(--gap) + var(--safe-l)); bottom: calc(var(--dock) + var(--gap)); z-index: 3;
+    padding: 10px; gap: 10px; background: var(--glass-solid);
+  }
+  .more-open .more { display: grid; }
+  .more .dates { display: grid; }
+  .more-row { display: flex; gap: 6px; align-items: center; }
+
+  .mapbox { display: none; top: calc(var(--top) + var(--gap)); bottom: auto; grid-auto-flow: column; align-items: start; width: auto; z-index: 3; }
+  .map-open .mapbox, .map-expanded .mapbox { display: grid; }
   .mini { width: var(--map); }
   .map-tools { flex-direction: column; }
-  .map-expanded .mapbox { --map: min(calc(100vw - 150px), 46dvh); }
-  .zoom { display: none; }
-  .icon-btn { width: 44px; height: 44px; }
+  .map-expanded .mapbox { --map: min(calc(100vw - 150px), calc(100dvh - var(--top) - var(--dock) - 24px)); }
 
-  .toolnav { top: calc(100px + var(--safe-t)); left: auto; right: calc(var(--gap) + var(--safe-r)); width: auto; }
+  /* الكاميرا: تقريب وإبعاد فقط فوق الشريط السفلي، والتدوير في «المزيد» / Camera: zoom only above the bottom bar; rotation sits in "more" */
+  .zoom { top: auto; transform: none; right: auto; left: calc(var(--gap) + var(--safe-l)); bottom: calc(var(--dock) + var(--gap)); padding: 4px; gap: 4px; }
+  .zoom [data-action^='rot'] { display: none; }
+  .more-open .zoom, .ministries-open .zoom, .buildbar[data-open='true'] ~ .zoom { display: none; }
+  /* بطاقات البناء تمتد بعرض الشاشة، فيُخفى عمود الأوامر فوقها / Build cards span the screen, so the command column above them hides */
+  .buildbar[data-open='true'] ~ .toolnav { display: none; }
+
+  .toolnav { top: calc(var(--top) + var(--gap)); left: auto; right: calc(var(--gap) + var(--safe-r)); width: auto; gap: 2px; padding: 4px; }
   .toolnav button span { display: none; }
-  .toolnav button { padding: 11px; }
-  .building-panel { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 62dvh; border-radius: 22px 22px 0 0; padding-bottom: calc(14px + var(--safe-b)); z-index: 6; background: var(--glass-solid); }
+  .toolnav button { padding: 9px; }
   .drawer {
-    top: calc(100px + var(--safe-t)); left: calc(var(--gap) + var(--safe-l)); right: calc(66px + var(--safe-r)); width: auto;
-    max-height: calc(100dvh - 110px - var(--sheet-h, 42dvh) - var(--safe-t)); z-index: 3; background: var(--glass-solid);
+    top: calc(var(--top) + var(--gap)); left: calc(var(--gap) + var(--safe-l)); right: calc(62px + var(--safe-r)); bottom: calc(var(--dock) + var(--gap));
+    width: auto; max-height: none; z-index: 3; background: var(--glass-solid);
   }
-  .card .thumb { height: 54px; }
+  .building-panel {
+    top: calc(var(--top) + var(--gap)); bottom: calc(var(--gap) + var(--safe-b)); left: calc(var(--gap) + var(--safe-l)); right: auto;
+    width: min(390px, calc(100vw - var(--gap) * 2)); z-index: 6; background: var(--glass-solid);
+  }
+  .confirm-bar.docked { bottom: calc(var(--dock) + var(--gap)); }
+  .toast { top: calc(var(--top) + var(--gap)); left: 50%; }
 
-  .toast { top: calc(100px + var(--safe-t)); left: 50%; }
+  .start-picker { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 58dvh; border-radius: 22px 22px 0 0; padding-bottom: calc(14px + var(--safe-b)); }
+  .sites { grid-auto-flow: column; grid-auto-columns: 78%; overflow-x: auto; }
+}
+
+/* الجوال بالعرض: اختيار الموقع لوحة جانبية بدل لوحة سفلية قصيرة / Phone in landscape: the site picker is a side panel instead of a short bottom sheet */
+@media (pointer: coarse) and (max-height: 500px) {
+  .start-picker { top: var(--gap); right: calc(var(--gap) + var(--safe-r)); bottom: var(--gap); left: auto; width: min(340px, 46vw); max-height: none; border-radius: 14px; padding-bottom: 12px; }
+  .sites { grid-auto-flow: row; grid-auto-columns: auto; overflow-y: auto; }
 }
