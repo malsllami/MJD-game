@@ -5,7 +5,7 @@
 
 import { Color3, type AbstractMesh, type TransformNode } from '@babylonjs/core';
 import { compoundLook, eraOf, styleOf, type Era } from '../assets/catalog';
-import { COMPOUND_ENTRANCE_X, compoundGardens, TILE_METRES } from '../assets/village-kit';
+import { COMPOUND_ENTRANCE_X, compoundPlaza, TILE_METRES } from '../assets/village-kit';
 import { APP_CONFIG } from '../config/app.config';
 import {
   buildingAt, buildingStatus, checkMove, checkPlacement, cornerPath, costShare, depositAt, edgeTiles, housingCapacity, isRoad,
@@ -230,11 +230,20 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     });
     // ممر مرصوف من مدخل السور إلى الطريق الرئيسي / A paved path from the wall's entrance out to the main road
     const gate = cx - COMPOUND_ENTRANCE_X / TILE_METRES;
-    return {
-      paving: [{ x0: cx - half, z0: cz - half, x1: cx + half, z1: cz + half }, { x0: gate - 0.14, z0: cz - half - 0.12, x1: gate + 0.14, z1: cz - half }],
-      gardens: compoundGardens((compoundTiles * TILE_METRES) / 2).map(flip),
-    };
+    return { paving: [flip(compoundPlaza((compoundTiles * TILE_METRES) / 2)), { x0: gate - 0.14, z0: cz - half - 0.12, x1: gate + 0.14, z1: cz - half }] };
   })();
+
+  /** حدود الدولة في العالم مع هامش مربعين، لتبقى الكاميرا حولها / The nation's world bounds plus two tiles, keeping the camera around it */
+  function territoryArea(territory: string[]): { minX: number; maxX: number; minZ: number; maxZ: number } {
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const k of territory) {
+      const [x, z] = k.split(',').map(Number);
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+    }
+    const a = game.tileAnchor({ x: minX - 2, z: minZ - 2 });
+    const b = game.tileAnchor({ x: maxX + 2, z: maxZ + 2 });
+    return { minX: Math.min(a.x, b.x), maxX: Math.max(a.x, b.x), minZ: Math.min(a.z, b.z), maxZ: Math.max(a.z, b.z) };
+  }
 
   // ===== الأوضاع / Modes =====
 
@@ -584,6 +593,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     animals.sync(state, defs, now);
     traffic.sync(roads.edgesByStyle(state).get('paved-road') ?? new Set(), state.population);
     borders.show(state.territory);
+    game.camera.setArea(territoryArea(state.territory));
     grid.showTiles(state.territory);
 
     // لافتات: مبنى الحكم، والمكامن المكتشفة، وعدّاد ما يُبنى، وتحذير المتوقف

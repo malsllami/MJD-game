@@ -38,9 +38,8 @@ export interface GroundMarks {
   soil: { x: number; z: number }[];
   /** حواف الطرق / Road edges */
   roads: string[];
-  /** مستطيلات البلاط الحجري بإحداثيات المربعات، وأحواض الحدائق المحفورة منها / Paving rectangles in tile coordinates, and the garden beds cut from them */
+  /** مستطيلات البلاط الحجري بإحداثيات المربعات / Paving rectangles in tile coordinates */
   paving?: Rect[];
-  gardens?: Rect[];
 }
 
 /** مستطيل بإحداثيات المربعات (قد تكون كسرية) / A rectangle in tile coordinates (may be fractional) */
@@ -116,14 +115,10 @@ export class GroundPainter {
     pc.drawImage(this.patchBase, 0, 0);
     this.drawMarks(pc, marks, 'rgb(0,0,0)', 'rgb(0,0,0)');
     pc.globalAlpha = 1;
-    // البلاط في القناة الزرقاء، والحدائق عشب داكن داخله / Paving in the blue channel, gardens as lush grass inside it
+    // البلاط في القناة الزرقاء / Paving in the blue channel
     const px = this.px;
-    const fill = (rects: Rect[] | undefined, color: string) => {
-      pc.fillStyle = color;
-      for (const r of rects ?? []) pc.fillRect(r.x0 * px, r.z0 * px, (r.x1 - r.x0) * px, (r.z1 - r.z0) * px);
-    };
-    fill(marks.paving, 'rgb(0,0,255)');
-    fill(marks.gardens, 'rgb(0,150,0)');
+    pc.fillStyle = 'rgb(0,0,255)';
+    for (const r of marks.paving ?? []) pc.fillRect(r.x0 * px, r.z0 * px, (r.x1 - r.x0) * px, (r.z1 - r.z0) * px);
     this.patches.update(false);
   }
 

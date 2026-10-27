@@ -40,7 +40,8 @@ export function foundVillage(state: GameState, defs: GameDefinitions, world: Wor
     const placed: PlacedBuilding = { uid: uid(), buildingId: def.id, x: tile.x, z: tile.z, startedAt: now, completesAt: now, level: 1 };
     if (def.housing) placed.residents = housingAt(def, levelRow(defs, 1).populationFactor);
     current = { ...current, buildings: [...current.buildings, placed] };
-    if (road && def.requiresRoad) current = layRoad(current, defs, world, road, autoRoadPath(defs, world, current, road, tile, now) ?? [], now, uid);
+    // كل مبنى ابتدائي يصله طريق، ولو لم يحتجه للعمل، حتى تصل إليه الحركة والنقل / Every starting building gets a road, even when it runs without one, so movement and hauling reach it
+    if (road) current = layRoad(current, defs, world, road, autoRoadPath(defs, world, current, road, tile, now) ?? [], now, uid);
   }
   const population = current.buildings.reduce((sum, b) => sum + (b.residents ?? 0), 0);
   return { ...current, resources, population };

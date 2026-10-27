@@ -58,9 +58,9 @@ const WALLS: Record<Finish, { plain: string; door: string; window: string; corne
 
 /** مواصفات بيت / House specification */
 interface HouseSpec {
-  /** العرض والعمق بالمتر (مضاعفات 2، والأسقف المتاحة 4×4 و4×6 و6×6 و6×8) / Width and depth in metres */
-  w: 4 | 6;
-  d: 4 | 6 | 8;
+  /** العرض والعمق بالمتر (مضاعفات 2، والأسقف المتاحة 4×4 و4×6 و6×6 و6×8 و8×8 و8×10 و8×12) / Width and depth in metres */
+  w: 4 | 6 | 8;
+  d: 4 | 6 | 8 | 10 | 12;
   finish: Finish;
   /** لون السقف (الأحمر الأصلي إن غاب) / Roof colour (the original red when absent) */
   roof?: RoofColor;
@@ -265,6 +265,28 @@ const shiftBack = (pieces: KitPiece[], dz: number): KitPiece[] => pieces.map((p)
 /** نقل قطع المبنى / Move a building's pieces */
 const moveBy = (pieces: KitPiece[], dx: number, dz: number): KitPiece[] => pieces.map((p) => ({ ...p, x: p.x + dx, z: p.z + dz }));
 
+/**
+ * برج مربع 4 × 4 م بعدة طوابق ونوافذ في الطوابق العليا وسقف برج مخروطي، يقف على (x, z)
+ * A 4 × 4 m square tower of several storeys, windows upstairs and a conical tower roof, standing at (x, z)
+ */
+function tower(x: number, z: number, floors: number, finish: Finish): KitPiece[] {
+  const kit = WALLS[finish];
+  const pieces: KitPiece[] = [];
+  for (let f = 0; f < floors; f++) {
+    const y = f * WALL_HEIGHT;
+    const path = f ? kit.window : kit.plain;
+    for (const o of [-1, 1]) {
+      pieces.push(
+        { path, x: x + o, z: z + 2, y }, { path: kit.plain, x: x + o, z: z - 2, y, yaw: Math.PI },
+        { path: kit.plain, x: x + 2, z: z + o, y, yaw: Math.PI / 2 }, { path: kit.plain, x: x - 2, z: z + o, y, yaw: -Math.PI / 2 },
+      );
+    }
+    for (const [cx, cz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) pieces.push({ path: kit.corner, x: x + cx * 2, z: z + cz * 2, y });
+  }
+  pieces.push({ path: V('Roof_Tower_RoundTiles'), x, z, y: floors * WALL_HEIGHT, roof: 'Green' });
+  return pieces;
+}
+
 /** مستطيل بالمتر من مركز المجمع (الواجهة نحو +z) / A rectangle in metres from the compound centre (front toward +z) */
 export interface Bed {
   x0: number;
@@ -281,17 +303,16 @@ export interface Bed {
  */
 export const COMPOUND_ENTRANCE_X = TILE_METRES / 2;
 
+/** عرض الحديقة على كل جانب بالمتر / The garden's width on each side in metres */
+const GARDEN_SIDE = 5.4;
+
 /**
- * أحواض حدائق مجمع الحكم: جانبان وخلف القاعة؛ وما سواها ساحة مرصوفة. half نصف ضلع المجمع بالمتر
- * The compound's garden beds: two sides and behind the hall; everything else is paved. half is half the compound side in metres
+ * الساحة المرصوفة: من السور الأمامي حتى خلف القاعة بين حديقتي الجانبين، وما حولها أخضر. half نصف ضلع المجمع بالمتر
+ * The paved forecourt: from the front wall to behind the hall between the two side gardens, green all around it.
+ * half is half the compound side in metres
  */
-export function compoundGardens(half: number): Bed[] {
-  const inner = half - 1.2;
-  return [
-    { x0: -inner, z0: -inner, x1: -inner + 4.4, z1: 6 },
-    { x0: inner - 4.4, z0: -inner, x1: inner, z1: 6 },
-    { x0: -inner + 4.4, z0: -inner, x1: inner - 4.4, z1: -inner + 3.4 },
-  ];
+export function compoundPlaza(half: number): Bed {
+  return { x0: -half + GARDEN_SIDE, z0: -half + 3.2, x1: half - GARDEN_SIDE, z1: half - 0.6 };
 }
 
 /**
@@ -306,39 +327,35 @@ export function compoundAssembly(level: number, stone: boolean, tiles: number): 
   const gx = COMPOUND_ENTRANCE_X;
   const pieces: KitPiece[] = [];
 
-  // القاعة: تكبر وتزداد طوابقها وأجنحتها مع المستوى / The hall: bigger, taller and winged as the level rises
+  // القاعة: أعرض وأعمق من أي بيت، وتزداد أبراجها مع المستوى / The hall: wider and deeper than any house, gaining towers as the level rises
   const roof: RoofColor = 'Green';
-  const hall = stone
-    ? house({ w: 6, d: 8, finish: 'brick', roof, floors: 2, extras: [{ path: V('Prop_Chimney2'), x: 2, z: -2.5, y: 6.6 }] })
-    : level >= 3
-      ? house({ w: 6, d: 8, finish: 'plaster', roof, floors: 2, extras: [{ ...chimney(2, -2.5), y: 6.6 }] })
-      : house({ w: 6, d: 8, finish: 'timber', roof, floors: 2, extras: [{ ...chimney(2, -2.5), y: 6.6 }] });
-  pieces.push(...moveBy(hall.pieces, 0, -4.5));
-  const wings = stone ? 2 : level >= 5 ? 2 : level >= 4 ? 1 : 0;
-  for (let i = 0; i < wings; i++) {
-    const side = i ? -1 : 1;
-    const wing = house({ w: 4, d: 4, finish: stone ? 'brick' : 'plaster', roof, extras: [] });
-    pieces.push(...moveBy(wing.pieces, side * 6, -5.5));
-  }
+  const finish: Finish = stone ? 'brick' : level >= 3 ? 'plaster' : 'timber';
+  const hall = house({ w: 8, d: level >= 3 || stone ? 12 : 10, finish, roof, floors: 2, extras: [{ path: V(stone ? 'Prop_Chimney2' : 'Prop_Chimney'), x: 2.6, z: -3, y: 6.6 }] });
+  pieces.push(...moveBy(hall.pieces, 0, -4.4));
+  const towers = stone ? 2 : level >= 5 ? 2 : level >= 3 ? 1 : 0;
+  for (let i = 0; i < towers; i++) pieces.push(...tower(i ? -6.4 : 6.4, -0.6, stone ? 3 : 2 + Math.min(1, level - 3), finish));
 
-  // الساحة الأمامية: ساريتا علم عند المدخل، وصناديق وعربة عند السور / The forecourt: two flagpoles at the entrance, crates and a wagon by the wall
+  // المدخل: قوس حجري في السور الأمامي بين ساريتي علم، وصناديق وعربة عند السور
+  // The entrance: a stone arch in the front wall between two flagpoles, crates and a wagon by the wall
+  pieces.push({ path: V('Wall_Arch'), x: gx, z: edge, fit: 3.6 });
   pieces.push({ path: FLAG_POLE, x: gx - 3, z: edge - 1.6, fit: 6 + Math.min(level, 6) * 0.3 }, { path: FLAG_POLE, x: gx + 3, z: edge - 1.6, fit: 6 + Math.min(level, 6) * 0.3 });
   pieces.push(crate(-4.6, edge - 1.4), crate(-5.6, edge - 2.3));
   if (level >= 2) pieces.push(wagon(-3, 3.6, 0.4));
 
   // الحدائق: أشجار وشجيرات وزهور تزداد مع المستوى / The gardens: trees, bushes and flowers that grow in number with the level
-  const sideX = half - 3.4;
+  const sideX = half - GARDEN_SIDE / 2 - 0.4;
   for (const side of [-1, 1]) {
-    pieces.push({ path: F(side < 0 ? 'CommonTree_1' : 'CommonTree_2'), x: side * sideX, z: -8.6, fit: 3.6 });
-    pieces.push({ path: F('Bush_Common_Flowers'), x: side * sideX, z: 3.6, fit: 1.8 });
-    pieces.push({ path: F('Flower_3_Group'), x: side * (sideX - 0.8), z: -2.2, fit: 1.3 });
-    if (level >= 2) pieces.push({ path: F('CommonTree_3'), x: side * sideX, z: -2.6, fit: 3.2 });
-    if (level >= 3) pieces.push({ path: F('Flower_4_Group'), x: side * (sideX + 0.6), z: 0.8, fit: 1.2 }, { path: F('Bush_Common_Flowers'), x: side * (sideX + 0.4), z: -5.6, fit: 1.5 });
+    pieces.push({ path: F(side < 0 ? 'CommonTree_1' : 'CommonTree_2'), x: side * sideX, z: -9.4, fit: 3.8 });
+    pieces.push({ path: F('CommonTree_3'), x: side * sideX, z: 5.2, fit: 3.2 });
+    pieces.push({ path: F('Bush_Common_Flowers'), x: side * sideX, z: 10, fit: 1.8 }, { path: F('Bush_Common_Flowers'), x: side * sideX, z: -2.4, fit: 1.7 });
+    pieces.push({ path: F('Flower_3_Group'), x: side * (sideX - 1), z: 1.4, fit: 1.3 }, { path: F('Flower_4_Group'), x: side * (sideX + 0.9), z: -5.8, fit: 1.2 });
+    if (level >= 2) pieces.push({ path: F('CommonTree_4'), x: side * sideX, z: -5, fit: 3 });
+    if (level >= 3) pieces.push({ path: F('Flower_4_Group'), x: side * (sideX + 0.8), z: 7.6, fit: 1.2 }, { path: F('Flower_3_Group'), x: side * (sideX - 0.9), z: -12, fit: 1.2 });
   }
-  for (let i = -2; i <= 2; i++) pieces.push({ path: F(i % 2 ? 'Flower_4_Group' : 'Bush_Common_Flowers'), x: i * 2.6, z: -half + 2.8, fit: i % 2 ? 1.1 : 1.5 });
+  for (let i = -2; i <= 2; i++) pieces.push({ path: F(i % 2 ? 'Flower_4_Group' : 'Bush_Common_Flowers'), x: i * 2.6, z: -half + 1.8, fit: i % 2 ? 1.1 : 1.5 });
 
   // السور المنخفض: ثلاثة أضلاع كاملة، والأمامي مفتوح عند المدخل / The low wall: three full sides, the front open at the entrance
-  const gap = 2.4;
+  const gap = 1.8;
   pieces.push(
     { path: LOW_WALL, x: 0, z: -edge, fit: edge * 2 },
     { path: LOW_WALL, x: -edge, z: 0, fit: edge * 2, yaw: Math.PI / 2 },

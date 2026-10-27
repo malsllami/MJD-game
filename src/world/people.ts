@@ -28,7 +28,7 @@ const RESIDENTS_PER_WALKER = 2;
 /** بعد ظهور الناس عن مركز الكاميرا بالمربعات / How far from the camera centre people show, in tiles */
 const VIEW_TILES = 26;
 /** أقصى عمال ظاهرين في المبنى الواحد / Most workers shown at one building */
-const MAX_SHOWN_PER_BUILDING = 3;
+const MAX_SHOWN_PER_BUILDING = 4;
 /** حصص الناس الظاهرين: العمال أولًا ثم الحمّالون، والباقي مارة / Shares of shown people: workers first, then carriers, the rest passers-by */
 const WORKER_SHARE = 0.55;
 const CARRIER_SHARE = 0.25;
@@ -114,6 +114,14 @@ interface Actor {
   leg: number;
   loaded: boolean;
   crate: TransformNode | null;
+}
+
+/** مربعات مجمع الحكم؛ يصله الحمّال عند أي زاوية من محيطه / The compound's tiles; a carrier reaches it at any corner around it */
+function compoundTiles(state: GameState): { x: number; z: number }[] {
+  const r = state.settlement.radius ?? 0;
+  const out: { x: number; z: number }[] = [];
+  for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) out.push({ x: state.settlement.x + dx, z: state.settlement.z + dz });
+  return out;
 }
 
 export class People {
@@ -225,14 +233,14 @@ export class People {
     const outputs = Object.keys(def.production).filter((id) => def.production[id] > 0);
     if (!outputs.length || Object.keys(def.storage).length) return null;
     const stores = operating.filter((s) => s.uid !== b.uid && outputs.some((id) => (byId.get(s.buildingId)?.storage[id] ?? 0) > 0));
-    const target = stores.sort((p, q) => Math.hypot(p.x - b.x, p.z - b.z) - Math.hypot(q.x - b.x, q.z - b.z))[0] ?? state.settlement;
-    return this.roadPath(b, target);
+    const store = stores.sort((p, q) => Math.hypot(p.x - b.x, p.z - b.z) - Math.hypot(q.x - b.x, q.z - b.z))[0];
+    return this.roadPath(b, store ? [store] : compoundTiles(state));
   }
 
-  /** أقصر مسار على الطرق بين زوايا مربعين (بحث بالعرض) / The shortest road path between two tiles' corners (breadth-first) */
-  private roadPath(from: { x: number; z: number }, to: { x: number; z: number }): string[] | null {
+  /** أقصر مسار على الطرق من زوايا مربع إلى زوايا أي مربع من الهدف (بحث بالعرض) / The shortest road path from a tile's corners to any target tile's corners (breadth-first) */
+  private roadPath(from: { x: number; z: number }, to: { x: number; z: number }[]): string[] | null {
     const cornersOf = (t: { x: number; z: number }) => [[0, 0], [1, 0], [0, 1], [1, 1]].map(([dx, dz]) => tileKey(t.x + dx, t.z + dz)).filter((k) => this.links.has(k));
-    const goals = new Set(cornersOf(to));
+    const goals = new Set(to.flatMap(cornersOf));
     const starts = cornersOf(from);
     if (!goals.size || !starts.length) return null;
     const previous = new Map<string, string | null>(starts.map((k) => [k, null]));

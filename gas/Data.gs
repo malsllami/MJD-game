@@ -41,7 +41,7 @@ function readTable_(table) {
   // العمود الأول هو مفتاح الصف: صف بلا مفتاح فارغ، والصف الموقوف لا يُرسل للعبة
   // The first column is the row key: a row without it is empty; a disabled row is not sent
   const keyField = table.columns[0].field;
-  return rows.filter(function (r) { return r[keyField] !== '' && !r.disabled; });
+  return rows.filter(function (r) { return r[keyField] !== '' && r[keyField] !== null && !r.disabled; });
 }
 
 /** تحويل صفوف المفتاح/القيمة إلى كائن إعدادات / Converts key/value rows into a settings object */

@@ -33,7 +33,7 @@ export const APP_CONFIG = {
   portraitPhoneQuery: '(pointer: coarse) and (orientation: portrait)',
   camera: {
     /** تقريب حتى مستوى الشارع / Zoom down to street level */
-    minRadius: 6,
+    minRadius: 11,
     maxRadiusFactor: 1.15,
     /**
      * بُعد الكاميرا عند البدء بعدد المربعات: قريبة حتى تملأ القرية الشاشة، وأقرب على الجوال بالعرض لأن زاوية الرؤية رأسية
@@ -41,7 +41,7 @@ export const APP_CONFIG = {
      */
     startRadiusTiles: { desktop: 8, landscape: 4.5, portrait: 8.5 },
     /** أبعد مسافة بعدد المربعات حتى لا تضيع القرية في الأفق / The farthest distance in tiles so the village never gets lost on the horizon */
-    maxRadiusTiles: 30,
+    maxRadiusTiles: 16,
     /**
      * أبعد مسافة للكاميرا كنسبة من مدى الضباب (1 ÷ كثافته)، حتى لا يبيضّ المشهد عند الإبعاد
      * Farthest camera distance as a share of the fog range (1 ÷ its density), so the scene never washes out white when zooming out
@@ -49,7 +49,7 @@ export const APP_CONFIG = {
     fogClearance: 0.6,
     startBeta: 0.9,
     minBeta: 0.32,
-    maxBeta: 1.35,
+    maxBeta: 1.16,
     keyPanSpeed: 0.9,
     rotateStep: Math.PI / 8,
     zoomStep: 0.18,

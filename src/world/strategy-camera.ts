@@ -26,6 +26,8 @@ const PAN_KEYS: Record<string, [number, number]> = {
 export class StrategyCamera {
   readonly camera: ArcRotateCamera;
   private readonly keys = new Set<string>();
+  /** منطقة اللعب التي يبقى مركز النظر داخلها، أو null فالعالم كله / The play area the look-at point stays within, or null for the whole world */
+  private area: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null;
 
   constructor(
     scene: Scene,
@@ -72,6 +74,11 @@ export class StrategyCamera {
     this.camera.radius *= 1 - direction * this.cfg.zoomStep;
   }
 
+  /** حصر مركز النظر في منطقة (حدود الدولة) / Keep the look-at point within an area (the nation's borders) */
+  setArea(area: { minX: number; maxX: number; minZ: number; maxZ: number }): void {
+    this.area = area;
+  }
+
   /** نقل مركز النظر إلى نقطة على الخريطة / Move the look-at point to a map position */
   focus(x: number, z: number): void {
     this.camera.target.x = x;
@@ -107,8 +114,9 @@ export class StrategyCamera {
 
   private clamp(): void {
     const t = this.camera.target;
-    t.x = Math.min(this.bounds.halfX, Math.max(-this.bounds.halfX, t.x));
-    t.z = Math.min(this.bounds.halfZ, Math.max(-this.bounds.halfZ, t.z));
+    const a = this.area ?? { minX: -this.bounds.halfX, maxX: this.bounds.halfX, minZ: -this.bounds.halfZ, maxZ: this.bounds.halfZ };
+    t.x = Math.min(a.maxX, Math.max(a.minX, t.x));
+    t.z = Math.min(a.maxZ, Math.max(a.minZ, t.z));
     t.y = 0;
   }
 }

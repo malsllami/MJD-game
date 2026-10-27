@@ -28,6 +28,8 @@ const VILLAGE = [
   'Roof_RoundTiles_4x4', 'Roof_RoundTiles_4x6', 'Roof_RoundTiles_6x6', 'Roof_RoundTiles_6x8', 'Roof_Front_Brick4', 'Roof_Front_Brick6',
   'Prop_Chimney', 'Prop_Chimney2', 'Prop_Wagon', 'Prop_Crate', 'Prop_WoodenFence_Single', 'Prop_WoodenFence_Extension1',
   'Prop_Vine1', 'Balcony_Simple_Straight', 'Prop_MetalFence_Ornament', 'Prop_Support',
+  // قاعة الحكم الكبيرة وبرجها / The large government hall and its tower
+  'Roof_RoundTiles_8x8', 'Roof_RoundTiles_8x10', 'Roof_RoundTiles_8x12', 'Roof_Front_Brick8', 'Roof_Tower_RoundTiles',
 ];
 /** الطبيعة المستخدمة / Nature in use */
 const NATURE = [
