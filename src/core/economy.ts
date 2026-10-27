@@ -346,11 +346,14 @@ export function roadAt(state: GameState, edge: string) {
   return state.roads.find((r) => r.edge === edge);
 }
 
+/** كلفة الانعطاف في الطريق التلقائي، فيُفضَّل المسار المستقيم بانعطافات قليلة / The turn cost of the automatic road, preferring straight paths with few turns */
+const TURN_COST = 0.6;
+
 /**
- * أقصر طريق تلقائي على حواف الشبكة من شبكة الطرق (أو زوايا مبنى الحكم) ينتهي على أحد أضلاع المربع؛
+ * طريق تلقائي على حواف الشبكة من شبكة الطرق (أو زوايا مبنى الحكم) ينتهي على أحد أضلاع المربع: الأقصر مع أقل انعطافات؛
  * يمر بحواف يُسمح فيها بالطريق فقط، ويعيد الحواف الجديدة، أو [] إن كان المربع يطل على طريق، أو null إن تعذر الوصول
- * The shortest automatic road on grid edges from the road network (or the government corners) ending on one of the tile's sides;
- * it uses only edges where the road is allowed, returning the new edges, [] when the tile already faces a road, or null if unreachable
+ * An automatic road on grid edges from the road network (or the government corners) ending on one of the tile's sides: the shortest with
+ * the fewest turns; it uses only edges where the road is allowed, returning the new edges, [] when the tile already faces a road, or null if unreachable
  */
 export function autoRoadPath(defs: GameDefinitions, world: World, state: GameState, road: BuildingDef, tile: { x: number; z: number }, now: number): string[] | null {
   const network = connectedRoads(state, now, true);
@@ -360,30 +363,36 @@ export function autoRoadPath(defs: GameDefinitions, world: World, state: GameSta
   for (const edge of network) for (const [x, z] of edgeCorners(edge)) starts.add(tileKey(x, z));
   // البحث بلا تكلفة: التكلفة تُفحص عند الرسم / Search ignores cost: it is checked when laying
   const free = { ...state, resources: Object.fromEntries(Object.keys(road.cost).map((id) => [id, Infinity])) };
-  const from = new Map<string, string | null>([...starts].map((k) => [k, null]));
-  const queue = [...starts];
-  const allowed = (edge: string) => !!roadAt(state, edge) || checkRoadEdge(defs, world, free, road, edge).ok;
-  const trail = (corner: string): string[] => {
-    const edges: string[] = [];
-    for (let at: string | null = corner; at && from.get(at); at = from.get(at)!) {
-      const [ax, az] = at.split(',').map(Number);
-      const [bx, bz] = from.get(at)!.split(',').map(Number);
-      edges.unshift(edgeBetween({ x: ax, z: az }, { x: bx, z: bz }));
-    }
-    return edges;
-  };
-  for (let i = 0; i < queue.length; i++) {
-    const key = queue[i];
-    const [x, z] = key.split(',').map(Number);
-    for (const [dx, dz] of NEIGHBOURS) {
+  // الطريق التلقائي يبقى داخل الدولة فيترك حواف الحدود للسور (الرسم اليدوي حر) / The automatic road stays inside the nation, leaving border edges to the wall (manual drawing is free)
+  const owned = new Set(state.territory);
+  const inside = (edge: string) => edgeTiles(edge).every(([x, z]) => owned.has(tileKey(x, z)));
+  const allowed = (edge: string) => !!roadAt(state, edge) || (inside(edge) && checkRoadEdge(defs, world, free, road, edge).ok);
+  // بحث بأقل كلفة على (الزاوية، الاتجاه): خطوة = 1، وانعطاف = TURN_COST / A least-cost search over (corner, direction): a step is 1, a turn TURN_COST
+  type Node = { corner: string; dir: number; cost: number; prev: Node | null; edge: string | null };
+  const open: Node[] = [...starts].map((corner) => ({ corner, dir: -1, cost: 0, prev: null, edge: null }));
+  const best = new Map<string, number>();
+  while (open.length) {
+    open.sort((p, q) => q.cost - p.cost);
+    const node = open.pop()!;
+    const seen = `${node.corner}|${node.dir}`;
+    if ((best.get(seen) ?? Infinity) < node.cost) continue;
+    const [x, z] = node.corner.split(',').map(Number);
+    for (let dir = 0; dir < NEIGHBOURS.length; dir++) {
+      const [dx, dz] = NEIGHBOURS[dir];
       const edge = edgeBetween({ x, z }, { x: x + dx, z: z + dz });
       if (!allowed(edge)) continue;
+      const cost = node.cost + 1 + (node.dir >= 0 && node.dir !== dir ? TURN_COST : 0);
+      const next: Node = { corner: tileKey(x + dx, z + dz), dir, cost, prev: node, edge };
       // الوصول إلى ضلع من أضلاع المربع ينهي البحث / Reaching one of the tile's sides ends the search
-      if (sides.has(edge)) return [...trail(key), edge].filter((e) => !roadAt(state, e));
-      const next = tileKey(x + dx, z + dz);
-      if (from.has(next)) continue;
-      from.set(next, key);
-      queue.push(next);
+      if (sides.has(edge)) {
+        const edges: string[] = [];
+        for (let at: Node | null = next; at?.edge; at = at.prev) edges.unshift(at.edge);
+        return edges.filter((e) => !roadAt(state, e));
+      }
+      const key = `${next.corner}|${dir}`;
+      if ((best.get(key) ?? Infinity) <= cost) continue;
+      best.set(key, cost);
+      open.push(next);
     }
   }
   return null;

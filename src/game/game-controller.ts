@@ -9,9 +9,9 @@ import { COMPOUND_ENTRANCE_X, compoundPlaza, TILE_METRES } from '../assets/villa
 import { APP_CONFIG } from '../config/app.config';
 import {
   buildingAt, buildingStatus, checkMove, checkPlacement, cornerPath, costShare, depositAt, edgeTiles, housingCapacity, isRoad,
-  autoRoadPath, capacityAt, isSettlementTile, isUnderConstruction, isWall, netRates, placeWallPath, wallAt, nextStage, pathEdges, placeRoadPath, roadAt, stageById, surveyCost, tileKey, annexCost, knownDeposits, isTorch, movePercent, checkTorch, torchNear, torchPoint, wallNear, wallLine, innerWalls,
+  autoRoadPath, capacityAt, isSettlementTile, isUnderConstruction, isWall, netRates, placeWallPath, wallAt, nextStage, pathEdges, placeRoadPath, roadAt, stageById, surveyCost, tileKey, annexCost, knownDeposits, isTorch, movePercent, PAVING_MODELS, checkTorch, torchNear, torchPoint, wallNear, wallLine, innerWalls,
 } from '../core/economy';
-import { checkClearing, clearingParcel, expansionQuota, isForestMode, runningClearings } from '../core/frontier';
+import { checkClearing, clearingParcel, expansionQuota, isForestMode, runningClearings, waterTiles } from '../core/frontier';
 import { canalNetwork, isCanal } from '../core/irrigation';
 import { governmentLevel, governmentLevelOf, levelOf, levelRow } from '../core/levels';
 import { placementAdvice, zoneTest } from '../core/placement-guide';
@@ -50,6 +50,10 @@ const AUTOSAVE_MS = 5000;
 const CONFIRM_MS = 4000;
 /** بُعد الضغط عن الشعلة الذي يختارها، بالمربعات / How close a tap must be to pick a torch, in tiles */
 const TORCH_PICK_TILES = 0.22;
+/** أطول فرع تلقائي لمبنى لا يحتاج طريقًا، بالقطع / The longest automatic branch for a building that needs no road, in pieces */
+const BRANCH_MAX = 6;
+/** الزينة لا تحصل على فرع طريق / Decor gets no road branch */
+const DECOR_MODELS = new Set(['garden', 'park', 'pond']);
 /** بُعد الضغط عن قطعة السور الذي يختارها، بالمربعات / How close a tap must be to pick a wall piece, in tiles */
 const WALL_PICK_TILES = 0.14;
 /** مدة ظهور أسماء المكامن بعد المسح / How long deposit names show after a survey */
@@ -82,7 +86,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const hud = createHud(root, defs, { rotate: (d) => game.camera.rotate(d), zoom: (d) => game.camera.zoom(d) });
   const toast = new Toast(hud.toast);
   const ministries = new MinistriesPanel(hud.ministries, () => ({ defs, world, state: session.state, now: Date.now() }));
-  const minimap = new Minimap(hud.minimap, world, defs.terrain, (x, z) => game.camera.focus(x, z));
+  const minimap = new Minimap(hud.minimap, world, (x, z) => game.camera.focus(x, z));
   const labels = new WorldLabels(hud.labels, (p) => game.project(p));
   const radial = new RadialMenu(hud.radial, (p) => game.project(p), () => mobile.matches);
   const borders = new TileSetOutline(game.scene, world, new Color3(0.9, 0.8, 0.5), 0.35);
@@ -334,9 +338,12 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   /** معاينة المبنى على المربع مع شريط تأكيد / Preview the building on the tile with a confirmation bar */
   function previewBuild(b: BuildingDef, tile: Tile): void {
     const now = Date.now();
-    // المبنى الذي يحتاج طريقًا يحصل على طريق تلقائي من أقرب نقطة في الشبكة / A road-dependent building gets an automatic road from the nearest network point
-    const road = b.requiresRoad ? availableRoad() : undefined;
-    const path = road ? autoRoadPath(defs, world, session.state, road, tile, now) : [];
+    // المبنى يحصل على طريق تلقائي من أقرب نقطة في الشبكة: لازم لما يحتاج طريقًا، وفرع قصير اختياري لغيره (لا للزينة)
+    // A building gets an automatic road from the nearest network point: required where a road is needed, an optional short branch otherwise (not for decor)
+    const decor = PAVING_MODELS.has(b.model) || DECOR_MODELS.has(b.model);
+    const road = b.requiresRoad || !decor ? availableRoad() : undefined;
+    const found = road ? autoRoadPath(defs, world, session.state, road, tile, now) : [];
+    const path = !b.requiresRoad && found && found.length > BRANCH_MAX ? [] : found;
     const planned = road && path?.length ? placeRoadPath(session.state, defs, world, road, path, now, () => 'preview') : null;
     const autoRoad = planned && !planned.stoppedBy ? path! : [];
     const roadCost = road ? Object.fromEntries(Object.entries(road.cost).map(([id, n]) => [id, n * (planned?.placed ?? 0)])) : {};
@@ -814,8 +821,27 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
         return forest && !owned.has(tileKey(x, z)) && d > inner && d <= inner + defs.world.frontierDepth;
       };
       game.people.sync(state, defs, now, focus, woods);
-      const deposits = knownDeposits(world, state).map((d) => ({ x: d.x, z: d.z, emphasis: false }));
-      minimap.setOverlay(state.territory, [{ x: settlementTile.x, z: settlementTile.z, emphasis: true }, ...deposits]);
+      // الخريطة المصغرة من البيانات: المكامن بلون موردها، والمباني بلون فاتح / The minimap from data: deposits in their resource's colour, buildings light
+      const woodTiles = new Set(world.deposits.filter((d) => d.resourceId === 'wood').flatMap((d) => d.tiles));
+      const resourceColor = (id: string) => defs.resources.find((r) => r.id === id)?.color ?? '#999';
+      const model = (id: string) => byId.get(id)?.model;
+      minimap.setView({
+        territory: state.territory,
+        forest: (x, z) => woods(x, z) || woodTiles.has(tileKey(x, z)),
+        water: waterTiles(defs, world, state),
+        fertile: new Set((state.foundDeposits ?? []).filter((d) => d.resourceId === 'food').flatMap((d) => d.tiles)),
+        roads: state.roads.map((r) => r.edge),
+        canals: state.walls.filter((w) => model(w.buildingId) === 'canal').map((w) => w.edge),
+        walls: state.walls.filter((w) => model(w.buildingId) === 'wall' || model(w.buildingId) === 'gate').map((w) => w.edge),
+        buildings: [
+          ...knownDeposits(world, state).filter((d) => d.resourceId !== 'food' && d.resourceId !== 'wood').flatMap((d) => d.tiles.map((k) => {
+            const [x, z] = k.split(',').map(Number);
+            return { x, z, color: resourceColor(d.resourceId) };
+          })),
+          ...state.buildings.filter((b) => !PAVING_MODELS.has(model(b.buildingId) ?? '')).map((b) => ({ x: b.x, z: b.z, color: '#f1e8d6' })),
+        ],
+        centre: settlementTile,
+      });
     }
   }
 

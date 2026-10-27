@@ -14,7 +14,7 @@ const DAY_AMBIENT = new Color3(0.86, 0.9, 1);
 const NIGHT_AMBIENT = new Color3(0.5, 0.6, 0.86);
 const DUSK_AMBIENT = new Color3(1, 0.72, 0.52);
 /** لون الضوء المرتد من الأرض نهارًا وليلًا / Ground-bounce light by day and by night */
-const DAY_GROUND = new Color3(0.32, 0.3, 0.26);
+const DAY_GROUND = new Color3(0.4, 0.38, 0.33);
 const NIGHT_GROUND = new Color3(0.1, 0.12, 0.2);
 
 const smoothstep = (a: number, b: number, x: number): number => {
@@ -145,7 +145,7 @@ export class DayNight {
     moon.intensity = 0.78 * night;
     moon.setEnabled(night > 0.001);
     // ليلًا يبقى ضوء محيط كافٍ لتمييز المباني وأسقفها / At night enough ambient light remains to tell buildings and roofs apart
-    ambient.intensity = 0.3 + 0.14 * daylight;
+    ambient.intensity = 0.34 + 0.16 * daylight;
     ambient.diffuse = Color3.Lerp(Color3.Lerp(NIGHT_AMBIENT, DAY_AMBIENT, daylight), DUSK_AMBIENT, dusk * 0.5);
     ambient.groundColor = Color3.Lerp(NIGHT_GROUND, DAY_GROUND, daylight);
 

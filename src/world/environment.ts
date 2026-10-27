@@ -22,6 +22,11 @@ export interface Environment {
   glow: GlowLayer | null;
 }
 
+/** شدة الظل (0 أسود، 1 بلا ظل)، والتعريض والتباين / Shadow darkness (0 black, 1 none), exposure and contrast */
+const SHADOW_DARKNESS = 0.35;
+const EXPOSURE = 1.1;
+const CONTRAST = 1.06;
+
 /**
  * ينشئ السماء الفيزيائية وضوء الشمس والضوء المحيط والضباب
  * Creates the physical sky, sun, ambient light and fog
@@ -54,7 +59,13 @@ export function createEnvironment(scene: Scene, worldSpan: number, preset: Quali
     shadows.usePercentageCloserFiltering = true;
     shadows.bias = 0.002;
     shadows.normalBias = 0.015;
+    // ظل أخف من الأسود التام فتبقى تفاصيل الجوانب المظللة ظاهرة / A shadow lighter than pure black so shaded sides keep their detail
+    shadows.darkness = SHADOW_DARKNESS;
   }
+
+  // تعريض وتباين طفيفان يرفعان وضوح المشهد دون تشبيع الألوان / A slight exposure and contrast lift for clarity without oversaturating
+  scene.imageProcessingConfiguration.exposure = EXPOSURE;
+  scene.imageProcessingConfiguration.contrast = CONTRAST;
 
   const skybox = MeshBuilder.CreateBox('skybox', { size: worldSpan * 8 }, scene);
   const sky = new SkyMaterial('sky', scene);
