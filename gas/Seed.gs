@@ -82,6 +82,10 @@ const FOREST_FRONTIER = {
   frontierGap: 1,
   engineeringBuilding: 'engineering_office',
   engineeringMoveCostPercent: 0,
+  plainFarmPercent: 50,
+  frontierPonds: 3,
+  fertileWaterDistance: 2,
+  fertileAwayPercent: 25,
 };
 
 /**
@@ -128,7 +132,7 @@ const SEED_FRONTIER_RESOURCES = [
   ['gold_ore', 10, 1, 0.5, 1.4], ['silver_ore', 8, 1, 0.5, 1.4], ['stone_quarry', 14, 1, 0.7, 1.5], ['iron_ore', 12, 1, 0.6, 1.5],
   ['copper_ore', 10, 6, 0.6, 1.5], ['oil_field', 8, 10, 0.6, 1.6],
   // بقعة زراعية: المزرعة والحظيرة عليها تنتجان أكثر / An agricultural spot: a farm or barn on it produces more
-  ['fertile_land', 16, 1, 1.2, 1.8],
+  ['fertile_land', 40, 1, 1.2, 1.8],
 ];
 
 
@@ -298,10 +302,12 @@ const SEED_GOVERNMENT_LEVELS = [
 ];
 
 /**
- * حصة التوسع لكل مستوى حكم: مجموع قطع الغابة 3 × 3 المسموح بقطعها حتى بلوغه — 16 في المستويات 1–3، ثم 4 قطع لكل مستوى بعدها
- * The expansion quota per government level: the total 3 × 3 forest parcels clearable by then — 16 in levels 1–3, then 4 per level after
+ * حصة التوسع لكل مستوى حكم: 16 قطعة 3 × 3 تتشاركها المستويات 1–3، ثم 4 قطع مستقلة لكل مستوى بعدها لا يُضاف إليها ما تبقى من غيرها
+ * The expansion quota per government level: 16 parcels of 3 × 3 shared by levels 1–3, then 4 separate parcels per later level, never topped up from others
  */
-const SEED_EXPANSION_PARCELS = { 1: 16, 2: 16, 3: 16, 4: 20, 5: 24, 6: 28, 7: 32 };
+const SEED_EXPANSION_PARCELS = { 1: 16, 2: 16, 3: 16, 4: 4, 5: 4, 6: 4, 7: 4 };
+/** مجموعة حصة كل مستوى: المستويات 1–3 تتشارك حصة، وكل مستوى بعدها حصة مستقلة / Each level's pool: levels 1–3 share one, every later level has its own */
+const SEED_EXPANSION_POOLS = { 1: 'early', 2: 'early', 3: 'early', 4: 'level4', 5: 'level5', 6: 'level6', 7: 'level7' };
 
 /**
  * مستويات المباني: [المستوى، مضاعف الإنتاج، مضاعف السكان والعمال، نسبة تكلفة الترقية من تكلفة البناء، نسبة مدتها من مدة البناء، الطراز]
@@ -446,7 +452,7 @@ const SEED_ROWS = {
   governmentLevels: SEED_GOVERNMENT_LEVELS.map(function (l) {
     return {
       'المستوى': l[0], 'الاسم': l[1], 'المرحلة': l[2], 'السكان المطلوبون': l[3], 'المباني المطلوبة': l[4], 'تكلفة الترقية': l[5],
-      'أقصى مستوى للمباني': l[6], 'طراز السور': l[7], 'الوصف': l[8], 'قطع التوسع': SEED_EXPANSION_PARCELS[l[0]],
+      'أقصى مستوى للمباني': l[6], 'طراز السور': l[7], 'الوصف': l[8], 'قطع التوسع': SEED_EXPANSION_PARCELS[l[0]], 'مجموعة التوسع': SEED_EXPANSION_POOLS[l[0]],
     };
   }),
   buildingLevels: SEED_BUILDING_LEVELS.map(function (l) {
@@ -454,7 +460,7 @@ const SEED_ROWS = {
   }),
   startBuildings: SEED_START_BUILDINGS.map(function (id, i) { return { 'معرف المبنى': id, 'الترتيب': i + 1 }; }),
   frontierResources: SEED_FRONTIER_RESOURCES.map(function (r) {
-    return { 'معرف نوع المكمن': r[0], 'الاحتمال': r[1], 'أدنى مستوى للحكم': r[2], 'أدنى غنى': r[3], 'أعلى غنى': r[4] };
+    return { 'معرف نوع المكمن': r[0], 'الاحتمال': r[1], 'أدنى مستوى للحكم': r[2], 'أدنى غنى': r[3], 'أعلى غنى': r[4], 'قرب الماء': r[0] === 'fertile_land' };
   }),
   ministries: [
     ['finance', 'المالية', 'الموارد والميزانية والضرائب'],

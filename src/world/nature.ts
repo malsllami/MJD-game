@@ -89,8 +89,10 @@ export class Nature {
       const d = Math.max(Math.abs(x - b.x), Math.abs(z - b.z));
       return d > inner + gap && d <= inner + gap + depth;
     });
+    const ponds = new Set(this.world.ponds);
     for (const tile of this.world.tiles) {
       const key = tileKey(tile.x, tile.z);
+      if (ponds.has(key)) continue;
       const options = outcrops.has(key) ? OUTCROP_NATURE : NATURE_BY_TERRAIN[tile.terrainId];
       if (!options) continue;
       // الغابات بقع متفرقة تتخللها مروج مفتوحة / Forests are scattered patches between open meadows

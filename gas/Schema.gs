@@ -75,6 +75,11 @@ const WORLD_SETTINGS = [
   // إضافة ترتيب القوائم (applyMenuLayout) / Menu layout addition
   { key: 'مبنى الهندسة', field: 'engineeringBuilding', type: 'string', description: 'معرف المبنى الذي يتيح إعادة ترتيب القرية بتكلفة نقل مخفضة' },
   { key: 'نسبة تكلفة النقل مع مبنى الهندسة', field: 'engineeringMoveCostPercent', type: 'number', description: 'تكلفة نقل المباني كنسبة من تكلفة بنائها حين يعمل مبنى الهندسة' },
+  // إضافة حصص التوسع المستقلة والماء (applyExpansionPools) / Separate expansion pools and water addition
+  { key: 'إنتاج الزراعة على أرض غير خصبة', field: 'plainFarmPercent', type: 'number', description: 'إنتاج المزرعة والحظيرة على أرض غير خصبة كنسبة مئوية من إنتاجهما' },
+  { key: 'عدد البرك حول القرية', field: 'frontierPonds', type: 'number', description: 'برك ماء طبيعية في الغابة المحيطة بالقرية الأولى' },
+  { key: 'بعد الخصوبة عن الماء', field: 'fertileWaterDistance', type: 'number', description: 'أبعد مسافة بالمربعات بين قطعة الغابة والماء حتى تُعد قريبة منه' },
+  { key: 'احتمال الخصوبة بعيدا عن الماء', field: 'fertileAwayPercent', type: 'number', description: 'احتمال الأرض الخصبة في قطعة بعيدة عن الماء كنسبة مئوية من احتمالها قرب الماء' },
 ];
 
 /**
@@ -276,9 +281,12 @@ const TABLES = [
       { name: 'طراز السور', field: 'wallStyle', type: 'string' },
       { name: 'الوصف', field: 'description', type: 'string' },
       DISABLED_COLUMN,
-      // إضافة حصة التوسع (addExpansionQuota): مجموع قطع الغابة المسموح بقطعها حتى هذا المستوى
-      // Expansion quota addition: the total forest parcels that may be cleared up to this level
+      // إضافة حصة التوسع (addExpansionQuota): قطع الغابة المسموح بقطعها في حصة هذا المستوى
+      // Expansion quota addition: the forest parcels that may be cleared within this level's pool
       { name: 'قطع التوسع', field: 'expansionParcels', type: 'number' },
+      // إضافة حصص التوسع المستقلة (applyExpansionPools): المستويات ذات المجموعة نفسها تتشارك حصة واحدة
+      // Separate expansion pools addition: levels with the same group share one pool
+      { name: 'مجموعة التوسع', field: 'expansionPool', type: 'string' },
     ],
   },
   {
@@ -303,6 +311,9 @@ const TABLES = [
       { name: 'أدنى غنى', field: 'minRichness', type: 'number' },
       { name: 'أعلى غنى', field: 'maxRichness', type: 'number' },
       DISABLED_COLUMN,
+      // إضافة حصص التوسع المستقلة (applyExpansionPools): يرجح ظهوره قرب الماء، وبعيدًا عنه باحتمال أقل
+      // Separate expansion pools addition: likelier near water, and less likely away from it
+      { name: 'قرب الماء', field: 'nearWater', type: 'boolean' },
     ],
   },
   {

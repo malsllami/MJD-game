@@ -39,11 +39,11 @@ export interface RawTables {
   /** اختيارية: لا يرسلها خادم أقدم من إضافة مستويات القرية / Optional: absent from servers older than the village levels addition */
   governmentLevels?: {
     level: number | null; name: string; stage: string; population: number | null; requiredBuildings?: string[]; upgradeCost?: string[];
-    maxBuildingLevel: number | null; wallStyle: string; description: string; expansionParcels?: number | null;
+    maxBuildingLevel: number | null; wallStyle: string; description: string; expansionParcels?: number | null; expansionPool?: string;
   }[];
   buildingLevels?: { level: number | null; productionFactor: number | null; populationFactor: number | null; costPercent: number | null; timePercent: number | null; style: string }[];
   startBuildings?: ({ buildingId: string } & Ordered)[];
-  frontierResources?: { depositTypeId: string; chance: number | null; minLevel: number | null; minRichness: number | null; maxRichness: number | null }[];
+  frontierResources?: { depositTypeId: string; chance: number | null; minLevel: number | null; minRichness: number | null; maxRichness: number | null; nearWater?: boolean }[];
 }
 
 /** "gold:500" ← { gold: 500 }؛ الأرقام العربية مقبولة / "gold:500" → { gold: 500 }; Arabic digits accepted */
@@ -106,6 +106,11 @@ const BACKWARD_COMPATIBLE: Partial<WorldSettings> = {
   // بلا مبنى هندسة / No engineering building
   engineeringBuilding: '',
   engineeringMoveCostPercent: 0,
+  // الزراعة بكامل إنتاجها في كل أرض، وبلا برك ولا شرط ماء / Farming at full output on any land, with no ponds and no water rule
+  plainFarmPercent: 100,
+  frontierPonds: 0,
+  fertileWaterDistance: 0,
+  fertileAwayPercent: 100,
 };
 
 const WALL_STYLES: WallStyle[] = ['stakes', 'palisade', 'stone'];
@@ -124,13 +129,15 @@ function governmentLevels(raw: RawTables['governmentLevels'], stages: Stage[]): 
   if (!rows.length) {
     return stages.map((s, i) => ({
       level: i + 1, name: s.name, stage: s.id, population: s.population, requiredBuildings: s.requiredBuildings, upgradeCost: s.upgradeCost,
-      maxBuildingLevel: 1, wallStyle: null, description: s.description, expansionParcels: null,
+      maxBuildingLevel: 1, wallStyle: null, description: s.description, expansionParcels: null, expansionPool: s.id,
     }));
   }
   return rows.map((r, i) => ({
     level: i + 1, name: r.name, stage: r.stage, population: r.population ?? 0, requiredBuildings: (r.requiredBuildings ?? []).filter(Boolean),
     upgradeCost: parseAmounts(r.upgradeCost), maxBuildingLevel: Math.max(1, r.maxBuildingLevel ?? 1), wallStyle: known(WALL_STYLES, r.wallStyle), description: r.description,
     expansionParcels: typeof r.expansionParcels === 'number' ? r.expansionParcels : null,
+    // بلا مجموعة: كل مستوى حصة مستقلة / No pool: each level is its own
+    expansionPool: String(r.expansionPool ?? '').trim() || `level${i + 1}`,
   }));
 }
 
@@ -250,7 +257,10 @@ export function assembleDefinitions(raw: RawTables, version: string): GameDefini
       .filter((r) => (raw.depositTypes ?? []).some((d) => d.id === r.depositTypeId) && (r.chance ?? 0) > 0)
       .map((r) => {
         const min = r.minRichness ?? 1;
-        return { depositTypeId: r.depositTypeId, chance: r.chance!, minLevel: Math.max(1, r.minLevel ?? 1), minRichness: min, maxRichness: Math.max(min, r.maxRichness ?? min) };
+        return {
+          depositTypeId: r.depositTypeId, chance: r.chance!, minLevel: Math.max(1, r.minLevel ?? 1), minRichness: min, maxRichness: Math.max(min, r.maxRichness ?? min),
+          nearWater: r.nearWater === true,
+        };
       }),
   };
 }

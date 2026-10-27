@@ -193,12 +193,22 @@ export function knownDeposits(world: World, state: GameState): Deposit[] {
  * غنى مكمن المنشأة: يضرب إنتاجها؛ مكامن العالم والبداية غناها 1، وما كشفه القطع متفاوت
  * The facility's deposit richness: multiplies its output; world and starter deposits are 1, those revealed by clearing vary
  */
-export function richnessOf(state: GameState, placed: PlacedBuilding, def: BuildingDef | undefined): number {
-  // منشأة المكمن تأخذ غنى مكمنها، والمزرعة والحظيرة غنى الأرض الخصبة تحتها / A deposit facility takes its deposit's richness; a farm or barn the fertile land's under it
-  const resource = def?.requiresDeposit ?? (def?.zone === 'agricultural' ? 'food' : null);
+export function richnessOf(state: GameState, placed: PlacedBuilding, def: BuildingDef | undefined, defs: GameDefinitions): number {
+  // منشأة المكمن تأخذ غنى مكمنها، والمزرعة والحظيرة غنى الأرض الخصبة تحتها، وعلى أرض غير خصبة نسبة الإعداد
+  // A deposit facility takes its deposit's richness; a farm or barn the fertile land's under it, and the set share on non-fertile land
+  const farming = !def?.requiresDeposit && def?.zone === 'agricultural';
+  const resource = def?.requiresDeposit ?? (farming ? 'food' : null);
   if (!resource) return 1;
   const key = tileKey(placed.x, placed.z);
-  return state.foundDeposits?.find((d) => d.resourceId === resource && d.tiles.includes(key))?.richness ?? 1;
+  const found = state.foundDeposits?.find((d) => d.resourceId === resource && d.tiles.includes(key));
+  if (found) return found.richness ?? 1;
+  return farming ? defs.world.plainFarmPercent / 100 : 1;
+}
+
+/** هل المربع أرض خصبة مكشوفة؟ / Is the tile revealed fertile land? */
+export function isFertile(state: GameState, x: number, z: number): boolean {
+  const key = tileKey(x, z);
+  return !!state.foundDeposits?.some((d) => d.resourceId === 'food' && d.tiles.includes(key));
 }
 
 /** تكلفة مسح الموارد / Survey cost */
@@ -453,7 +463,9 @@ function edgeLandCheck(world: World, state: GameState, def: BuildingDef, edge: s
     .filter((t): t is Tile => !!t);
   if (!sides.some((t) => owned.has(tileKey(t.x, t.z)))) return { ok: false, reason: `${def.name} خارج حدود الدولة` };
   if (sides.length === 2 && sides.every((t) => isSettlementTile(state, t.x, t.z))) return { ok: false, reason: 'هذه الحافة داخل مجمع الحكم' };
-  if (!sides.some((t) => owned.has(tileKey(t.x, t.z)) && def.allowedTerrain.includes(t.terrainId))) return { ok: false, reason: `لا يُرسم ${def.name} هنا؛ الأرض لا تسمح بذلك` };
+  if (!sides.some((t) => owned.has(tileKey(t.x, t.z)) && def.allowedTerrain.includes(t.terrainId) && !world.ponds.includes(tileKey(t.x, t.z)))) {
+    return { ok: false, reason: `لا يُرسم ${def.name} هنا؛ الأرض لا تسمح بذلك` };
+  }
   return { ok: true };
 }
 
@@ -691,6 +703,7 @@ export function checkPlacement(defs: GameDefinitions, world: World, state: GameS
     if (gaps.length) return { ok: false, reason: `${building.name} مقفل؛ يحتاج: ${gaps.join('، ')}` };
   }
   if (isSettlementTile(state, tile.x, tile.z)) return { ok: false, reason: 'هذا المربع يشغله مبنى الحكم' };
+  if (world.ponds.includes(tileKey(tile.x, tile.z))) return { ok: false, reason: 'لا يُبنى فوق الماء' };
   if (!state.territory.includes(tileKey(tile.x, tile.z))) return { ok: false, reason: 'المربع خارج حدود الدولة؛ ضمّه للدولة أولًا' };
   const occupant = buildingAt(state, tile.x, tile.z);
   if (occupant && occupant.uid !== opts.ignoreUid) return { ok: false, reason: 'يوجد مبنى في هذا المربع' };
@@ -813,7 +826,7 @@ export function advance(state: GameState, defs: GameDefinitions, world: World, n
       const start = Math.max(from, placed.completesAt);
       if (!def || start >= to || !active(placed)) continue;
       // الإنتاج والاستهلاك بقدر العمال المتوفرين ومستوى المبنى / Output and input scale with the available workers and the building's level
-      const minutes = ((to - start) / MINUTE_MS) * (crew.get(placed.uid)?.efficiency ?? 1) * factor(placed).production * richnessOf(state, placed, def);
+      const minutes = ((to - start) / MINUTE_MS) * (crew.get(placed.uid)?.efficiency ?? 1) * factor(placed).production * richnessOf(state, placed, def, defs);
       for (const [id, n] of Object.entries(def.production)) resources[id] = addCapped(resources[id] ?? 0, n * minutes, caps[id] ?? Infinity);
       for (const [id, n] of Object.entries(def.consumption)) resources[id] = Math.max(0, (resources[id] ?? 0) - n * minutes);
     }
@@ -845,7 +858,7 @@ export function rateBreakdown(state: GameState, defs: GameDefinitions, now: numb
   for (const placed of state.buildings) {
     if (buildingStatus(placed, state, defs, now).kind !== 'operating') continue;
     const def = defs.buildings.find((b) => b.id === placed.buildingId)!;
-    const efficiency = (crew.get(placed.uid)?.efficiency ?? 1) * factorsOf(defs, placed, now).production * richnessOf(state, placed, def);
+    const efficiency = (crew.get(placed.uid)?.efficiency ?? 1) * factorsOf(defs, placed, now).production * richnessOf(state, placed, def, defs);
     for (const [id, n] of Object.entries(def.production)) production[id] = (production[id] ?? 0) + n * efficiency;
     for (const [id, n] of Object.entries(def.consumption)) consumption[id] = (consumption[id] ?? 0) + n * efficiency;
   }

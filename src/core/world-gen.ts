@@ -149,7 +149,50 @@ export function generateWorld(settings: WorldSettings, terrain: TerrainType[], d
   }
 
   const deposits = placeDeposits(rng, depositTypes, terrain, tiles, settings, basins, massifs, flatWorld);
-  return { settings, vertsX, vertsZ, heights, tiles, basins: basins.map(({ x, z }) => ({ x, z })), deposits };
+  const ponds = flatWorld ? placePonds(settings, basins, deposits) : [];
+  return { settings, vertsX, vertsZ, heights, tiles, basins: basins.map(({ x, z }) => ({ x, z })), deposits, ponds };
+}
+
+/**
+ * برك الماء في العالم المستوي: بركة صغيرة داخل كل قرية أولى (لمزرعتها الخصبة)، وبرك في الغابة المحيطة بها.
+ * لها مولّد عشوائي خاص حتى لا يتغير توزيع المكامن
+ * Water ponds in the flat world: a small pond inside each first village (for its fertile farm), and ponds in the forest around it.
+ * They have their own random generator so the deposit layout never changes
+ */
+function placePonds(s: WorldSettings, basins: Feature[], deposits: Deposit[]): string[] {
+  if (s.starterDepositDistance <= 0 && s.frontierPonds <= 0) return [];
+  const rng = seededRandom(s.seed + 505);
+  const taken = new Set(deposits.flatMap((d) => d.tiles));
+  const out = new Set<string>();
+  for (const b of basins) {
+    // بركة القرية: أول اتجاه حر على بعد موارد البداية، بعيدًا عن الطريق الرئيسي جنوبًا
+    // The village pond: the first free direction at the starter distance, clear of the main road to the south
+    if (s.starterDepositDistance > 0) {
+      for (let k = 0; k < 8; k++) {
+        const a = (k * Math.PI) / 4 + Math.PI / 8;
+        const x = Math.round(b.x + Math.cos(a) * s.starterDepositDistance);
+        const z = Math.round(b.z + Math.sin(a) * s.starterDepositDistance);
+        const onRoad = (x === b.x || x === b.x - 1) && z < b.z;
+        if (!taken.has(`${x},${z}`) && !onRoad) {
+          out.add(`${x},${z}`);
+          break;
+        }
+      }
+    }
+    // برك الغابة: أقراص صغيرة في الحلقة خارج القرية / Forest ponds: small discs in the ring beyond the village
+    for (let i = 0; i < s.frontierPonds; i++) {
+      const a = rng() * Math.PI * 2;
+      const dist = s.flatZoneRadius - 1 + rng() * 4;
+      const cx = b.x + Math.cos(a) * dist;
+      const cz = b.z + Math.sin(a) * dist;
+      for (let z = Math.floor(cz - 1.2); z <= Math.ceil(cz + 1.2); z++) {
+        for (let x = Math.floor(cx - 1.2); x <= Math.ceil(cx + 1.2); x++) {
+          if (Math.hypot(x - cx, z - cz) <= 1.15 && !taken.has(`${x},${z}`)) out.add(`${x},${z}`);
+        }
+      }
+    }
+  }
+  return [...out].sort();
 }
 
 /**

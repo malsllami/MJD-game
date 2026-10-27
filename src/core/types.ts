@@ -74,6 +74,13 @@ export interface WorldSettings {
   /** مبنى الهندسة ونسبة تكلفة النقل حين يعمل / The engineering building and the move cost percentage while it runs */
   engineeringBuilding: string;
   engineeringMoveCostPercent: number;
+  /** إنتاج المزرعة والحظيرة على أرض غير خصبة بالمئة / A farm's and barn's output on non-fertile land, in percent */
+  plainFarmPercent: number;
+  /** البرك الطبيعية حول القرية الأولى، وأبعد مسافة للأرض الخصبة عن الماء / Natural ponds around the first village, and fertile land's farthest distance from water */
+  frontierPonds: number;
+  fertileWaterDistance: number;
+  /** احتمال الأرض الخصبة بعيدًا عن الماء بالمئة من احتمالها قربه / Fertile land's chance away from water, as a percent of its chance near it */
+  fertileAwayPercent: number;
 }
 
 /** المنطقة المقترحة للمبنى / A building's suggested zone */
@@ -118,6 +125,8 @@ export interface FrontierResource {
   minLevel: number;
   minRichness: number;
   maxRichness: number;
+  /** يرجح ظهوره قرب الماء، وبعيدًا عنه باحتمال أقل / Likelier near water, less likely away from it */
+  nearWater: boolean;
 }
 
 /** قطعة غابة يجري قطعها / A forest parcel being cleared */
@@ -128,6 +137,8 @@ export interface Clearing {
   completesAt: number;
   /** ما سيكشفه القطع، يُسحب عند بدئه ويُحفظ (null أرض فارغة؛ يغيب في حفظ أقدم) / What it reveals, drawn at its start and kept (null empty land; absent in older saves) */
   result?: Deposit | null;
+  /** حصة التوسع التي يُحسب منها / The expansion pool it counts against */
+  pool?: string;
 }
 
 /** نوع تضاريس وشروط تصنيف المربع إليه / Terrain type and the rule that assigns tiles to it */
@@ -211,8 +222,10 @@ export interface GovernmentLevel {
   /** طراز سور القرية، أو null بلا سور / The village wall look, or null for no wall */
   wallStyle: WallStyle | null;
   description: string;
-  /** مجموع قطع الغابة المسموح بقطعها حتى هذا المستوى، أو null بلا حد / The total forest parcels clearable up to this level, or null for no limit */
+  /** قطع الغابة المسموح بقطعها في حصة هذا المستوى، أو null بلا حد / The forest parcels clearable within this level's pool, or null for no limit */
   expansionParcels: number | null;
+  /** مجموعة الحصة: المستويات ذات المجموعة نفسها تتشارك حصة واحدة / The pool: levels of the same pool share one quota */
+  expansionPool: string;
 }
 
 /** طراز شكل المبنى حسب مستواه / A building's look by its level */
@@ -332,6 +345,8 @@ export interface World {
   /** مراكز المناطق المسطحة المقترحة للعاصمة / Centres of the flat zones offered as capital sites */
   basins: { x: number; z: number }[];
   deposits: Deposit[];
+  /** مربعات البرك الطبيعية "x,z" (لا يُبنى عليها) / Natural pond tiles "x,z" (nothing is built on them) */
+  ponds: string[];
 }
 
 /** مبنى موضوع على مربع / A building placed on a tile */
@@ -394,8 +409,10 @@ export interface GameState {
   /** قطع الغابة الجارية، والمكامن التي كشفها القطع (تغيب في حفظ أقدم) / Running forest clearings, and the deposits clearing revealed (absent in older saves) */
   clearings?: Clearing[];
   foundDeposits?: Deposit[];
-  /** عدد قطع الغابة المكتملة (لحصة التوسع) / The number of completed forest parcels (for the expansion quota) */
+  /** عدد قطع الغابة المكتملة قبل الحصص المستقلة (يُحسب من الحصة الأولى) / Completed parcels before separate pools (counted in the first pool) */
   clearedParcels?: number;
+  /** قطع الغابة المكتملة لكل حصة توسع / Completed forest parcels per expansion pool */
+  clearedByPool?: Record<string, number>;
   /** الشعلات في نقاط حرة (تغيب في حفظ أقدم) / Torches at free points (absent in older saves) */
   torches?: PlacedTorch[];
   /** آخر وقت حُسب عنده الإنتاج / Last time production was applied */

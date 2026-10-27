@@ -40,6 +40,7 @@ import { TileSetFill } from '../world/tile-set-fill';
 import { TileSetOutline } from '../world/tile-set-outline';
 import { Traffic } from '../world/traffic';
 import { VillageWall } from '../world/village-wall';
+import { drawPonds } from '../world/ponds';
 import type { GameSession } from './game-session';
 
 const TICK_MS = 250;
@@ -103,6 +104,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const traffic = new Traffic(game.scene, world, game.library);
   const walls = new WallNetwork(game.scene, world, byId);
   const villageWall = new VillageWall(game.scene, world, byId, game.dayNight.lights, game.shadows);
+  drawPonds(game.scene, world);
   const animals = new Animals(game.scene, world, game.library, game.shadows);
   const models = new BuildingModels(
     game.scene, world, game.library, byId, game.shadows,
@@ -715,7 +717,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     const model = (id: string) => byId.get(id)?.model;
     const stone = state.buildings.filter((b) => model(b.buildingId) === 'paving-stone');
     game.ground?.paint({
-      dirt: [...(compoundTiles > 1 ? [] : [state.settlement]), ...state.buildings.filter((b) => model(b.buildingId) !== 'field' && model(b.buildingId) !== 'paving-stone').map((b) => ({ x: b.x, z: b.z }))],
+      dirt: [...world.ponds.map((k) => { const [x, z] = k.split(',').map(Number); return { x, z }; }), ...(compoundTiles > 1 ? [] : [state.settlement]), ...state.buildings.filter((b) => model(b.buildingId) !== 'field' && model(b.buildingId) !== 'paving-stone').map((b) => ({ x: b.x, z: b.z }))],
       soil: state.buildings.filter((b) => model(b.buildingId) === 'field').map((b) => ({ x: b.x, z: b.z })),
       roads: state.roads.map((r) => r.edge),
       paving: [...(compoundGround.paving ?? []), ...stone.map((b) => ({ x0: b.x + 0.04, z0: b.z + 0.04, x1: b.x + 0.96, z1: b.z + 0.96 }))],

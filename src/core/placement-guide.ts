@@ -1,7 +1,7 @@
 // مسؤولية الملف: توجيه البناء — المواقع المقترحة لكل مبنى حسب منطقته، وتنبيه يشرح السبب دون أن يمنع البناء
 // File responsibility: placement guidance — suggested spots per building by its zone, and a note explaining why, without blocking the build
 
-import { connectedRoads, hasRoadAccess } from './economy';
+import { connectedRoads, hasRoadAccess, isFertile } from './economy';
 import type { BuildingDef, GameDefinitions, GameState } from './types';
 
 /** بعد المربع عن مبنى الحكم بعدد المربعات (الأقطار تُحسب خطوة) / Tile distance from the government building (diagonals count as one) */
@@ -30,6 +30,8 @@ export function zoneTest(defs: GameDefinitions, state: GameState, building: Buil
     case 'administrative':
       return adminZoneRadius > 0 ? (x, z) => distanceToGovernment(state, x, z) <= adminZoneRadius : null;
     case 'agricultural':
+      // مع الأرض الخصبة يُقترح الخصب، وإلا الأطراف خارج السكن / With fertile land the fertile tiles are suggested, else the outskirts past the homes
+      if (defs.world.plainFarmPercent < 100) return (x, z) => isFertile(state, x, z);
       return residentialZoneRadius > 0 ? (x, z) => distanceToGovernment(state, x, z) > residentialZoneRadius : null;
     case 'industrial': {
       if (industrialRoadDistance <= 0) return null;
@@ -63,6 +65,7 @@ export function placementAdvice(
     case 'administrative':
       return `يُنصح ببناء المباني الإدارية حول ${government} (على بعد ${tiles(adminZoneRadius, format)} أو أقل)`;
     case 'agricultural':
+      if (defs.world.plainFarmPercent < 100) return `الأرض هنا غير خصبة فالإنتاج ${format(defs.world.plainFarmPercent)}٪ فقط؛ ابنِ على أرض خصبة قرب الماء`;
       return `يُنصح ببناء المزارع والحظائر على أطراف القرية بعد ${tiles(residentialZoneRadius, format)} من ${government} لتبقى قربه للمساكن`;
     case 'industrial':
       return `يُنصح ببناء ${building.name} على طريق أو على بعد ${tiles(industrialRoadDistance, format)} منه لتصل إليه البضائع`;

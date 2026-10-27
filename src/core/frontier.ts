@@ -5,7 +5,7 @@
 // varying richness, or empty land
 
 import {
-  annexCost, capacityAt, discoverNearTerritory, isUnderConstruction, missingResources, pay, tileKey, type Check,
+  annexCost, capacityAt, discoverNearTerritory, edgeTiles, isUnderConstruction, missingResources, pay, tileKey, type Check,
 } from './economy';
 import { governmentLevel, governmentLevelOf, isUpgrading } from './levels';
 import { addCapped } from './workforce';
@@ -53,11 +53,42 @@ function freshTiles(defs: GameDefinitions, world: World, state: GameState, tile:
 }
 
 /**
- * حصة التوسع: ما قُطع (المكتمل والجاري) من المسموح حتى مستوى الحكم الحالي؛ allowed قيمتها null بلا حد
- * The expansion quota: what was cleared (done and running) out of what the current government level allows; allowed is null for no limit
+ * حصة التوسع الحالية: مجموعة مستوى الحكم الآن، وما قُطع منها (المكتمل والجاري) من المسموح؛ allowed قيمتها null بلا حد.
+ * المستويات 1–3 تتشارك مجموعة، وكل مستوى بعدها مجموعة مستقلة، فلا يُضاف ما تبقى من مجموعة إلى أخرى
+ * The current expansion pool: the government level's pool now, and what was cleared from it (done and running) out of what it allows;
+ * allowed is null for no limit. Levels 1–3 share a pool and every later level has its own, so leftovers never carry over
  */
-export function expansionQuota(defs: GameDefinitions, state: GameState, now: number): { used: number; allowed: number | null } {
-  return { used: (state.clearedParcels ?? 0) + runningClearings(state, now).length, allowed: governmentLevel(defs, state).expansionParcels };
+export function expansionQuota(defs: GameDefinitions, state: GameState, now: number): { pool: string; used: number; allowed: number | null } {
+  const level = governmentLevel(defs, state);
+  const pool = level.expansionPool;
+  // ما قُطع قبل الحصص المستقلة يُحسب من الحصة الأولى / What was cleared before separate pools counts in the first pool
+  const legacy = pool === defs.governmentLevels[0].expansionPool ? state.clearedParcels ?? 0 : 0;
+  const done = state.clearedByPool?.[pool] ?? 0;
+  const running = runningClearings(state, now).filter((c) => (c.pool ?? pool) === pool).length;
+  return { pool, used: legacy + done + running, allowed: level.expansionParcels };
+}
+
+/**
+ * مربعات الماء: البرك الطبيعية، والبحيرات والجداول التي بناها اللاعب
+ * Water tiles: the natural ponds, and the lakes and streams the player built
+ */
+export function waterTiles(defs: GameDefinitions, world: World, state: GameState): Set<string> {
+  const out = new Set(world.ponds);
+  const model = (id: string) => defs.buildings.find((b) => b.id === id)?.model;
+  for (const b of state.buildings) if (model(b.buildingId) === 'pond') out.add(tileKey(b.x, b.z));
+  for (const w of state.walls) if (model(w.buildingId) === 'stream') for (const [x, z] of edgeTiles(w.edge)) out.add(tileKey(x, z));
+  return out;
+}
+
+/** هل القطعة قريبة من الماء؟ / Is the parcel near water? */
+function nearWater(defs: GameDefinitions, world: World, state: GameState, tiles: string[]): boolean {
+  const water = waterTiles(defs, world, state);
+  const d = defs.world.fertileWaterDistance;
+  return tiles.some((k) => {
+    const [x, z] = k.split(',').map(Number);
+    for (let dz = -d; dz <= d; dz++) for (let dx = -d; dx <= d; dx++) if (water.has(tileKey(x + dx, z + dz))) return true;
+    return false;
+  });
 }
 
 /** هل يمكن بدء قطع قطعة الغابة التي فيها المربع؟ / Can clearing the tile's forest parcel start? */
@@ -86,11 +117,12 @@ export function startClearing(state: GameState, defs: GameDefinitions, world: Wo
   const tiles = freshTiles(defs, world, state, tile).map((t) => tileKey(t.x, t.z));
   // نتيجة البقعة تُسحب الآن وتُحفظ، فلا يغيرها انتظار ترقية ولا إعادة تحميل / The spot's result is drawn now and kept, so neither waiting for an upgrade nor reloading changes it
   const taken = [...(state.foundDeposits ?? []), ...(state.clearings ?? []).flatMap((c) => (c.result ? [c.result] : []))];
-  const result = drawDeposit(defs, world, tiles, governmentLevelOf(defs, state), taken);
+  const result = drawDeposit(defs, world, tiles, governmentLevelOf(defs, state), taken, nearWater(defs, world, state, tiles));
+  const { pool } = expansionQuota(defs, state, now);
   return {
     ...state,
     resources: pay(state.resources, annexCost(defs)),
-    clearings: [...(state.clearings ?? []), { uid, tiles, startedAt: now, completesAt: now + defs.world.clearingSeconds * 1000, result }],
+    clearings: [...(state.clearings ?? []), { uid, tiles, startedAt: now, completesAt: now + defs.world.clearingSeconds * 1000, result, pool }],
   };
 }
 
@@ -106,11 +138,15 @@ export function settleClearings(state: GameState, defs: GameDefinitions, world: 
   const found = [...(state.foundDeposits ?? [])];
   const resources = { ...state.resources };
   const woodCap = capacityAt(state, defs, now).wood ?? Infinity;
+  const byPool = { ...(state.clearedByPool ?? {}) };
+  const currentPool = governmentLevel(defs, state).expansionPool;
   for (const c of done) {
+    const pool = c.pool ?? currentPool;
+    byPool[pool] = (byPool[pool] ?? 0) + 1;
     for (const k of c.tiles) territory.add(k);
     resources.wood = addCapped(resources.wood ?? 0, defs.world.clearingWood, woodCap);
     // حفظ أقدم بلا نتيجة محفوظة يُسحب له الآن / An older save without a kept result draws it now
-    const deposit = c.result !== undefined ? c.result : drawDeposit(defs, world, c.tiles, level, found);
+    const deposit = c.result !== undefined ? c.result : drawDeposit(defs, world, c.tiles, level, found, nearWater(defs, world, state, c.tiles));
     if (deposit) found.push(deposit);
   }
   const next: GameState = {
@@ -119,7 +155,7 @@ export function settleClearings(state: GameState, defs: GameDefinitions, world: 
     territory: [...territory],
     clearings: (state.clearings ?? []).filter((c) => now < c.completesAt),
     foundDeposits: found,
-    clearedParcels: (state.clearedParcels ?? 0) + done.length,
+    clearedByPool: byPool,
   };
   return discoverNearTerritory(next, defs, world);
 }
@@ -138,12 +174,14 @@ function random(text: string): number {
  * Draws a deposit for the parcel from the types the government level allows; the rest of the hundred is empty land. The draw is stable
  * for the same world, parcel and level
  */
-export function drawDeposit(defs: GameDefinitions, world: World, tiles: string[], level: number, existing: Deposit[] = []): Deposit | null {
+export function drawDeposit(defs: GameDefinitions, world: World, tiles: string[], level: number, existing: Deposit[] = [], byWater = false): Deposit | null {
   if (!tiles.length) return null;
   const seed = `${world.settings.seed}|${[...tiles].sort()[0]}|${level}`;
   const roll = random(`${seed}|kind`) * 100;
   let sum = 0;
-  const pick = defs.frontierResources.filter((r) => r.minLevel <= level).find((r) => roll < (sum += r.chance));
+  // ما يرجح قرب الماء (الأرض الخصبة) يقل احتماله بعيدًا عنه / What favours water (fertile land) is less likely away from it
+  const chance = (r: { chance: number; nearWater: boolean }) => (r.nearWater && !byWater ? (r.chance * defs.world.fertileAwayPercent) / 100 : r.chance);
+  const pick = defs.frontierResources.filter((r) => r.minLevel <= level).find((r) => roll < (sum += chance(r)));
   const type = pick && defs.deposits.find((d) => d.id === pick.depositTypeId);
   if (!pick || !type) return null;
   const centre = tiles[Math.floor(random(`${seed}|centre`) * tiles.length)];

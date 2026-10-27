@@ -33,6 +33,7 @@ export function foundVillage(state: GameState, defs: GameDefinitions, world: Wor
   if (road) current = layRoad(current, defs, world, road, mainRoad(current), now, uid);
 
   // المنشآت المرتبطة بمكمن أولًا لأن أماكنها محدودة، ثم المساكن بعد أعمالها / Deposit facilities first since their spots are few, then homes after their work
+  current = fertileStart(current, defs, world);
   const ordered = [...starters.filter((b) => b.requiresDeposit), ...starters.filter((b) => !b.requiresDeposit && !b.housing), ...starters.filter((b) => !b.requiresDeposit && b.housing)];
   for (const def of ordered) {
     const tile = bestTile(current, defs, world, def, now);
@@ -79,6 +80,31 @@ function buildWall(state: GameState, defs: GameDefinitions, now: number, uid: ()
 }
 
 /**
+ * أرض خصبة حول بركة القرية الأولى بغنى متوسط من جدول موارد الغابة، فتقوم المزرعة الابتدائية عليها
+ * Fertile land around the first village's pond at the forest resources table's middle richness, so the starting farm stands on it
+ */
+function fertileStart(state: GameState, defs: GameDefinitions, world: World): GameState {
+  const rule = defs.frontierResources.find((r) => r.nearWater);
+  const type = rule && defs.deposits.find((d) => d.id === rule.depositTypeId);
+  const owned = new Set(state.territory);
+  const pond = world.ponds.find((k) => owned.has(k));
+  if (!rule || !type || !pond) return state;
+  const [px, pz] = pond.split(',').map(Number);
+  const taken = new Set(world.deposits.flatMap((d) => d.tiles));
+  const tiles: string[] = [];
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const k = tileKey(px + dx, pz + dz);
+      if (owned.has(k) && !world.ponds.includes(k) && !taken.has(k) && !isSettlementTile(state, px + dx, pz + dz)) tiles.push(k);
+    }
+  }
+  if (!tiles.length) return state;
+  const richness = Math.round(((rule.minRichness + rule.maxRichness) / 2) * 100) / 100;
+  const deposit = { id: `found-${type.id}-start`, typeId: type.id, resourceId: type.resourceId, x: px, z: pz, tiles, richness };
+  return { ...state, foundDeposits: [...(state.foundDeposits ?? []), deposit] };
+}
+
+/**
  * الطريق الرئيسي: من منتصف واجهة المجمع (نحو ‎-z‎ حيث تتجه ساحته) مستقيمًا إلى حدود القرية، وعنده تقوم البوابة
  * The main road: from the middle of the compound's front (toward -z, where its forecourt faces) straight to the village edge, where the gate stands
  */
@@ -115,7 +141,7 @@ function bestTile(state: GameState, defs: GameDefinitions, world: World, def: Bu
   for (const key of state.territory) {
     const [x, z] = key.split(',').map(Number);
     const tile = world.tiles[z * world.settings.tilesX + x];
-    if (isSettlementTile(state, x, z) || buildingAt(state, x, z) || steps({ x, z }, state.settlement) <= ring) continue;
+    if (isSettlementTile(state, x, z) || buildingAt(state, x, z) || world.ponds.includes(key) || steps({ x, z }, state.settlement) <= ring) continue;
     if (def.requiresDeposit ? !depositAt(world, state, x, z, def.requiresDeposit) : !def.allowedTerrain.includes(tile.terrainId)) continue;
     const nearest = Math.min(SPREAD, ...state.buildings.map((b) => steps(b, { x, z })));
     let score = (inZone && inZone(x, z) ? 100 : 0) + nearest * 10 - steps({ x, z }, state.settlement) * 0.5;

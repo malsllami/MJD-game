@@ -243,7 +243,7 @@ export class BuildingPanel {
     const crew = staffingAt(state, defs, now).get(placed.uid);
     const efficiency = buildingStatus(placed, state, defs, now).kind === 'operating' ? crew?.efficiency ?? 1 : 0;
     // كامل الطاقة يشمل مضاعف مستوى المبنى / Full capacity includes the building's level factor
-    const factor = factorsOf(defs, placed, now).production * richnessOf(state, placed, def);
+    const factor = factorsOf(defs, placed, now).production * richnessOf(state, placed, def, defs);
     const resource = (id: string) => defs.resources.find((r) => r.id === id);
     const flows = [
       ...Object.entries(def.production).map(([id, n]) => [`${icon(resource(id)?.icon ?? id)} ${esc(resource(id)?.name ?? id)}`, signed(n * factor * efficiency), formatNumber(n * factor)]),
