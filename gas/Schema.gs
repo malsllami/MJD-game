@@ -60,6 +60,10 @@ const WORLD_SETTINGS = [
   // إضافة الاقتصاد الحي (addLivingEconomy) / Living economy addition
   { key: 'مبنى السوق', field: 'marketBuilding', type: 'string', description: 'معرف المبنى الذي تتم فيه التجارة بيعًا وشراءً' },
   { key: 'مبنى التطوير', field: 'developmentBuilding', type: 'string', description: 'معرف المبنى الذي يعرض مهام الانتقال إلى المرحلة التالية' },
+  // إضافة توجيه البناء (addPlacementGuidance) / Placement guidance addition
+  { key: 'نصف قطر المنطقة الإدارية', field: 'adminZoneRadius', type: 'number', description: 'المباني الإدارية يُقترح وضعها على هذا البعد من مبنى الحكم أو أقرب، بعدد المربعات' },
+  { key: 'نصف قطر المنطقة السكنية', field: 'residentialZoneRadius', type: 'number', description: 'المساكن يُقترح وضعها على هذا البعد من مبنى الحكم أو أقرب، والمزارع خارجه' },
+  { key: 'بعد الورش عن الطريق', field: 'industrialRoadDistance', type: 'number', description: 'الورش والمخازن يُقترح وضعها على طريق أو على هذا البعد منه بعدد المربعات' },
 ];
 
 /**
@@ -137,6 +141,9 @@ const TABLES = [
       { name: 'عدد العمال', field: 'workers', type: 'number' },
       { name: 'السكان المطلوبون', field: 'requiredPopulation', type: 'number' },
       { name: 'المباني المطلوبة', field: 'requiredBuildings', type: 'list' },
+      // إضافة توجيه البناء (addPlacementGuidance): residential أو administrative أو industrial أو agricultural أو فارغ
+      // Placement guidance addition: residential, administrative, industrial, agricultural or empty
+      { name: 'منطقة الاقتراح', field: 'zone', type: 'string' },
     ],
   },
   {

@@ -13,6 +13,7 @@ import { startGame } from './game/game-controller';
 import { GameSession } from './game/game-session';
 import { createDefinitionsSource } from './services/definitions-service';
 import { SaveService, worldSignature } from './services/save-service';
+import { mountRotateHint } from './ui/rotate-hint';
 import { chooseStartSite } from './ui/start-picker';
 import { createGameScene } from './world/game-scene';
 import { resolveQuality } from './world/quality';
@@ -24,6 +25,7 @@ import { resolveQuality } from './world/quality';
 async function bootstrap(): Promise<void> {
   const canvas = document.querySelector<HTMLCanvasElement>('#world')!;
   const hudRoot = document.querySelector<HTMLElement>('#hud')!;
+  mountRotateHint(document.body);
 
   const source = createDefinitionsSource(APP_CONFIG.definitionsSource, APP_CONFIG.apiUrl, APP_CONFIG.apiTimeoutMs);
   const defs = await source.load();

@@ -55,7 +55,14 @@ export interface WorldSettings {
   marketBuilding: string;
   /** معرف مبنى التطوير، أو فارغ / The development building's id, or empty */
   developmentBuilding: string;
+  /** توجيه البناء بعدد المربعات؛ صفر يلغي اقتراح تلك المنطقة / Placement guidance in tiles; zero turns that zone's suggestion off */
+  adminZoneRadius: number;
+  residentialZoneRadius: number;
+  industrialRoadDistance: number;
 }
+
+/** المنطقة المقترحة للمبنى / A building's suggested zone */
+export type PlacementZone = 'residential' | 'administrative' | 'industrial' | 'agricultural';
 
 export type WorldMode = 'flat' | 'continent';
 
@@ -180,6 +187,8 @@ export interface BuildingDef {
   requiredBuildings: string[];
   /** سعة التخزين التي يضيفها لكل مورد / Storage capacity it adds per resource */
   storage: Record<string, number>;
+  /** المنطقة المقترحة لبنائه، أو null بلا اقتراح / Where it is suggested to go, or null for no suggestion */
+  zone: PlacementZone | null;
 }
 
 /** وزارة في لوحة الحكم / Government ministry */

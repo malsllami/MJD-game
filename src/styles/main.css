@@ -250,6 +250,7 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
 .confirm-text b { font-size: 14px; color: var(--gold-soft); }
 .confirm-text small { color: var(--ink-soft); }
 .confirm-text small.bad { color: #f5a397; white-space: normal; max-width: 220px; }
+.confirm-text small.warn { color: #f3c470; white-space: normal; max-width: 220px; }
 .confirm-btn { width: 44px; height: 44px; border-radius: 50%; border: 0; font-size: 20px; font-weight: 700; display: grid; place-items: center; }
 .confirm-btn.yes { background: #3fae6b; color: #fff; }
 .confirm-btn.yes:disabled { background: #3c4a46; color: #8a9a93; cursor: not-allowed; }
@@ -299,6 +300,21 @@ button:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px;
 }
 .toast i { width: 8px; height: 8px; flex: none; border-radius: 50%; background: #7ee0a1; box-shadow: 0 0 10px #7ee0a1; }
 .panel-collapsed .toast { left: 50%; }
+
+/* ===== تنبيه تدوير الجوال: يظهر بالطول فقط ولا يمنع اللعب / Rotate hint: portrait phones only, never blocks play ===== */
+.rotate-hint {
+  position: fixed; z-index: 20; left: 50%; top: calc(100px + var(--safe-t)); transform: translateX(-50%); width: min(340px, calc(100vw - 32px));
+  box-sizing: border-box; display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px 12px; padding: 12px 14px;
+  border-radius: 14px; background: var(--glass-solid); border: 1px solid var(--line);
+}
+.rotate-hint[hidden] { display: none; }
+.rotate-hint p { margin: 0; font-size: 13px; font-weight: 700; line-height: 1.5; color: var(--gold-soft); }
+.rotate-hint .text-btn { grid-column: 1 / -1; justify-self: end; padding: 6px 12px; font-size: 12px; }
+.rotate-icon { width: 16px; height: 26px; margin: 0 5px; border: 2px solid var(--gold); border-radius: 4px; }
+@media (prefers-reduced-motion: no-preference) {
+  .rotate-icon { animation: rotate-phone 2.4s ease-in-out infinite; }
+  @keyframes rotate-phone { 0%, 30% { transform: rotate(0); } 55%, 100% { transform: rotate(-90deg); } }
+}
 
 .fatal { position: fixed; inset: auto 16px 40% 16px; text-align: center; padding: 16px; border-radius: 14px; background: var(--glass-solid); border: 1px solid var(--line); }
 

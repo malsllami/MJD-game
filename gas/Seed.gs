@@ -60,6 +60,9 @@ const COMPACT_VILLAGE = {
   worldMode: 'flat',
   marketBuilding: 'market',
   developmentBuilding: 'development_center',
+  adminZoneRadius: 2,
+  residentialZoneRadius: 4,
+  industrialRoadDistance: 1,
 };
 
 /**
@@ -153,6 +156,21 @@ const SEED_JOBS = {
   farm_storage: ['', 0, 0, 'farm'], materials_storage: ['', 0, 10, ''], bank: ['', 0, 40, 'market'],
   village_garden: ['', 0, 25, ''], wooden_wall: ['', 0, 30, 'development_center'], gate: ['', 0, 30, 'development_center'],
   pond: ['', 0, 10, ''], stream: ['', 0, 10, ''],
+};
+
+/**
+ * منطقة الاقتراح لكل مبنى: السكن قرب مبنى الحكم، والإدارة حوله، والورش والمخازن على الطرق، والمزارع على الأطراف.
+ * المبنى غير المذكور بلا اقتراح (الطرق والأسوار ومنشآت المكامن وغيرها)
+ * Suggested zone per building: housing near the government building, administration around it, workshops and stores on roads,
+ * farms on the outskirts. Unlisted buildings get no suggestion (roads, walls, deposit facilities and others)
+ */
+const SEED_ZONES = {
+  houses: 'residential', tent: 'residential', apartments: 'residential', farmers_house: 'residential', carpenters_house: 'residential',
+  smiths_house: 'residential', miners_house: 'residential', traders_house: 'residential', herders_house: 'residential',
+  development_center: 'administrative', village_center: 'administrative', governor_palace: 'administrative', finance_center: 'administrative',
+  police: 'administrative', civil_defense: 'administrative', school: 'administrative', hospital: 'administrative', military_command: 'administrative',
+  market: 'industrial', farm_storage: 'industrial', materials_storage: 'industrial', bank: 'industrial', factory: 'industrial', power_plant: 'industrial',
+  farm: 'agricultural', livestock: 'agricultural',
 };
 
 /** مباني إضافة الاقتصاد الحي / Buildings of the living economy addition */
@@ -267,6 +285,7 @@ const SEED_ROWS = {
       'الترتيب': i + 1, 'المرحلة المطلوبة': b[6], 'السكان المضافون': b[7], 'النموذج': b[8], 'يتطلب طريق': b[9], 'يتطلب مكمن': b[10] || '',
       'المهنة': (SEED_JOBS[b[0]] || [''])[0], 'عدد العمال': (SEED_JOBS[b[0]] || ['', 0])[1],
       'السكان المطلوبون': (SEED_JOBS[b[0]] || ['', 0, 0])[2], 'المباني المطلوبة': (SEED_JOBS[b[0]] || ['', 0, 0, ''])[3],
+      'منطقة الاقتراح': SEED_ZONES[b[0]] || '',
     };
   }),
   buildingCosts: amounts_('الكمية', [

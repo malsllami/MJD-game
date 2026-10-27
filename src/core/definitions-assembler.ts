@@ -1,7 +1,7 @@
 // مسؤولية الملف: تجميع جداول قاعدة البيانات الخام في تعريفات لعبة كاملة ومرتبة
 // File responsibility: assembles raw database tables into complete, ordered game definitions
 
-import type { DepositType, EntityType, GameDefinitions, Profession, Stage, WorldSettings } from './types';
+import type { DepositType, EntityType, GameDefinitions, PlacementZone, Profession, Stage, WorldSettings } from './types';
 
 /** صف خام بترتيب اختياري / Raw row with optional ordering */
 interface Ordered {
@@ -20,7 +20,7 @@ export interface RawTables {
   buildings: ({
     id: string; name: string; category: string; allowedTerrain: string[]; buildSeconds: number;
     requiresTech: string; stage: string; housing: number | null; model: string; requiresRoad: boolean; requiresDeposit?: string;
-    profession?: string; workers?: number | null; requiredPopulation?: number | null; requiredBuildings?: string[];
+    profession?: string; workers?: number | null; requiredPopulation?: number | null; requiredBuildings?: string[]; zone?: string;
   } & Ordered)[];
   buildingCosts: { buildingId: string; resourceId: string; amount: number | null }[];
   buildingProduction: PerMinuteRow[];
@@ -81,7 +81,19 @@ const BACKWARD_COMPATIBLE: Partial<WorldSettings> = {
   worldMode: 'continent',
   marketBuilding: '',
   developmentBuilding: '',
+  // بلا توجيه بناء / No placement guidance
+  adminZoneRadius: 0,
+  residentialZoneRadius: 0,
+  industrialRoadDistance: 0,
 };
+
+const ZONES: PlacementZone[] = ['residential', 'administrative', 'industrial', 'agricultural'];
+
+/** منطقة معروفة أو null (القيمة الفارغة أو غير المعروفة بلا اقتراح) / A known zone or null (empty or unknown means no suggestion) */
+function zoneOf(raw: string | undefined): PlacementZone | null {
+  const zone = String(raw ?? '').trim().toLowerCase() as PlacementZone;
+  return ZONES.includes(zone) ? zone : null;
+}
 
 /**
  * إعدادات العالم مع قيم التوافق للخوادم القديمة؛ نوع عالم غير معروف يُعامل كقارة
@@ -163,6 +175,7 @@ export function assembleDefinitions(raw: RawTables, version: string): GameDefini
       requiredPopulation: b.requiredPopulation ?? 0,
       requiredBuildings: (b.requiredBuildings ?? []).filter(Boolean),
       storage: storage.get(b.id) ?? {},
+      zone: zoneOf(b.zone),
     })),
     stages,
     deposits: (raw.depositTypes ?? []).map(({ id, name, resourceId, place, count, icon, color }) => ({ id, name, resourceId, place, count: count ?? 0, icon, color })),

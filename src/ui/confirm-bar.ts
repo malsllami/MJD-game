@@ -5,6 +5,10 @@ import type { Vector3 } from '@babylonjs/core';
 import { esc } from '../utils/html';
 import type { ScreenPoint } from '../world/game-scene';
 
+/** هامش الشريط عن حواف الشاشة، والمسافة المحجوزة لشريط الموارد أعلاها / Margin from screen edges, and the room kept for the top bar */
+const EDGE_PX = 8;
+const TOP_CLEARANCE_PX = 56;
+
 export class ConfirmBar {
   private anchor: Vector3 | null = null;
   private onConfirm: () => void = () => {};
@@ -19,10 +23,11 @@ export class ConfirmBar {
   }
 
   /**
-   * إظهار الشريط؛ allowed=false يعطّل ✓ ويعرض السبب بدل التكلفة
-   * Show the bar; allowed=false disables ✓ and shows the reason instead of the cost
+   * إظهار الشريط؛ allowed=false يعطّل ✓ ويعرض السبب بدل التكلفة، وwarning تنبيه لا يمنع التأكيد
+   * Show the bar; allowed=false disables ✓ and shows the reason instead of the cost; warning is a note that does not block confirming
    */
-  show(anchor: Vector3 | null, title: string, detail: string, allowed: boolean, onConfirm: () => void, onCancel: () => void, hint = ''): void {
+  show(anchor: Vector3 | null, title: string, detail: string, allowed: boolean, onConfirm: () => void, onCancel: () => void, hint = '', warning = ''): void {
+    const warn = warning ? `<small class="warn">${esc(warning)}</small>` : '';
     this.anchor = anchor;
     this.onConfirm = onConfirm;
     this.onCancel = onCancel;
@@ -32,7 +37,7 @@ export class ConfirmBar {
       this.el.style.transform = '';
       this.el.style.visibility = 'visible';
       this.el.innerHTML = `
-        <div class="confirm-text"><b>${esc(title)}</b><small class="${allowed ? '' : 'bad'}">${esc(detail)}</small></div>
+        <div class="confirm-text"><b>${esc(title)}</b><small class="${allowed ? '' : 'bad'}">${esc(detail)}</small>${warn}</div>
         <div class="confirm-actions">
           <button type="button" class="text-btn cancel" data-confirm="no">إلغاء</button>
           <button type="button" class="text-btn ok" data-confirm="yes" ${allowed ? '' : 'disabled'}>تأكيد</button>
@@ -42,7 +47,7 @@ export class ConfirmBar {
       return;
     }
     this.el.innerHTML = `
-      <div class="confirm-text"><b>${esc(title)}</b><small class="${allowed ? '' : 'bad'}">${esc(detail)}</small></div>
+      <div class="confirm-text"><b>${esc(title)}</b><small class="${allowed ? '' : 'bad'}">${esc(detail)}</small>${warn}</div>
       <button type="button" class="confirm-btn no" data-confirm="no" aria-label="إلغاء">✕</button>
       <button type="button" class="confirm-btn yes" data-confirm="yes" aria-label="تأكيد البناء" ${allowed ? '' : 'disabled'}>✓</button>`;
     this.el.hidden = false;
@@ -63,6 +68,11 @@ export class ConfirmBar {
     if (!this.anchor) return;
     const p = this.project(this.anchor);
     this.el.style.visibility = p.visible ? 'visible' : 'hidden';
-    this.el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, calc(-100% - 14px))`;
+    // يبقى الشريط كاملًا داخل الشاشة: يُزاح أفقيًا عند الحافة، وينزل تحت الموقع إن لم يتسع فوقه
+    // The bar stays fully on screen: shifted sideways at an edge, and dropped below the spot when it does not fit above
+    const { offsetWidth: w, offsetHeight: h } = this.el;
+    const x = Math.min(Math.max(p.x, w / 2 + EDGE_PX), window.innerWidth - w / 2 - EDGE_PX);
+    const below = p.y - h - 14 < TOP_CLEARANCE_PX;
+    this.el.style.transform = `translate(${x}px, ${p.y}px) translate(-50%, ${below ? '14px' : 'calc(-100% - 14px)'})`;
   }
 }

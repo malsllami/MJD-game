@@ -351,6 +351,50 @@ describe('Apps Script: الاقتصاد الحي / living economy', () => {
   });
 });
 
+describe('Apps Script: توجيه البناء / placement guidance', () => {
+  const fresh = seedDefinitions();
+
+  /** قاعدة بيانات قبل الإضافة: بلا عمود منطقة الاقتراح ولا إعدادات المناطق / A database before the addition */
+  function beforeGuidance() {
+    const { gas, ss } = loadGas();
+    gas.setupDatabase();
+    const sheet = ss.sheets.get('المباني')!;
+    const c = sheet.values[0].indexOf('منطقة الاقتراح');
+    sheet.values = sheet.values.map((row) => row.filter((_, i) => i !== c));
+    const keys = ['نصف قطر المنطقة الإدارية', 'نصف قطر المنطقة السكنية', 'بعد الورش عن الطريق'];
+    const world = ss.sheets.get('إعدادات العالم')!;
+    world.values = world.values.filter((row) => !keys.includes(row[0] as string));
+    return { gas: loadGas(ss).gas, ss };
+  }
+
+  it('الخادم الأقدم يعمل بلا اقتراحات / an older server runs with no suggestions', () => {
+    const defs = definitionsFrom(beforeGuidance().gas);
+    expect(defs.buildings.every((b) => b.zone === null)).toBe(true);
+    expect(defs.world.residentialZoneRadius).toBe(0);
+  });
+
+  it('الإضافة تطابق قاعدة بيانات جديدة / the addition matches a fresh database', () => {
+    const { gas } = beforeGuidance();
+    gas.addPlacementGuidance();
+    expect(definitionsFrom(gas)).toEqual(fresh);
+    expect(fresh.buildings.find((b) => b.id === 'houses')!.zone).toBe('residential');
+    expect(fresh.buildings.find((b) => b.id === 'road')!.zone).toBeNull();
+  });
+
+  it('تشغيلها مرتين لا يغير شيئًا ولا تمس قيمة كتبها المدير / re-running changes nothing and keeps admin values', () => {
+    const { gas, ss } = beforeGuidance();
+    gas.addPlacementGuidance();
+    const sheet = ss.sheets.get('المباني')!;
+    const c = sheet.values[0].indexOf('منطقة الاقتراح');
+    sheet.values[sheet.values.findIndex((r) => r[0] === 'farm')][c] = 'industrial';
+    const snapshot = JSON.stringify([...ss.sheets.values()].map((s) => s.values));
+    const again = loadGas(ss).gas;
+    again.addPlacementGuidance();
+    expect(JSON.stringify([...ss.sheets.values()].map((s) => s.values))).toBe(snapshot);
+    expect(definitionsFrom(again).buildings.find((b) => b.id === 'farm')!.zone).toBe('industrial');
+  });
+});
+
 describe('Apps Script: البداية المتقاربة / compact start', () => {
   it('تصغّر حدود المراحل والأرض المسطحة وقطع الضم ولا تمس غيرها / shrinks stage borders, the flat zone and annex parcels only', () => {
     const { gas } = loadGas();

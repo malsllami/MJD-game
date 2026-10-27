@@ -29,6 +29,8 @@ export const APP_CONFIG = {
   numberingSystem: 'arab',
   /** نفس شرط التحول لتخطيط الجوال في main.css / Same mobile-layout condition as main.css */
   mobileLayoutQuery: '(max-width: 899px), (pointer: coarse) and (orientation: portrait), (pointer: coarse) and (max-height: 500px)',
+  /** جهاز لمس بالطول: يظهر تنبيه تدوير الجهاز / A touch device held upright: the rotate hint shows */
+  portraitPhoneQuery: '(pointer: coarse) and (orientation: portrait)',
   camera: {
     /** تقريب حتى مستوى الشارع / Zoom down to street level */
     minRadius: 6,

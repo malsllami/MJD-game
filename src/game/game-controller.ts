@@ -10,6 +10,7 @@ import {
   buildingAt, buildingStatus, checkMove, checkPlacement, cornerPath, costShare, depositAt, edgeTiles, housingCapacity, isRoad,
   autoRoadPath, capacityAt, isSettlementTile, isUnderConstruction, isWall, netRates, placeWallPath, wallAt, nextStage, pathEdges, placeRoadPath, roadAt, stageById, surveyCost, tileKey,
 } from '../core/economy';
+import { placementAdvice, zoneTest } from '../core/placement-guide';
 import type { BuildingDef, ContextCommand, EntityType, GameDefinitions, Tile, World } from '../core/types';
 import { tileAtPoint } from '../core/world-gen';
 import { BuildBar } from '../ui/build-bar';
@@ -32,6 +33,7 @@ import { WallNetwork } from '../world/wall-network';
 import { Animals } from '../world/animals';
 import { createSettlementModel } from '../world/settlements';
 import { Thumbnails } from '../world/thumbnails';
+import { TileSetFill } from '../world/tile-set-fill';
 import { TileSetOutline } from '../world/tile-set-outline';
 import { Traffic } from '../world/traffic';
 import type { GameSession } from './game-session';
@@ -73,6 +75,8 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
   const radial = new RadialMenu(hud.radial, (p) => game.project(p), () => mobile.matches);
   const borders = new TileSetOutline(game.scene, world, new Color3(0.9, 0.8, 0.5), 0.35);
   const allowed = new TileSetOutline(game.scene, world, new Color3(0.45, 0.95, 0.6), 0.45);
+  // المواقع المقترحة للمبنى ملوّنة بالذهبي داخل المسموح / The building's suggested spots tinted gold within the allowed ones
+  const suggested = new TileSetFill(game.scene, world, new Color3(0.98, 0.8, 0.35), 0.22, 0.1);
   // شبكة خضراء تظهر عند البناء والرسم، أو دائمًا بزر الشبكة / A green grid shown while building and drawing, or always via the grid button
   const grid = new GridLines(game.scene, world, new Color3(0.62, 1, 0.55), 0.3, 0.12);
   const roadPreview = new GridLines(game.scene, world, new Color3(1, 0.85, 0.35), 1, 0.3);
@@ -192,12 +196,18 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     refreshAllowed();
   }
 
-  /** المربعات المسموحة للوضع الحالي باللون الأخضر / Allowed tiles for the current mode, in green */
+  /**
+   * المربعات المسموحة للوضع الحالي بإطار أخضر، والمقترحة منها لمنطقة المبنى بلون ذهبي
+   * Allowed tiles for the current mode in a green outline, and those suggested for the building's zone tinted gold
+   */
   function refreshAllowed(): void {
     const now = Date.now();
     const state = session.state;
     const current = mode;
-    if (current.kind !== 'place' && current.kind !== 'move') return allowed.clear();
+    if (current.kind !== 'place' && current.kind !== 'move') {
+      suggested.clear();
+      return allowed.clear();
+    }
     const fits = (key: string): boolean => {
       const [x, z] = key.split(',').map(Number);
       const tile = tileAt(x, z);
@@ -206,7 +216,11 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
       if (isSettlementTile(state, x, z) || buildingAt(state, x, z) || !b.allowedTerrain.includes(tile.terrainId)) return false;
       return !b.requiresDeposit || !!depositAt(world, state, x, z, b.requiresDeposit);
     };
-    allowed.show(state.territory.filter(fits));
+    const fitting = state.territory.filter(fits);
+    allowed.show(fitting);
+    const def = current.kind === 'place' ? current.building : byId.get(state.buildings.find((b) => b.uid === current.uid)?.buildingId ?? '');
+    const inZone = def ? zoneTest(defs, state, def, now) : null;
+    suggested.show(inZone ? fitting.filter((k) => inZone(...(k.split(',').map(Number) as [number, number]))) : []);
   }
 
   /** اختيار بطاقة: طريق للرسم، أو مبنى يُعاين على المربع المحدد أو ينتظر مربعًا / Card pick: a road to draw, or a building */
@@ -222,7 +236,8 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     setMode({ kind: 'place', building: b });
     if (target && session.state.territory.includes(tileKey(target.x, target.z)) && !buildingAt(session.state, target.x, target.z)) return previewBuild(b, target);
     const hint = b.requiresDeposit ? ` على ${defs.deposits.find((d) => d.resourceId === b.requiresDeposit)?.name ?? 'مكمن'} مكتشف` : '';
-    toast.show(`اختر مربعًا أخضر${hint} لمعاينة ${b.name}، ثم أكّد بعلامة ✓`);
+    const zone = zoneTest(defs, session.state, b, Date.now()) ? '؛ المربعات الذهبية هي المقترحة' : '';
+    toast.show(`اختر مربعًا أخضر${hint} لمعاينة ${b.name}${zone}، ثم أكّد بعلامة ✓`, zone ? 5000 : 3500);
   }
 
   /** معاينة المبنى على المربع مع شريط تأكيد / Preview the building on the tile with a confirmation bar */
@@ -236,10 +251,14 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     const roadCost = road ? Object.fromEntries(Object.entries(road.cost).map(([id, n]) => [id, n * (planned?.placed ?? 0)])) : {};
     const check = checkPlacement(defs, world, autoRoad.length ? planned!.state : session.state, b, tile, now);
     roadPreview.showEdges(autoRoad, new Color3(1, 0.85, 0.35));
-    ghost.show(partsFor(styleOf(b), `preview-${b.id}`, era()), tile, check.ok);
+    // موقع مسموح لكنه خارج المنطقة المقترحة: تنبيه يشرح السبب ويبقى البناء متاحًا
+    // An allowed spot outside the suggested zone: a note explains why and building stays available
+    const advice = check.ok ? placementAdvice(defs, session.state, b, tile, now, formatNumber) : null;
+    ghost.show(partsFor(styleOf(b), `preview-${b.id}`, era()), tile, !check.ok ? 'bad' : advice ? 'warn' : 'ok');
+    if (advice) toast.show(advice, 6000);
     const roadText = autoRoad.length ? ` · طريق تلقائي ${formatNumber(planned!.placed)} قطعة (${costText(roadCost)})` : '';
     const detail = check.ok ? `${formatDuration(b.buildSeconds)} · ${costText(b.cost)}${roadText}` : (planned?.stoppedBy ?? check.reason);
-    confirm.show(labelAbove(tile.x, tile.z, 0.6), b.name, detail, check.ok, () => tryBuild(b, tile, autoRoad), clearPreview);
+    confirm.show(labelAbove(tile.x, tile.z, 0.6), b.name, detail, check.ok, () => tryBuild(b, tile, autoRoad), clearPreview, '', advice ? 'موقع غير مقترح' : '');
   }
 
   function clearPreview(): void {
@@ -358,7 +377,9 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
     const def = placed && byId.get(placed.buildingId);
     if (!placed || !def) return setMode({ kind: 'idle' });
     const check = checkMove(defs, world, session.state, uid, tile, Date.now());
-    ghost.show(partsFor(styleOf(def), uid, era()), tile, check.ok);
+    const advice = check.ok ? placementAdvice(defs, session.state, def, tile, Date.now(), formatNumber) : null;
+    ghost.show(partsFor(styleOf(def), uid, era()), tile, !check.ok ? 'bad' : advice ? 'warn' : 'ok');
+    if (advice) toast.show(advice, 6000);
     const detail = check.ok ? `تكلفة النقل ${costText(costShare(def.cost, defs.world.moveCostPercent)) || 'مجانًا'}` : check.reason;
     confirm.show(labelAbove(tile.x, tile.z, 0.6), `نقل ${def.name}`, detail, check.ok, () => {
       const result = session.move(uid, tile, Date.now());
@@ -586,11 +607,17 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
 
   const start = game.tileAnchor(settlementTile);
   game.camera.focus(start.x, start.z);
-  if (mobile.matches) {
-    // زاوية الرؤية رأسية، فالشاشة العريضة القصيرة تحتاج كاميرا أقرب / The field of view is vertical, so a wide, short screen needs a closer camera
-    const tiles = APP_CONFIG.camera.startRadiusMobileTiles[window.innerWidth > window.innerHeight ? 'landscape' : 'portrait'];
-    game.camera.camera.radius = tiles * world.settings.tileSize;
-  }
+  // زاوية الرؤية رأسية، فالشاشة العريضة القصيرة تحتاج كاميرا أقرب / The field of view is vertical, so a wide, short screen needs a closer camera
+  const mobileTiles = APP_CONFIG.camera.startRadiusMobileTiles;
+  const landscape = window.matchMedia('(orientation: landscape)');
+  if (mobile.matches) game.camera.camera.radius = mobileTiles[landscape.matches ? 'landscape' : 'portrait'] * world.settings.tileSize;
+  // عند تدوير الجوال تتكيّف المسافة بنفس النسبة فيبقى التقريب الذي اختاره اللاعب / On rotating a phone the distance scales by the same ratio, keeping the player's zoom
+  landscape.addEventListener('change', () => {
+    if (!mobile.matches) return;
+    const ratio = landscape.matches ? mobileTiles.landscape / mobileTiles.portrait : mobileTiles.portrait / mobileTiles.landscape;
+    const cam = game.camera.camera;
+    cam.radius = Math.min(cam.upperRadiusLimit ?? Infinity, Math.max(cam.lowerRadiusLimit ?? 0, cam.radius * ratio));
+  });
   refresh(true);
   announceStart();
 
