@@ -34,6 +34,13 @@ export const APP_CONFIG = {
     minRadius: 6,
     maxRadiusFactor: 1.15,
     startRadius: 60,
+    /** على الجوال تبدأ الكاميرا أقرب حتى تملأ القرية الشاشة الصغيرة / On phones the camera starts closer so the village fills the small screen */
+    startRadiusMobile: 34,
+    /**
+     * أبعد مسافة للكاميرا كنسبة من مدى الضباب (1 ÷ كثافته)، حتى لا يبيضّ المشهد عند الإبعاد
+     * Farthest camera distance as a share of the fog range (1 ÷ its density), so the scene never washes out white when zooming out
+     */
+    fogClearance: 0.6,
     startBeta: 0.9,
     minBeta: 0.32,
     maxBeta: 1.35,

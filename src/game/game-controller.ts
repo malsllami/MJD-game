@@ -586,6 +586,7 @@ export function startGame(root: HTMLElement, defs: GameDefinitions, world: World
 
   const start = game.tileAnchor(settlementTile);
   game.camera.focus(start.x, start.z);
+  if (mobile.matches) game.camera.camera.radius = APP_CONFIG.camera.startRadiusMobile;
   refresh(true);
   announceStart();
 

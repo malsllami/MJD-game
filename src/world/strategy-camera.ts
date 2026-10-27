@@ -36,7 +36,7 @@ export class StrategyCamera {
   ) {
     const cam = new ArcRotateCamera('camera', -Math.PI / 2, cfg.startBeta, cfg.startRadius, new Vector3(start.x, 0, start.z), scene);
     cam.lowerRadiusLimit = cfg.minRadius;
-    cam.upperRadiusLimit = Math.max(bounds.halfX, bounds.halfZ) * 2 * cfg.maxRadiusFactor;
+    cam.upperRadiusLimit = Math.min(Math.max(bounds.halfX, bounds.halfZ) * 2 * cfg.maxRadiusFactor, cfg.fogClearance / Math.max(1e-4, scene.fogDensity));
     cam.lowerBetaLimit = cfg.minBeta;
     cam.upperBetaLimit = cfg.maxBeta;
     cam.wheelDeltaPercentage = 0.01;
